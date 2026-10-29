@@ -55,7 +55,20 @@ export function ComponenteSelectorModal({
     const [catalogComponents, setCatalogComponents] = useState<ComponenteCatalogo[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [mode, setMode] = useState<'select' | 'create'>('select')
+    const [mode, setMode] = useState<'select' | 'create' | 'edit'>('select')
+
+    // Edit / delete (correção de erros de cadastro)
+    const [editing, setEditing] = useState<ComponenteCatalogo | null>(null)
+    const [editForm, setEditForm] = useState({
+        nome: '',
+        peso_padrao: '100',
+        is_calculated: false,
+        formula_expression: '',
+        tipo_calculo: 'trimestral' as 'trimestral' | 'anual'
+    })
+    const [deleteTarget, setDeleteTarget] = useState<ComponenteCatalogo | null>(null)
+    const [busy, setBusy] = useState(false)
+
 
     // Form for new component
     const [newComponent, setNewComponent] = useState({
@@ -194,6 +207,22 @@ export function ComponenteSelectorModal({
 
                 if (error) throw error
 
+                // Se o código já existia no catálogo mas tinha sido retirado (ativo = false)
+                // ao apagar o componente, volta a ativá-lo com os dados agora informados:
+                // o utilizador está a recriá-lo (o RPC não actualiza registos existentes).
+                await supabase
+                    .from('componentes_catalogo')
+                    .update({
+                        ativo: true,
+                        nome: newComponent.nome,
+                        peso_padrao: peso,
+                        is_calculated: newComponent.is_calculated,
+                        formula_expression: newComponent.is_calculated ? newComponent.formula_expression.trim() : null,
+                        tipo_calculo: newComponent.is_calculated ? newComponent.tipo_calculo : 'trimestral'
+                    })
+                    .eq('id', componenteId)
+                    .eq('ativo', false)
+
                 // Construct component object to return
                 const newCompObj: ComponenteCatalogo = {
                     id: componenteId,
@@ -283,6 +312,133 @@ export function ComponenteSelectorModal({
         }
     }
 
+    // ---- Editar componente do catálogo (corrigir erros de cadastro) ----
+    const openEdit = (comp: ComponenteCatalogo) => {
+        setError(null)
+        setEditing(comp)
+        setEditForm({
+            nome: comp.nome,
+            peso_padrao: String(comp.peso_padrao ?? 100),
+            is_calculated: comp.is_calculated,
+            formula_expression: comp.formula_expression || '',
+            tipo_calculo: comp.tipo_calculo === 'anual' ? 'anual' : 'trimestral'
+        })
+        setMode('edit')
+    }
+
+    const handleSaveEdit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editing) return
+        setError(null)
+
+        const peso = parseFloat(editForm.peso_padrao)
+        if (!editForm.nome.trim()) {
+            setError('Indique o nome do componente.')
+            return
+        }
+        if (isNaN(peso) || peso < 0 || peso > 100) {
+            setError('O peso deve estar entre 0 e 100%.')
+            return
+        }
+        if (editForm.is_calculated && !editForm.formula_expression.trim()) {
+            setError('Indique a fórmula do componente calculado ou desmarque "Componente Calculado".')
+            return
+        }
+
+        try {
+            setBusy(true)
+            const { data, error } = await supabase
+                .from('componentes_catalogo')
+                .update({
+                    nome: editForm.nome.trim(),
+                    peso_padrao: peso,
+                    is_calculated: editForm.is_calculated,
+                    formula_expression: editForm.is_calculated ? editForm.formula_expression.trim() : null,
+                    tipo_calculo: editForm.is_calculated ? editForm.tipo_calculo : 'trimestral'
+                })
+                .eq('id', editing.id)
+                .select('id')
+
+            if (error) throw error
+            if (!data || data.length === 0) throw new Error('Não foi possível actualizar o componente (sem permissão).')
+
+            setEditing(null)
+            setMode('select')
+            await loadCatalog()
+        } catch (err: any) {
+            console.error('Erro ao editar componente:', err)
+            setError(translateError(err?.message || 'Erro ao editar componente'))
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    // ---- Eliminar componente do catálogo ----
+
+    const handleConfirmDelete = async () => {
+        if (!deleteTarget) return
+        setError(null)
+
+        try {
+            setBusy(true)
+            const { data, error } = await supabase
+                .from('componentes_catalogo')
+                .delete()
+                .eq('id', deleteTarget.id)
+                .select('id')
+
+            if (error) {
+                // 23503 = ainda referenciado por outros registos (ex.: associações antigas a disciplinas):
+                // não se pode apagar, por isso apenas retira do catálogo (deixa de aparecer na lista)
+                if (error.code === '23503') {
+                    const { data: soft, error: softError } = await supabase
+                        .from('componentes_catalogo')
+                        .update({ ativo: false })
+                        .eq('id', deleteTarget.id)
+                        .select('id')
+                    if (softError) throw softError
+                    if (!soft || soft.length === 0) throw new Error('Não foi possível eliminar o componente (sem permissão).')
+                } else {
+                    throw error
+                }
+            } else if (!data || data.length === 0) {
+                throw new Error('Não foi possível eliminar o componente (sem permissão).')
+            }
+
+            setDeleteTarget(null)
+            await loadCatalog()
+        } catch (err: any) {
+            console.error('Erro ao eliminar componente:', err)
+            setError(translateError(err?.message || 'Erro ao eliminar componente'))
+            setDeleteTarget(null)
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const renderActions = (comp: ComponenteCatalogo) => (
+        <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+                type="button"
+                onClick={() => openEdit(comp)}
+                title="Editar componente"
+                aria-label={`Editar ${comp.codigo_componente}`}
+                className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+                <Icons.Edit className="w-4 h-4" />
+            </button>
+            <button
+                type="button"
+                onClick={() => { setError(null); setDeleteTarget(comp) }}
+                title="Eliminar componente"
+                aria-label={`Eliminar ${comp.codigo_componente}`}
+                className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            >
+                <Icons.Trash className="w-4 h-4" />
+            </button>
+        </div>
+    )
+
     // Filter components: search term and not already added
     const filteredComponents = catalogComponents.filter(c =>
         !existingCodes.includes(c.codigo_componente) &&
@@ -301,7 +457,7 @@ export function ComponenteSelectorModal({
                 <div className="p-6 border-b border-slate-200 flex items-center justify-between">
                     <div>
                         <h3 className="text-xl font-bold text-slate-900">
-                            {mode === 'select' ? 'Selecionar Componente' : 'Criar Novo Componente'}
+                            {mode === 'select' ? 'Selecionar Componente' : mode === 'edit' ? 'Editar Componente' : 'Criar Novo Componente'}
                         </h3>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-sm text-slate-500">Trimestre:</span>
@@ -406,29 +562,35 @@ export function ComponenteSelectorModal({
                                             </h4>
                                             <div className="grid gap-2">
                                                 {regularComponents.map(comp => (
-                                                    <button
+                                                    <div
                                                         key={comp.id}
-                                                        onClick={() => handleSelectFromCatalog(comp)}
-                                                        className="w-full p-3 bg-slate-50 hover:bg-primary-50 border border-slate-200 hover:border-primary-300 rounded-xl text-left transition-all group"
+                                                        className="flex items-center gap-2 w-full p-3 bg-slate-50 hover:bg-primary-50 border border-slate-200 hover:border-primary-300 rounded-xl transition-all group"
                                                     >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center font-bold text-blue-700 text-sm">
-                                                                {comp.codigo_componente.substring(0, 2)}
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <div className="font-semibold text-slate-900 group-hover:text-primary-700">
-                                                                    {comp.codigo_componente}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSelectFromCatalog(comp)}
+                                                            className="flex-1 min-w-0 text-left"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center font-bold text-blue-700 text-sm">
+                                                                    {comp.codigo_componente.substring(0, 2)}
                                                                 </div>
-                                                                <div className="text-sm text-slate-500">{comp.nome}</div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="font-semibold text-slate-900 group-hover:text-primary-700">
+                                                                        {comp.codigo_componente}
+                                                                    </div>
+                                                                    <div className="text-sm text-slate-500 truncate">{comp.nome}</div>
+                                                                </div>
+                                                                <div className="flex flex-col items-end gap-1">
+                                                                    <span className="text-xs font-semibold text-primary-600 bg-primary-50 px-2 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        Adicionar
+                                                                    </span>
+                                                                    <Icons.Plus className="w-5 h-5 text-slate-400 group-hover:text-primary-600" />
+                                                                </div>
                                                             </div>
-                                                            <div className="flex flex-col items-end gap-1">
-                                                                <span className="text-xs font-semibold text-primary-600 bg-primary-50 px-2 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    Adicionar
-                                                                </span>
-                                                                <Icons.Plus className="w-5 h-5 text-slate-400 group-hover:text-primary-600" />
-                                                            </div>
-                                                        </div>
-                                                    </button>
+                                                        </button>
+                                                        {renderActions(comp)}
+                                                    </div>
                                                 ))}
                                             </div>
                                         </div>
@@ -443,32 +605,38 @@ export function ComponenteSelectorModal({
                                             </h4>
                                             <div className="grid gap-2">
                                                 {calculatedComponents.map(comp => (
-                                                    <button
+                                                    <div
                                                         key={comp.id}
-                                                        onClick={() => handleSelectFromCatalog(comp)}
-                                                        className="w-full p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 hover:border-amber-300 rounded-xl text-left transition-all group"
+                                                        className="flex items-center gap-2 w-full p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 hover:border-amber-300 rounded-xl transition-all group"
                                                     >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center font-bold text-amber-700 text-sm">
-                                                                {comp.codigo_componente.substring(0, 2)}
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <div className="font-semibold text-slate-900 group-hover:text-amber-700">
-                                                                    {comp.codigo_componente}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSelectFromCatalog(comp)}
+                                                            className="flex-1 min-w-0 text-left"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center font-bold text-amber-700 text-sm">
+                                                                    {comp.codigo_componente.substring(0, 2)}
                                                                 </div>
-                                                                <div className="text-sm text-slate-500">{comp.nome}</div>
-                                                            </div>
-                                                            <span className="text-xs px-2 py-1 rounded-full bg-amber-200 text-amber-800">
-                                                                {comp.tipo_calculo === 'anual' ? 'Anual' : 'Trimestral'}
-                                                            </span>
-                                                            <div className="flex flex-col items-end gap-1">
-                                                                <span className="text-xs font-semibold text-amber-600 bg-amber-100/50 px-2 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    Adicionar
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="font-semibold text-slate-900 group-hover:text-amber-700">
+                                                                        {comp.codigo_componente}
+                                                                    </div>
+                                                                    <div className="text-sm text-slate-500 truncate">{comp.nome}</div>
+                                                                </div>
+                                                                <span className="text-xs px-2 py-1 rounded-full bg-amber-200 text-amber-800">
+                                                                    {comp.tipo_calculo === 'anual' ? 'Anual' : 'Trimestral'}
                                                                 </span>
-                                                                <Icons.Plus className="w-5 h-5 text-slate-400 group-hover:text-amber-600" />
+                                                                <div className="flex flex-col items-end gap-1">
+                                                                    <span className="text-xs font-semibold text-amber-600 bg-amber-100/50 px-2 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        Adicionar
+                                                                    </span>
+                                                                    <Icons.Plus className="w-5 h-5 text-slate-400 group-hover:text-amber-600" />
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    </button>
+                                                        </button>
+                                                        {renderActions(comp)}
+                                                    </div>
                                                 ))}
                                             </div>
                                         </div>
@@ -476,6 +644,95 @@ export function ComponenteSelectorModal({
                                 </div>
                             )}
                         </>
+                    ) : mode === 'edit' && editing ? (
+                        <form onSubmit={handleSaveEdit} className="space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Código</label>
+                                    <Input type="text" value={editing.codigo_componente} disabled readOnly />
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        O código não pode ser alterado. Para corrigi-lo, elimine e crie de novo.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Peso (%)</label>
+                                    <Input
+                                        type="number"
+                                        value={editForm.peso_padrao}
+                                        onChange={(e) => setEditForm({ ...editForm, peso_padrao: e.target.value })}
+                                        min="0"
+                                        max="100"
+                                        step="0.01"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                    Nome <span className="text-red-500">*</span>
+                                </label>
+                                <Input
+                                    type="text"
+                                    value={editForm.nome}
+                                    onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })}
+                                    required
+                                />
+                            </div>
+
+                            <div className="p-4 bg-slate-50 rounded-xl">
+                                <label className="flex items-center gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={editForm.is_calculated}
+                                        onChange={(e) => setEditForm({ ...editForm, is_calculated: e.target.checked })}
+                                        className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                    />
+                                    <div>
+                                        <span className="font-medium text-slate-900">Componente Calculado</span>
+                                        <p className="text-xs text-slate-500">Valor é calculado automaticamente</p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            {editForm.is_calculated && (
+                                <div className="space-y-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Fórmula</label>
+                                        <Input
+                                            type="text"
+                                            value={editForm.formula_expression}
+                                            onChange={(e) => setEditForm({ ...editForm, formula_expression: e.target.value })}
+                                            placeholder="Ex: (PP + PT) / 2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Tipo de Cálculo</label>
+                                        <select
+                                            value={editForm.tipo_calculo}
+                                            onChange={(e) => setEditForm({ ...editForm, tipo_calculo: e.target.value as 'trimestral' | 'anual' })}
+                                            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                        >
+                                            <option value="trimestral">Trimestral (MT)</option>
+                                            <option value="anual">Anual (MF)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3 pt-4">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="flex-1"
+                                    onClick={() => { setEditing(null); setMode('select'); setError(null) }}
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button type="submit" variant="primary" className="flex-1" disabled={busy}>
+                                    {busy ? 'A guardar...' : 'Guardar alterações'}
+                                </Button>
+                            </div>
+                        </form>
                     ) : (
                         <form onSubmit={handleCreateNew} className="space-y-5">
                             <div className="grid grid-cols-2 gap-4">
@@ -576,6 +833,39 @@ export function ComponenteSelectorModal({
                     )}
                 </div>
             </div>
+
+            {/* Confirmação de eliminação */}
+            {deleteTarget && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+                            <h3 className="text-lg font-bold text-slate-900 text-center mb-2">Eliminar componente?</h3>
+                            <p className="text-slate-600 text-center">
+                                Tem a certeza que deseja eliminar <strong>{deleteTarget.codigo_componente}</strong> ({deleteTarget.nome})
+                                do catálogo?
+                            </p>
+                            <div className="flex gap-3 mt-6">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="flex-1"
+                                    onClick={() => setDeleteTarget(null)}
+                                    disabled={busy}
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="danger"
+                                    className="flex-1"
+                                    onClick={handleConfirmDelete}
+                                    disabled={busy}
+                                >
+                                    {busy ? 'A eliminar...' : 'Eliminar'}
+                                </Button>
+                            </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

@@ -461,6 +461,49 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
         }
     }
 
+    /**
+     * Depois de apagar um componente de um template, retira-o do catálogo
+     * (ativo = false) para que deixe de aparecer no modal "Selecionar Componente".
+     *
+     * Só é desativado quando já não existe noutros componentes de templates da escola
+     * (outro trimestre/disciplina), para nunca esconder um componente que ainda se usa.
+     * A gestão de disciplinas/componentes é feita nos Templates, por isso associações
+     * antigas em disciplina_componentes já não impedem a remoção do catálogo.
+     * Best effort: uma falha aqui não impede a eliminação do componente.
+     */
+    const hideDeletedComponenteFromCatalog = async (codigo: string) => {
+        const escolaId = escolaProfile?.id
+        if (!escolaId || !codigo) return
+
+        try {
+            const { data: stillInTemplates } = await supabase
+                .from('componentes_template')
+                .select('id, disciplinas_template!inner(escola_id)')
+                .eq('codigo_componente', codigo)
+                .eq('disciplinas_template.escola_id', escolaId)
+                .limit(1)
+
+            if (stillInTemplates && stillInTemplates.length > 0) return
+
+            const { data: catalogo } = await supabase
+                .from('componentes_catalogo')
+                .select('id')
+                .eq('escola_id', escolaId)
+                .eq('codigo_componente', codigo)
+                .eq('ativo', true)
+                .maybeSingle()
+
+            if (!catalogo) return
+
+            await supabase
+                .from('componentes_catalogo')
+                .update({ ativo: false })
+                .eq('id', catalogo.id)
+        } catch (err) {
+            console.warn('Não foi possível retirar o componente do catálogo:', err)
+        }
+    }
+
     const handleDeleteComponente = async () => {
         if (!selectedComponente || !selectedTemplate) return
 
@@ -468,12 +511,16 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
         setSuccess(null)
 
         try {
+            const codigoApagado = selectedComponente.codigo_componente
+
             const { error } = await supabase
                 .from('componentes_template')
                 .delete()
                 .eq('id', selectedComponente.id)
 
             if (error) throw error
+
+            await hideDeletedComponenteFromCatalog(codigoApagado)
 
             setSuccess('Componente eliminado!')
             setShowDeleteComponenteModal(false)
