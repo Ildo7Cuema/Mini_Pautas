@@ -243,13 +243,15 @@ export function DirecaoMunicipalRegistration({ onSuccess, onCancel }: DirecaoMun
                                 Redirecionando em <span className="font-bold text-primary-600">{countdown}</span> segundos...
                             </p>
                         )}
-                        <Button
-                            onClick={handleGoToLogin}
-                            variant="primary"
-                            fullWidth
-                        >
-                            Voltar ao Login
-                        </Button>
+                        {waOpened && (
+                            <Button
+                                onClick={handleGoToLogin}
+                                variant="primary"
+                                fullWidth
+                            >
+                                Voltar ao Login
+                            </Button>
+                        )}
                     </CardBody>
                 </Card>
             </div>

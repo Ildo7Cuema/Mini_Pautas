@@ -246,13 +246,15 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                                 Redirecionando em <span className="font-bold text-primary-600">{countdown}</span> segundos...
                             </p>
                         )}
-                        <Button
-                            onClick={handleGoToLogin}
-                            variant="primary"
-                            fullWidth
-                        >
-                            Voltar ao Login
-                        </Button>
+                        {waOpened && (
+                            <Button
+                                onClick={handleGoToLogin}
+                                variant="primary"
+                                fullWidth
+                            >
+                                Voltar ao Login
+                            </Button>
+                        )}
                     </CardBody>
                 </Card>
             </div>

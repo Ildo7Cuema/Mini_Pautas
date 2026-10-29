@@ -316,14 +316,16 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                                 </span>
                             </div>
                         )}
-                        <Button
-                            variant="primary"
-                            className="btn-premium mt-6"
-                            onClick={handleGoToLogin}
-                            fullWidth
-                        >
-                            Ir para Login agora
-                        </Button>
+                        {waOpened && (
+                            <Button
+                                variant="primary"
+                                className="btn-premium mt-6"
+                                onClick={handleGoToLogin}
+                                fullWidth
+                            >
+                                Ir para Login agora
+                            </Button>
+                        )}
                     </CardBody>
                 </div>
             </div>
