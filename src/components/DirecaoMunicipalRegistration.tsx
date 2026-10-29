@@ -58,8 +58,8 @@ export function DirecaoMunicipalRegistration({ onSuccess, onCancel }: DirecaoMun
     const [adminAlert, setAdminAlert] = useState<AdminAlertState>('pending')
     const [adminMessage, setAdminMessage] = useState('')
     const [waOpened, setWaOpened] = useState(false)
-    // Pausa o redirecionamento enquanto o utilizador ainda pode enviar o WhatsApp manualmente
-    const holdRedirect = adminAlert !== 'sent' && !waOpened
+    // O redirecionamento só começa depois de o utilizador usar o botão de WhatsApp
+    const holdRedirect = !waOpened
     const [formData, setFormData] = useState<DirecaoMunicipalRegistrationForm>({
         nome: '',
         provincia: '',
