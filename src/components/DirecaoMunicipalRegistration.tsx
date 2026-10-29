@@ -14,6 +14,8 @@ import { Input } from './ui/Input'
 import { Card, CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
+import { notifyAdminNewRegistration, buildRegistrationMessage } from '../utils/registrationNotifications'
+import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
 
 interface DirecaoMunicipalRegistrationForm {
     nome: string
@@ -53,6 +55,11 @@ export function DirecaoMunicipalRegistration({ onSuccess, onCancel }: DirecaoMun
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
     const [countdown, setCountdown] = useState(10)
+    const [adminAlert, setAdminAlert] = useState<AdminAlertState>('pending')
+    const [adminMessage, setAdminMessage] = useState('')
+    const [waOpened, setWaOpened] = useState(false)
+    // Pausa o redirecionamento enquanto o utilizador ainda pode enviar o WhatsApp manualmente
+    const holdRedirect = adminAlert !== 'sent' && !waOpened
     const [formData, setFormData] = useState<DirecaoMunicipalRegistrationForm>({
         nome: '',
         provincia: '',
@@ -66,13 +73,14 @@ export function DirecaoMunicipalRegistration({ onSuccess, onCancel }: DirecaoMun
 
     // Countdown para redirecionar após sucesso
     useEffect(() => {
+        if (holdRedirect) return
         if (success && countdown > 0) {
             const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
             return () => clearTimeout(timer)
         } else if (success && countdown === 0) {
             handleGoToLogin()
         }
-    }, [success, countdown])
+    }, [success, countdown, holdRedirect])
 
     const handleGoToLogin = () => {
         if (onSuccess) {
@@ -178,6 +186,17 @@ export function DirecaoMunicipalRegistration({ onSuccess, onCancel }: DirecaoMun
                 throw new Error(rpcError.message || 'Erro ao criar registo. Por favor, contacte o suporte.')
             }
 
+            // Alerta o administrador (WhatsApp + perfil) - não bloqueia o registo
+            setAdminMessage(buildRegistrationMessage('DIRECAO_MUNICIPAL', {
+                nome: formData.nome,
+                provincia: formData.provincia,
+                municipio: formData.municipio,
+                cargo: formData.cargo,
+                telefone: formData.telefone,
+                email: formData.email,
+            }))
+            notifyAdminNewRegistration('DIRECAO_MUNICIPAL', authData.user.id).then(r => setAdminAlert(r))
+
             // 3. Fazer logout (conta pendente de aprovação)
             await supabase.auth.signOut()
 
@@ -214,9 +233,16 @@ export function DirecaoMunicipalRegistration({ onSuccess, onCancel }: DirecaoMun
                                 Receberá uma notificação quando o seu registo for aprovado.
                             </p>
                         </div>
-                        <p className="text-slate-500 text-sm mb-4">
-                            Redirecionando em <span className="font-bold text-primary-600">{countdown}</span> segundos...
-                        </p>
+                        <AdminWhatsAppAlert
+                            status={adminAlert}
+                            message={adminMessage}
+                            onOpen={() => setWaOpened(true)}
+                        />
+                        {!holdRedirect && (
+                            <p className="text-slate-500 text-sm mb-4">
+                                Redirecionando em <span className="font-bold text-primary-600">{countdown}</span> segundos...
+                            </p>
+                        )}
                         <Button
                             onClick={handleGoToLogin}
                             variant="primary"
