@@ -14,6 +14,8 @@ import { Input } from './ui/Input'
 import { Card, CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
+import { notifyAdminNewRegistration, buildRegistrationMessage } from '../utils/registrationNotifications'
+import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
 import { generateUniqueSchoolCode } from '../utils/schoolCodeGenerator'
 
 interface SchoolRegistrationForm {
@@ -87,10 +89,15 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
     const [step, setStep] = useState(1) // 1: Dados da Escola, 2: Dados do Responsável
     const [generatingCode, setGeneratingCode] = useState(false)
     const [countdown, setCountdown] = useState(10) // Contagem regressiva de 10 segundos
+    const [adminAlert, setAdminAlert] = useState<AdminAlertState>('pending')
+    const [adminMessage, setAdminMessage] = useState('')
+    const [waOpened, setWaOpened] = useState(false)
+    // O redirecionamento só começa depois de o utilizador usar o botão de WhatsApp
+    const holdRedirect = !waOpened
 
     // Efeito para contagem regressiva e redirecionamento automático
     useEffect(() => {
-        if (!success) return
+        if (!success || holdRedirect) return
 
         const timer = setInterval(() => {
             setCountdown(prev => {
@@ -104,7 +111,7 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
         }, 1000)
 
         return () => clearInterval(timer)
-    }, [success])
+    }, [success, holdRedirect])
 
     // Função para redirecionar para login
     const handleGoToLogin = () => {
@@ -245,6 +252,18 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                 throw new Error(escolaError.message || 'Erro ao criar registro da escola. Por favor, contacte o suporte.')
             }
 
+            // Alerta o administrador (WhatsApp) - não bloqueia o registo
+            setAdminMessage(buildRegistrationMessage('ESCOLA', {
+                nome: formData.nome_escola,
+                codigo: formData.codigo_escola,
+                provincia: formData.provincia,
+                municipio: formData.municipio,
+                responsavel: formData.nome_responsavel,
+                telefone: formData.telefone,
+                email: formData.email_escola || formData.email_responsavel,
+            }))
+            notifyAdminNewRegistration('ESCOLA', authData.user.id).then(r => setAdminAlert(r))
+
             // 3. Sign out the user so they can log in properly
             await supabase.auth.signOut()
 
@@ -282,22 +301,31 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                             A escola <strong>{formData.nome_escola}</strong> foi registada com sucesso.
                             Verifique seu email para confirmar a conta.
                         </p>
-                        <div className="flex flex-col items-center gap-3">
-                            <div className="flex items-center justify-center w-12 h-12 bg-primary-100 rounded-full">
-                                <span className="text-xl font-bold text-primary-600">{countdown}</span>
+                        <AdminWhatsAppAlert
+                            status={adminAlert}
+                            message={adminMessage}
+                            onOpen={() => setWaOpened(true)}
+                        />
+                        {!holdRedirect && (
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="flex items-center justify-center w-12 h-12 bg-primary-100 rounded-full">
+                                    <span className="text-xl font-bold text-primary-600">{countdown}</span>
+                                </div>
+                                <span className="text-sm text-slate-500 font-medium">
+                                    Redirecionando para login em <strong className="text-primary-600">{countdown}</strong> segundos...
+                                </span>
                             </div>
-                            <span className="text-sm text-slate-500 font-medium">
-                                Redirecionando para login em <strong className="text-primary-600">{countdown}</strong> segundos...
-                            </span>
-                        </div>
-                        <Button
-                            variant="primary"
-                            className="btn-premium mt-6"
-                            onClick={handleGoToLogin}
-                            fullWidth
-                        >
-                            Ir para Login agora
-                        </Button>
+                        )}
+                        {waOpened && (
+                            <Button
+                                variant="primary"
+                                className="btn-premium mt-6"
+                                onClick={handleGoToLogin}
+                                fullWidth
+                            >
+                                Ir para Login agora
+                            </Button>
+                        )}
                     </CardBody>
                 </div>
             </div>

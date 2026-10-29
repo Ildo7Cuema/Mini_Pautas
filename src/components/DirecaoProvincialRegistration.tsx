@@ -14,6 +14,8 @@ import { Input } from './ui/Input'
 import { Card, CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
+import { notifyAdminNewRegistration, buildRegistrationMessage } from '../utils/registrationNotifications'
+import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
 
 interface DirecaoProvincialRegistrationForm {
     nome: string
@@ -43,6 +45,11 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
     const [countdown, setCountdown] = useState(10)
+    const [adminAlert, setAdminAlert] = useState<AdminAlertState>('pending')
+    const [adminMessage, setAdminMessage] = useState('')
+    const [waOpened, setWaOpened] = useState(false)
+    // O redirecionamento só começa depois de o utilizador usar o botão de WhatsApp
+    const holdRedirect = !waOpened
     const [formData, setFormData] = useState<DirecaoProvincialRegistrationForm>({
         nome: '',
         provincia: '',
@@ -55,13 +62,14 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
 
     // Countdown para redirecionar após sucesso
     useEffect(() => {
+        if (holdRedirect) return
         if (success && countdown > 0) {
             const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
             return () => clearTimeout(timer)
         } else if (success && countdown === 0) {
             handleGoToLogin()
         }
-    }, [success, countdown])
+    }, [success, countdown, holdRedirect])
 
     const handleGoToLogin = () => {
         if (onSuccess) {
@@ -177,6 +185,16 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                 throw new Error(rpcError.message || 'Erro ao criar registo. Por favor, contacte o suporte.')
             }
 
+            // Alerta o administrador (WhatsApp) - não bloqueia o registo
+            setAdminMessage(buildRegistrationMessage('DIRECAO_PROVINCIAL', {
+                nome: formData.nome,
+                provincia: formData.provincia,
+                cargo: formData.cargo,
+                telefone: formData.telefone,
+                email: formData.email,
+            }))
+            notifyAdminNewRegistration('DIRECAO_PROVINCIAL', authData.user.id).then(r => setAdminAlert(r))
+
             console.log('✅ Registration: Success! Signing out...')
             // 3. Fazer logout (conta pendente de aprovação)
             await supabase.auth.signOut()
@@ -218,16 +236,25 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                                 Receberá uma notificação quando o seu registo for aprovado.
                             </p>
                         </div>
-                        <p className="text-slate-500 text-sm mb-4">
-                            Redirecionando em <span className="font-bold text-primary-600">{countdown}</span> segundos...
-                        </p>
-                        <Button
-                            onClick={handleGoToLogin}
-                            variant="primary"
-                            fullWidth
-                        >
-                            Voltar ao Login
-                        </Button>
+                        <AdminWhatsAppAlert
+                            status={adminAlert}
+                            message={adminMessage}
+                            onOpen={() => setWaOpened(true)}
+                        />
+                        {!holdRedirect && (
+                            <p className="text-slate-500 text-sm mb-4">
+                                Redirecionando em <span className="font-bold text-primary-600">{countdown}</span> segundos...
+                            </p>
+                        )}
+                        {waOpened && (
+                            <Button
+                                onClick={handleGoToLogin}
+                                variant="primary"
+                                fullWidth
+                            >
+                                Voltar ao Login
+                            </Button>
+                        )}
                     </CardBody>
                 </Card>
             </div>
