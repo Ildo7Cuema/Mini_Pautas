@@ -171,6 +171,12 @@ export function ComponenteSelectorModal({
         e.preventDefault()
         setError(null)
 
+        // Um componente calculado precisa de fórmula (exigido por check_calculated_has_formula)
+        if (newComponent.is_calculated && !newComponent.formula_expression.trim()) {
+            setError('Indique a fórmula do componente calculado ou desmarque "Componente Calculado".')
+            return
+        }
+
         try {
             const peso = parseFloat(newComponent.peso_percentual)
 
@@ -195,6 +201,7 @@ export function ComponenteSelectorModal({
                     nome: newComponent.nome,
                     peso_padrao: peso,
                     is_calculated: newComponent.is_calculated,
+                    formula_expression: newComponent.is_calculated ? newComponent.formula_expression.trim() : null,
                     tipo_calculo: newComponent.is_calculated ? newComponent.tipo_calculo : 'trimestral'
                 }
 
@@ -259,6 +266,7 @@ export function ComponenteSelectorModal({
                     nome: newComponent.nome,
                     peso_padrao: peso,
                     is_calculated: newComponent.is_calculated,
+                    formula_expression: newComponent.is_calculated ? newComponent.formula_expression.trim() : null,
                     tipo_calculo: newComponent.is_calculated ? newComponent.tipo_calculo : 'trimestral'
                 }
 
