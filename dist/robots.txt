@@ -1,0 +1,8 @@
+# robots.txt para EduGest Angola
+# Permite que todos os motores de busca indexem todo o site
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://edugest-angola.vercel.app/sitemap.xml
