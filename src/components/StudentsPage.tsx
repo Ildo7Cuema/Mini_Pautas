@@ -15,8 +15,8 @@ import { Input } from './ui/Input'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { ConfirmModal } from './ui/ConfirmModal'
-import { ConfiguracaoCabecalhoModal } from './ConfiguracaoCabecalhoModal'
 import { HeaderConfig, loadHeaderConfig, getOrgaoEducacao } from '../utils/headerConfigUtils'
+import { applyStandardPdfFooters } from '../utils/pdfFooter'
 import { useAuth } from '../contexts/AuthContext'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -128,7 +128,6 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
     const [manualNumero, setManualNumero] = useState(false)
     const [exporting, setExporting] = useState(false)
     const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
-    const [showHeaderConfigModal, setShowHeaderConfigModal] = useState(false)
 
     useEffect(() => {
         loadTurmas()
@@ -753,24 +752,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                 addTurmaPageToPDF(doc, filteredAlunos, turmaNome, logoBase64, true)
             }
 
-            // Footer with page numbers
-            const pageCount = doc.getNumberOfPages()
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i)
-                doc.setFontSize(8)
-                doc.text(
-                    `Página ${i} de ${pageCount}`,
-                    105,
-                    doc.internal.pageSize.height - 10,
-                    { align: 'center' }
-                )
-                doc.text(
-                    `Gerado em: ${new Date().toLocaleString('pt-AO')}`,
-                    105,
-                    doc.internal.pageSize.height - 5,
-                    { align: 'center' }
-                )
-            }
+            applyStandardPdfFooters(doc)
 
             // Generate filename
             const date = new Date().toISOString().split('T')[0]
@@ -1359,18 +1341,6 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                         </span>
                         <Button
                             variant="ghost"
-                            onClick={() => setShowHeaderConfigModal(true)}
-                            className="hidden sm:flex"
-                            icon={
-                                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                            }
-                        >
-                            Cabeçalho
-                        </Button>
-                        <Button
-                            variant="ghost"
                             onClick={handlePrintList}
                             loading={exporting}
                             disabled={filteredAlunos.length === 0}
@@ -1637,16 +1607,6 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                 variant="danger"
             />
 
-            {/* Header Configuration Modal */}
-            <ConfiguracaoCabecalhoModal
-                isOpen={showHeaderConfigModal}
-                onClose={() => setShowHeaderConfigModal(false)}
-                onSave={() => {
-                    setShowHeaderConfigModal(false)
-                    loadHeaderConfiguration()
-                }}
-                escolaId={escolaProfile?.id || professorProfile?.escola_id || secretarioProfile?.escola_id || ''}
-            />
         </div>
     )
 }

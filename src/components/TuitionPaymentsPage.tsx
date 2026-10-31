@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabaseClient'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { HeaderConfig, loadHeaderConfig, getOrgaoEducacao } from '../utils/headerConfigUtils'
-import { ConfiguracaoCabecalhoModal } from './ConfiguracaoCabecalhoModal'
+import { applyStandardPdfFooters } from '../utils/pdfFooter'
 import {
     fetchPropinasConfig,
     savePropinasConfig,
@@ -90,7 +90,6 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
 
     // PDF Export state
     const [showExportModal, setShowExportModal] = useState(false)
-    const [showHeaderConfigModal, setShowHeaderConfigModal] = useState(false)
     const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
     const [exportLoading, setExportLoading] = useState(false)
     const [exportMes, setExportMes] = useState<number>(currentMonth - 1 > 0 ? currentMonth - 1 : 12)
@@ -380,24 +379,7 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                 }
             }
 
-            // Footer with page numbers
-            const pageCount = doc.getNumberOfPages()
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i)
-                doc.setFontSize(8)
-                doc.text(
-                    `Página ${i} de ${pageCount}`,
-                    105,
-                    doc.internal.pageSize.height - 10,
-                    { align: 'center' }
-                )
-                doc.text(
-                    `Gerado em: ${new Date().toLocaleString('pt-AO')}`,
-                    105,
-                    doc.internal.pageSize.height - 5,
-                    { align: 'center' }
-                )
-            }
+            applyStandardPdfFooters(doc)
 
             // Generate filename
             const date = new Date().toISOString().split('T')[0]
@@ -1947,22 +1929,17 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                 </button>
                             </div>
                             <div className="pt-2 border-t border-slate-100">
-                                <button
-                                    onClick={() => setShowHeaderConfigModal(true)}
-                                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors font-medium text-sm"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    </svg>
-                                    Configurar Cabeçalho do Documento
-                                </button>
-                                {headerConfig && (
-                                    <p className="text-xs text-slate-500 mt-2 text-center">
+                                {headerConfig?.nome_escola ? (
+                                    <p className="text-xs text-slate-500 text-center">
                                         <svg className="w-3 h-3 inline mr-1 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                         </svg>
-                                        Cabeçalho configurado: {headerConfig.nome_escola}
+                                        Cabeçalho: {headerConfig.nome_escola}
+                                        <span className="block mt-1 text-slate-400">Alterar em Configurações</span>
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-slate-400 text-center">
+                                        Configure o cabeçalho em Configurações
                                     </p>
                                 )}
                             </div>
@@ -1999,17 +1976,6 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                 </div>
             )}
 
-            {/* Header Configuration Modal */}
-            <ConfiguracaoCabecalhoModal
-                isOpen={showHeaderConfigModal}
-                onClose={() => setShowHeaderConfigModal(false)}
-                onSave={async () => {
-                    const config = await loadHeaderConfig(escolaId)
-                    setHeaderConfig(config)
-                    setShowHeaderConfigModal(false)
-                }}
-                escolaId={escolaId}
-            />
             {/* Toast Notification */}
             {toast.show && (
                 <div className={`fixed bottom-4 right-4 z-[60] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>

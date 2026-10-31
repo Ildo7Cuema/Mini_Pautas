@@ -1,15 +1,20 @@
 /*
 component-meta:
   name: ConfirmarMatriculaModal
-  description: Modal for confirming student enrollment to next year
+  description: Confirma matrícula conforme observação da Pauta Final (Transita/Não Transita)
   tokens: [--color-primary]
   responsive: true
 */
 
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Turma } from '../types'
-import { confirmarMatricula, confirmarRepetencia, MatriculaComAluno } from '../utils/matriculaUtils'
+import {
+    confirmarMatriculaPorObservacaoPauta,
+    MatriculaComAluno,
+    resolverDestinoPorObservacaoPauta,
+    turmaPertenceAClasse
+} from '../utils/matriculaUtils'
 import { translateError } from '../utils/translations'
 
 interface ConfirmarMatriculaModalProps {
@@ -29,37 +34,42 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    const isTransita = matricula.status_transicao === 'Transita'
-    const isCondicional = matricula.status_transicao === 'Condicional'
-    const isNaoTransita = matricula.status_transicao === 'Não Transita'
+    const destino = useMemo(
+        () => resolverDestinoPorObservacaoPauta(matricula),
+        [matricula]
+    )
 
-    // Filter destination turmas based on expected class
-    const filteredTurmas = turmasDestino.filter(t => {
-        if (isTransita || isCondicional) {
-            // For promoted students, show next class turmas
-            return t.nome.includes(matricula.classe_destino || '')
-        } else {
-            // For non-promoted, show same class turmas
-            return t.nome.includes(matricula.classe_origem || '')
-        }
-    })
+    const isTransita = destino.observacao === 'Transita'
+    const isNaoTransita = destino.observacao === 'Não Transita'
+    const podeConfirmar = Boolean(destino.observacao && destino.classeEsperada)
+
+    const filteredTurmas = useMemo(() => {
+        if (!destino.classeEsperada) return []
+        return turmasDestino.filter(t => turmaPertenceAClasse(t.nome, destino.classeEsperada))
+    }, [turmasDestino, destino.classeEsperada])
 
     const handleConfirm = async () => {
         try {
             setLoading(true)
             setError(null)
 
-            if (!selectedTurmaDestino) {
-                setError('Selecione a turma de destino')
+            if (!podeConfirmar) {
+                setError(destino.mensagem)
                 return
             }
 
-            if (isNaoTransita) {
-                await confirmarRepetencia(matricula.id, selectedTurmaDestino)
-            } else {
-                await confirmarMatricula(matricula.id, selectedTurmaDestino, matricula.classe_destino)
+            if (!selectedTurmaDestino) {
+                setError('Seleccione a turma de destino')
+                return
             }
 
+            const turma = turmasDestino.find(t => t.id === selectedTurmaDestino)
+            if (!turma) {
+                setError('Turma de destino inválida')
+                return
+            }
+
+            await confirmarMatriculaPorObservacaoPauta(matricula, turma)
             onSuccess()
         } catch (err) {
             setError(translateError(err instanceof Error ? err.message : 'Erro ao confirmar matrícula'))
@@ -70,36 +80,34 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
 
     const modalContent = (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-            {/* Backdrop */}
             <div
                 className="absolute inset-0 bg-black/50 backdrop-blur-sm"
                 onClick={onClose}
             />
 
-            {/* Modal */}
             <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl animate-slide-up">
-                {/* Header */}
                 <div className="flex items-center justify-between p-5 border-b border-slate-200">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isTransita ? 'bg-green-100' : isCondicional ? 'bg-yellow-100' : 'bg-red-100'
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isTransita ? 'bg-green-100' : isNaoTransita ? 'bg-red-100' : 'bg-amber-100'
                             }`}>
-                            <svg className={`w-5 h-5 ${isTransita ? 'text-green-600' : isCondicional ? 'text-yellow-600' : 'text-red-600'
+                            <svg className={`w-5 h-5 ${isTransita ? 'text-green-600' : isNaoTransita ? 'text-red-600' : 'text-amber-600'
                                 }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                         </div>
                         <div>
                             <h3 className="text-lg font-semibold text-slate-800">
-                                {isNaoTransita ? 'Confirmar Repetência' : 'Confirmar Matrícula'}
+                                {isNaoTransita ? 'Confirmar na mesma classe' : isTransita ? 'Confirmar na classe seguinte' : 'Confirmar Matrícula'}
                             </h3>
                             <p className="text-sm text-slate-500">
-                                {isNaoTransita ? 'O aluno permanecerá na mesma classe' : 'O aluno será promovido para a próxima classe'}
+                                Decisão baseada na observação da Pauta Final
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
                         className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                        aria-label="Fechar"
                     >
                         <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -107,9 +115,7 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
                     </button>
                 </div>
 
-                {/* Body */}
                 <div className="p-5 space-y-4">
-                    {/* Student Info */}
                     <div className="bg-slate-50 rounded-xl p-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
@@ -125,11 +131,17 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
                                 <p className="font-medium text-slate-800">{matricula.media_geral?.toFixed(1) || '-'}</p>
                             </div>
                             <div>
-                                <span className="text-slate-500">Status:</span>
-                                <p className={`font-medium ${isTransita ? 'text-green-600' : isCondicional ? 'text-yellow-600' : 'text-red-600'
-                                    }`}>{matricula.status_transicao}</p>
+                                <span className="text-slate-500">Observação da Pauta Final:</span>
+                                <p className={`font-semibold ${isTransita ? 'text-green-600' : isNaoTransita ? 'text-red-600' : 'text-amber-600'
+                                    }`}>{destino.observacao || matricula.status_transicao}</p>
                             </div>
                         </div>
+
+                        {matricula.observacao_padronizada && (
+                            <p className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-600">
+                                {matricula.observacao_padronizada}
+                            </p>
+                        )}
 
                         {matricula.disciplinas_em_risco && matricula.disciplinas_em_risco.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-slate-200">
@@ -145,10 +157,18 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
                         )}
                     </div>
 
-                    {/* Transition Info */}
+                    <div className={`rounded-xl border px-4 py-3 text-sm ${isTransita
+                        ? 'border-green-200 bg-green-50 text-green-900'
+                        : isNaoTransita
+                            ? 'border-red-200 bg-red-50 text-red-900'
+                            : 'border-amber-200 bg-amber-50 text-amber-900'
+                        }`}>
+                        {destino.mensagem}
+                    </div>
+
                     <div className="flex items-center justify-center gap-4">
                         <div className="text-center">
-                            <div className="text-xs text-slate-500 mb-1">Classe Atual</div>
+                            <div className="text-xs text-slate-500 mb-1">Classe actual</div>
                             <div className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-slate-800">
                                 {matricula.classe_origem || 'N/A'}
                             </div>
@@ -157,47 +177,41 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                         </svg>
                         <div className="text-center">
-                            <div className="text-xs text-slate-500 mb-1">Classe Destino</div>
-                            <div className={`px-4 py-2 rounded-lg font-medium ${isNaoTransita ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                            <div className="text-xs text-slate-500 mb-1">Classe na confirmação</div>
+                            <div className={`px-4 py-2 rounded-lg font-medium ${isNaoTransita ? 'bg-red-100 text-red-800' : isTransita ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'
                                 }`}>
-                                {isNaoTransita ? matricula.classe_origem : matricula.classe_destino || 'N/A'}
+                                {destino.classeEsperada || '—'}
                             </div>
                         </div>
                     </div>
 
-                    {/* Turma Selection */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Turma de Destino para {matricula.ano_lectivo_destino}
+                            Turma de destino ({matricula.ano_lectivo_destino})
+                            {destino.classeEsperada ? ` — apenas ${destino.classeEsperada}` : ''}
                         </label>
                         <select
                             value={selectedTurmaDestino}
                             onChange={(e) => setSelectedTurmaDestino(e.target.value)}
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                            disabled={!podeConfirmar}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white disabled:bg-slate-100"
                         >
-                            <option value="">Selecione a turma</option>
-                            {filteredTurmas.length > 0 ? (
-                                filteredTurmas.map((turma) => (
-                                    <option key={turma.id} value={turma.id}>
-                                        {turma.nome}
-                                    </option>
-                                ))
-                            ) : (
-                                turmasDestino.map((turma) => (
-                                    <option key={turma.id} value={turma.id}>
-                                        {turma.nome}
-                                    </option>
-                                ))
-                            )}
+                            <option value="">Seleccione a turma</option>
+                            {filteredTurmas.map((turma) => (
+                                <option key={turma.id} value={turma.id}>
+                                    {turma.nome}
+                                </option>
+                            ))}
                         </select>
-                        {filteredTurmas.length === 0 && turmasDestino.length > 0 && (
-                            <p className="mt-2 text-xs text-amber-600">
-                                ⚠️ Nenhuma turma encontrada para a classe "{isNaoTransita ? matricula.classe_origem : matricula.classe_destino}". Mostrando todas as turmas disponíveis.
+                        {podeConfirmar && filteredTurmas.length === 0 && (
+                            <p className="mt-2 text-xs text-amber-700">
+                                Não há turmas de «{destino.classeEsperada}» no ano {matricula.ano_lectivo_destino}.
+                                Crie a turma correcta antes de confirmar
+                                {isTransita ? ' a promoção' : ' a repetência'}.
                             </p>
                         )}
                     </div>
 
-                    {/* Error */}
                     {error && (
                         <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
                             {error}
@@ -205,7 +219,6 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
                     )}
                 </div>
 
-                {/* Footer */}
                 <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
                     <button
                         onClick={onClose}
@@ -215,10 +228,10 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
                     </button>
                     <button
                         onClick={handleConfirm}
-                        disabled={loading || !selectedTurmaDestino}
+                        disabled={loading || !selectedTurmaDestino || !podeConfirmar || filteredTurmas.length === 0}
                         className={`px-5 py-2.5 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${isNaoTransita
-                                ? 'bg-red-600 hover:bg-red-700'
-                                : 'bg-green-600 hover:bg-green-700'
+                            ? 'bg-red-600 hover:bg-red-700'
+                            : 'bg-green-600 hover:bg-green-700'
                             }`}
                     >
                         {loading ? (
@@ -227,15 +240,10 @@ export const ConfirmarMatriculaModal: React.FC<ConfirmarMatriculaModalProps> = (
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                <span>Confirmando...</span>
+                                <span>A confirmar…</span>
                             </>
                         ) : (
-                            <>
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                <span>{isNaoTransita ? 'Confirmar Repetência' : 'Confirmar Matrícula'}</span>
-                            </>
+                            <span>{isNaoTransita ? 'Confirmar mesma classe' : 'Confirmar classe seguinte'}</span>
                         )}
                     </button>
                 </div>

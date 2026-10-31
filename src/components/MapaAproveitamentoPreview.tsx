@@ -275,8 +275,34 @@ export const MapaAproveitamentoPreview: React.FC<Props> = ({ data, headerConfig 
                 })}
             </div>
 
+            {/* Signatures + print date */}
+            <div className="px-4 pt-6 pb-2 border-t border-slate-200 mt-2">
+                <p className="text-xs text-slate-600 mb-6">
+                    Data de impressão:{' '}
+                    <strong>
+                        {new Date().toLocaleDateString('pt-PT', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                        })}
+                    </strong>
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
+                    {[
+                        'O(A) Director(a) da Escola',
+                        'O(A) Responsável Pedagógico(a)',
+                        'O(A) Director(a) Municipal'
+                    ].map((label) => (
+                        <div key={label} className="flex flex-col items-center">
+                            <div className="w-full max-w-[220px] border-t border-slate-500 mb-2" />
+                            <p className="text-xs text-slate-700">{label}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             {/* Footer legend */}
-            <div className="px-4 pb-4 pt-2 border-t border-slate-200 mt-2">
+            <div className="px-4 pb-4 pt-2 border-t border-slate-200 mt-4">
                 <p className="text-xs text-slate-400 italic">
                     M = Masculino &nbsp;|&nbsp; F = Feminino &nbsp;|&nbsp; T = Total &nbsp;|&nbsp;
                     Frequência mínima exigida: 66,67% &nbsp;|&nbsp;

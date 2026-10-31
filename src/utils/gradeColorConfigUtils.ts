@@ -41,6 +41,7 @@ export async function loadGradeColorConfig(
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return null
 
+        // maybeSingle: 0 rows → null without HTTP 406 (unlike .single())
         // Try to load turma-specific configuration first
         if (turmaId) {
             const { data: turmaConfig, error: turmaError } = await supabase
@@ -51,9 +52,11 @@ export async function loadGradeColorConfig(
                 `)
                 .eq('user_id', user.id)
                 .eq('turma_id', turmaId)
-                .single()
+                .maybeSingle()
 
-            if (!turmaError && turmaConfig) {
+            if (turmaError) throw turmaError
+
+            if (turmaConfig) {
                 return {
                     ...turmaConfig,
                     regras: (turmaConfig.regras || []).sort((a: GradeColorRule, b: GradeColorRule) => a.ordem - b.ordem)
@@ -70,15 +73,11 @@ export async function loadGradeColorConfig(
             `)
             .eq('user_id', user.id)
             .is('turma_id', null)
-            .single()
+            .maybeSingle()
 
-        if (globalError) {
-            // If no configuration exists, return null (will use defaults)
-            if (globalError.code === 'PGRST116') {
-                return null
-            }
-            throw globalError
-        }
+        if (globalError) throw globalError
+
+        if (!globalConfig) return null
 
         return {
             ...globalConfig,

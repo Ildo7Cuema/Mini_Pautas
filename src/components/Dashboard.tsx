@@ -10,8 +10,6 @@ component-meta:
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { Card, CardBody, CardHeader } from './ui/Card'
-import { Button } from './ui/Button'
-import { Input } from './ui/Input'
 import { translateError } from '../utils/translations'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -45,12 +43,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
     const [recentClasses, setRecentClasses] = useState<RecentClass[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [showCreateModal, setShowCreateModal] = useState(false)
-    const [formData, setFormData] = useState({
-        nome: '',
-        ano_lectivo: new Date().getFullYear().toString(),
-        nivel_ensino: 'Ensino Secundário',
-    })
     const [showHelpModal, setShowHelpModal] = useState(false)
 
     useEffect(() => {
@@ -321,87 +313,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
     }
 
     const handleQuickAction = (action: string) => {
-        if (action === 'new-class') {
-            setShowCreateModal(true)
-        } else if (onNavigate) {
-            switch (action) {
-                case 'grades':
-                    onNavigate('grades')
-                    break
-                case 'reports':
-                    onNavigate('reports')
-                    break
-            }
-        }
-    }
-
-    const handleCreateTurma = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setError(null)
-
-        try {
-            setLoading(true)
-
-            if (!user) throw new Error('Usuário não autenticado')
-
-            let professorId: string | null = null
-            let escolaId: string | null = null
-
-            if (isEscola && escolaProfile) {
-                // Escola creating turma - need to get a default professor or handle differently
-                escolaId = escolaProfile.id
-                // For escola, we'll need a professor. Get the first professor of this escola
-                const { data: firstProfessor, error: profError } = await supabase
-                    .from('professores')
-                    .select('id')
-                    .eq('escola_id', escolaId)
-                    .eq('ativo', true)
-                    .limit(1)
-                    .single()
-
-                if (profError || !firstProfessor) {
-                    throw new Error('É necessário cadastrar pelo menos um professor antes de criar turmas.')
-                }
-                professorId = firstProfessor.id
-            } else if (isProfessor && professorProfile) {
-                professorId = professorProfile.id
-                escolaId = professorProfile.escola_id
-            } else {
-                throw new Error('Perfil não encontrado')
-            }
-
-            // Auto-generate codigo_turma (e.g., "10A-2025-T1")
-            const nomeSimplificado = formData.nome.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10)
-            const codigo_turma = `${nomeSimplificado}-${formData.ano_lectivo}-T1`
-
-            // Create turma
-            const { error: insertError } = await supabase
-                .from('turmas')
-                .insert({
-                    nome: formData.nome,
-                    ano_lectivo: formData.ano_lectivo,
-                    trimestre: 1,
-                    nivel_ensino: formData.nivel_ensino,
-                    codigo_turma: codigo_turma,
-                    professor_id: professorId,
-                    escola_id: escolaId,
-                    capacidade_maxima: 40,
-                })
-
-            if (insertError) throw insertError
-
-            setShowCreateModal(false)
-            setFormData({
-                nome: '',
-                ano_lectivo: new Date().getFullYear().toString(),
-                nivel_ensino: 'Ensino Secundário',
-            })
-            loadDashboardData()
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Erro ao criar turma'
-            setError(translateError(errorMessage))
-        } finally {
-            setLoading(false)
+        if (!onNavigate) return
+        switch (action) {
+            case 'grades':
+                onNavigate('grades')
+                break
+            case 'reports':
+                onNavigate('reports')
+                break
         }
     }
 
@@ -547,15 +466,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </button>
-                    <button
-                        onClick={() => handleQuickAction('new-class')}
-                        className="btn-premium flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold shadow-lg shadow-primary-500/20 active:scale-95"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                        <span className="hidden sm:inline">Nova Turma</span>
-                    </button>
                 </div>
             </div>
 
@@ -622,10 +532,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                                     <h4 className="text-slate-900 font-semibold mb-1">Nenhuma turma encontrada</h4>
                                     <p className="text-slate-500 text-sm mb-4 max-w-xs mx-auto">Comece criando sua primeira turma para gerenciar alunos e notas.</p>
                                     <button
-                                        onClick={() => handleQuickAction('new-class')}
+                                        onClick={() => onNavigate?.('classes')}
                                         className="text-primary-600 hover:text-primary-700 font-medium text-sm hover:underline"
                                     >
-                                        + Criar turma agora
+                                        Ir para Turmas
                                     </button>
                                 </div>
                             ) : (
@@ -732,22 +642,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                     </div>
 
                     <div className="grid grid-cols-2 lg:grid-cols-1 gap-4">
-                        <button
-                            onClick={() => handleQuickAction('new-class')}
-                            className="group p-4 bg-white border-0 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 rounded-2xl text-left transition-all duration-300 hover:-translate-y-1 relative overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-r from-primary-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <div className="relative z-10">
-                                <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-indigo-600 rounded-xl flex items-center justify-center text-white mb-3 shadow-lg shadow-primary-500/30 group-hover:scale-110 transition-transform">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </div>
-                                <h4 className="font-bold text-slate-900 text-sm group-hover:text-primary-700 transition-colors">Nova Turma</h4>
-                                <p className="text-xs text-slate-500 mt-1">Crie uma nova turma para começar</p>
-                            </div>
-                        </button>
-
                         {/* Ocultar Lançar Notas para secretários */}
                         {!isSecretario && (
                             <button
@@ -804,89 +698,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                     </div>
                 </div>
             </div>
-
-            {/* Create Class Modal */}
-            {showCreateModal && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-                    <Card className="w-full max-w-md animate-slide-up shadow-2xl ring-1 ring-black/5">
-                        <CardHeader className="border-b border-slate-100 p-5 bg-slate-50/50">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-slate-900">Nova Turma</h3>
-                                <button
-                                    onClick={() => setShowCreateModal(false)}
-                                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </CardHeader>
-                        <CardBody className="p-5 md:p-6">
-                            <form onSubmit={handleCreateTurma} className="space-y-5">
-                                <div className="space-y-4">
-                                    <div className="input-glow rounded-xl">
-                                        <Input
-                                            label="Nome da Turma"
-                                            type="text"
-                                            value={formData.nome}
-                                            onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                                            placeholder="Ex: 10ª A"
-                                            required
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="form-label block text-sm font-medium text-slate-700 mb-1.5">Nível de Ensino</label>
-                                        <div className="relative">
-                                            <select
-                                                value={formData.nivel_ensino}
-                                                onChange={(e) => setFormData({ ...formData, nivel_ensino: e.target.value })}
-                                                className="w-full appearance-none bg-white border border-slate-300 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 block p-3 pr-10 shadow-sm transition-all hover:border-slate-400"
-                                                required
-                                            >
-                                                <option value="Ensino Primário">Ensino Primário</option>
-                                                <option value="Ensino Secundário">Ensino Secundário</option>
-                                            </select>
-                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                </svg>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="input-glow rounded-xl">
-                                        <Input
-                                            label="Ano Lectivo"
-                                            type="text"
-                                            value={formData.ano_lectivo}
-                                            onChange={(e) => setFormData({ ...formData, ano_lectivo: e.target.value })}
-                                            placeholder="Ex: 2025 ou 2025/2026"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 pt-2">
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="lg"
-                                        onClick={() => setShowCreateModal(false)}
-                                        className="flex-1"
-                                    >
-                                        Cancelar
-                                    </Button>
-                                    <Button type="submit" variant="primary" size="lg" loading={loading} className="flex-1 btn-premium font-semibold shadow-lg shadow-primary-500/20">
-                                        Criar Turma
-                                    </Button>
-                                </div>
-                            </form>
-                        </CardBody>
-                    </Card>
-                </div>
-            )}
 
             {/* Help Center Modal */}
             {showHelpModal && (
@@ -993,7 +804,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                                             </svg>
                                         </summary>
                                         <div className="px-3 pb-3 text-sm text-slate-600">
-                                            Clique em "Nova Turma" no Dashboard ou acesse o menu Turmas. Preencha o nome, nível de ensino e ano lectivo. A turma será criada automaticamente e estará pronta para receber alunos.
+                                            Acesse o menu Turmas e clique em "Nova Turma". Preencha o nome, nível de ensino e ano lectivo. A turma será criada automaticamente e estará pronta para receber alunos.
                                         </div>
                                     </details>
                                     <details className="group bg-slate-50 rounded-xl overflow-hidden">

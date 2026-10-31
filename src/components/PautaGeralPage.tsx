@@ -19,7 +19,6 @@ import { generatePautaGeralExcel, generatePautaGeralCSV } from '../utils/excelGe
 import { evaluateFormula } from '../utils/formulaUtils'
 import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
-import { ConfiguracaoCabecalhoModal } from './ConfiguracaoCabecalhoModal'
 import { classifyStudent, DisciplinaGrade } from '../utils/studentClassification'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -107,7 +106,6 @@ export const PautaGeralPage: React.FC = () => {
     const [pautaGeralData, setPautaGeralData] = useState<PautaGeralData | null>(null)
     const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
     const [colorConfig, setColorConfig] = useState<GradeColorConfig | null>(null)
-    const [showHeaderConfigModal, setShowHeaderConfigModal] = useState(false)
     const [showExportMenu, setShowExportMenu] = useState(false)
 
     const [fieldSelection, setFieldSelection] = useState<FieldSelection>({
@@ -897,17 +895,6 @@ export const PautaGeralPage: React.FC = () => {
                             >
                                 CSV
                             </Button>
-                            <Button
-                                variant="secondary"
-                                onClick={() => setShowHeaderConfigModal(true)}
-                                icon={
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                }
-                            >
-                                Cabeçalho
-                            </Button>
                         </div>
 
                         {/* Mobile Action Menu */}
@@ -959,17 +946,6 @@ export const PautaGeralPage: React.FC = () => {
                                             </svg>
                                         </div>
                                         <span className="font-medium text-slate-700">Exportar CSV</span>
-                                    </button>
-                                    <button
-                                        onClick={() => { setShowHeaderConfigModal(true); setShowExportMenu(false); }}
-                                        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left border-t border-slate-100"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                                            <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                            </svg>
-                                        </div>
-                                        <span className="font-medium text-slate-700">Configurar Cabeçalho</span>
                                     </button>
                                 </div>
                             )}
@@ -1026,18 +1002,6 @@ export const PautaGeralPage: React.FC = () => {
                     </p>
                 </div>
             )}
-
-            {/* Header Configuration Modal */}
-            <ConfiguracaoCabecalhoModal
-                isOpen={showHeaderConfigModal}
-                onClose={() => setShowHeaderConfigModal(false)}
-                onSave={() => {
-                    setShowHeaderConfigModal(false)
-                    loadHeaderConfiguration()
-                }}
-                escolaId={escolaProfile?.id || professorProfile?.escola_id || secretarioProfile?.escola_id || ''}
-                documentType="Pauta-Geral"
-            />
 
             {/* Click outside to close export menu */}
             {showExportMenu && (

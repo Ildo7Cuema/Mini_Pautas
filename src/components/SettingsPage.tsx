@@ -11,9 +11,11 @@ import { supabase } from '../lib/supabaseClient'
 import { translateError } from '../utils/translations'
 import { useAuth } from '../contexts/AuthContext'
 import { isSuperAdmin } from '../utils/permissions'
+import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
+import { ConfiguracaoCabecalhoModal } from './ConfiguracaoCabecalhoModal'
 
 export const SettingsPage: React.FC = () => {
-    const { profile, signOut } = useAuth()
+    const { profile, signOut, escolaProfile, professorProfile, secretarioProfile, isEscola, isProfessor, isSecretario } = useAuth()
     const [fullName, setFullName] = useState('')
     const [email, setEmail] = useState('')
     const [newPassword, setNewPassword] = useState('')
@@ -21,12 +23,29 @@ export const SettingsPage: React.FC = () => {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
+    const [showHeaderConfigModal, setShowHeaderConfigModal] = useState(false)
+    const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
 
     const isSuperAdminUser = profile ? isSuperAdmin(profile) : false
+    const escolaId = escolaProfile?.id || professorProfile?.escola_id || secretarioProfile?.escola_id || ''
+    const canConfigureDocumentHeader = !!escolaId && (isEscola || isProfessor || isSecretario)
 
     useEffect(() => {
         loadUserData()
     }, [])
+
+    useEffect(() => {
+        if (!canConfigureDocumentHeader) {
+            setHeaderConfig(null)
+            return
+        }
+        let cancelled = false
+        ;(async () => {
+            const config = await loadHeaderConfig(escolaId)
+            if (!cancelled) setHeaderConfig(config)
+        })()
+        return () => { cancelled = true }
+    }, [canConfigureDocumentHeader, escolaId])
 
     const loadUserData = async () => {
         const { data: { user } } = await supabase.auth.getUser()
@@ -266,6 +285,47 @@ export const SettingsPage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Document header — single place for school roles */}
+                {canConfigureDocumentHeader && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden animate-slide-up" style={{ animationDelay: '75ms' }}>
+                        <div className="bg-gradient-to-r from-neutral-50 to-neutral-100 px-5 py-4 border-b border-neutral-200">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                                    <span className="text-xl">📄</span>
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-neutral-800">Cabeçalho dos Documentos</h3>
+                                    <p className="text-xs text-neutral-500">Logo, República, órgão e nome da escola nos PDFs</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            {headerConfig?.nome_escola ? (
+                                <div className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                                    <svg className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium text-emerald-800">Configurado</p>
+                                        <p className="text-xs text-emerald-700 mt-0.5 truncate">{headerConfig.nome_escola}</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-neutral-500">
+                                    Ainda não há cabeçalho guardado. Configure uma vez — aplica-se a pautas, listas, recibos e outros documentos da escola.
+                                </p>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setShowHeaderConfigModal(true)}
+                                className="w-full px-4 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-semibold transition-all touch-feedback"
+                            >
+                                {headerConfig ? 'Editar Cabeçalho' : 'Configurar Cabeçalho'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* System Preferences - Only for regular users */}
                 {!isSuperAdminUser && (
                     <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden animate-slide-up" style={{ animationDelay: '100ms' }}>
@@ -388,6 +448,19 @@ export const SettingsPage: React.FC = () => {
                     </p>
                 </div>
             </div>
+
+            {canConfigureDocumentHeader && (
+                <ConfiguracaoCabecalhoModal
+                    isOpen={showHeaderConfigModal}
+                    onClose={() => setShowHeaderConfigModal(false)}
+                    onSave={async () => {
+                        const config = await loadHeaderConfig(escolaId)
+                        setHeaderConfig(config)
+                        setShowHeaderConfigModal(false)
+                    }}
+                    escolaId={escolaId}
+                />
+            )}
         </div>
     )
 }

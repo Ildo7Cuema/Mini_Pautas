@@ -398,6 +398,11 @@ export const generatePDF = async (
                         const footerText = processTemplate(config.rodape.texto, data)
                         pdf.text(footerText, pageWidth / 2, pageHeight - 15, { align: 'center' })
                         pdf.text(`Página ${i} de ${pageCount}`, pageWidth - marginRight, pageHeight - 15, { align: 'right' })
+                        pdf.setFontSize(7)
+                        pdf.setFont('times', 'normal')
+                        pdf.text('EduGest Angola — Sistema de Gestão Escolar', pageWidth / 2, pageHeight - 8, { align: 'center' })
+                        pdf.setFont('times', 'italic')
+                        pdf.setFontSize(9)
                     }
                 }
 

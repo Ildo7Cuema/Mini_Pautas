@@ -278,7 +278,7 @@ function App() {
             }
         }
 
-        // SECRETARIO routes - limited to payments
+        // SECRETARIO routes - payments + settings (document header)
         if (isSecretario) {
             switch (currentPage) {
                 case 'dashboard':
@@ -286,6 +286,8 @@ function App() {
                 case 'propinas':
                 case 'tuition':
                     return <TuitionPaymentsPage searchQuery={searchQuery} />
+                case 'settings':
+                    return <SettingsPage />
                 default:
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
             }

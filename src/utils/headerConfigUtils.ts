@@ -44,20 +44,15 @@ export async function loadHeaderConfig(escolaId: string): Promise<HeaderConfig |
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) throw new Error('User not authenticated')
 
+        // maybeSingle: 0 rows → null without HTTP 406 (unlike .single())
         const { data, error } = await supabase
             .from('configuracao_cabecalho')
             .select('*')
             .eq('user_id', user.id)
             .eq('escola_id', escolaId)
-            .single()
+            .maybeSingle()
 
-        if (error) {
-            // If no config exists, return null (not an error)
-            if (error.code === 'PGRST116') {
-                return null
-            }
-            throw error
-        }
+        if (error) throw error
 
         return data
     } catch (err) {

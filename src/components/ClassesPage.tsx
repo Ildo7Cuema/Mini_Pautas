@@ -17,6 +17,8 @@ import { translateError } from '../utils/translations'
 import { ConfirmModal } from './ui/ConfirmModal'
 import { useAuth } from '../contexts/AuthContext'
 import type { DisciplinaTemplate } from '../types'
+import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
+import { generateTurmasListasPDF } from '../utils/turmaListasPdf'
 
 interface Turma {
     id: string
@@ -38,7 +40,7 @@ interface ClassesPageProps {
 }
 
 export const ClassesPage: React.FC<ClassesPageProps> = ({ onNavigate, searchQuery = '' }) => {
-    const { isProfessor, isEscola, escolaProfile, professorProfile } = useAuth()
+    const { isProfessor, isEscola, escolaProfile, professorProfile, secretarioProfile } = useAuth()
     const [turmas, setTurmas] = useState<Turma[]>([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
@@ -46,6 +48,8 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ onNavigate, searchQuer
     const [editMode, setEditMode] = useState(false)
     const [selectedTurmaId, setSelectedTurmaId] = useState<string | null>(null)
     const [turmaToDelete, setTurmaToDelete] = useState<string | null>(null)
+    const [printingListas, setPrintingListas] = useState(false)
+    const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
     const [formData, setFormData] = useState({
         nome: '',
         ano_lectivo: String(new Date().getFullYear()),
@@ -96,9 +100,24 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ onNavigate, searchQuer
 
     const regime = getDocenciaRegime(formData.nivel_ensino, formData.classe)
 
+    const escolaId = escolaProfile?.id || professorProfile?.escola_id || secretarioProfile?.escola_id || ''
+
     useEffect(() => {
         loadTurmas()
     }, [])
+
+    useEffect(() => {
+        if (!escolaId) {
+            setHeaderConfig(null)
+            return
+        }
+        let cancelled = false
+        ;(async () => {
+            const config = await loadHeaderConfig(escolaId)
+            if (!cancelled) setHeaderConfig(config)
+        })()
+        return () => { cancelled = true }
+    }, [escolaId])
 
     // Load professors when escola opens the creation modal
     useEffect(() => {
@@ -424,6 +443,56 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ onNavigate, searchQuer
         `trimestre ${turma.trimestre}`.toLowerCase().includes(searchQuery.toLowerCase())
     )
 
+    const handlePrintAllListas = async () => {
+        if (filteredTurmas.length === 0) {
+            setError('Não há turmas para imprimir')
+            return
+        }
+
+        setPrintingListas(true)
+        setError(null)
+        setSuccess(null)
+
+        try {
+            const turmaIds = filteredTurmas.map((t) => t.id)
+            const { data: alunos, error: alunosError } = await supabase
+                .from('alunos')
+                .select('id, nome_completo, genero, numero_processo, turma_id')
+                .in('turma_id', turmaIds)
+                .order('nome_completo')
+
+            if (alunosError) throw alunosError
+
+            const grupos = filteredTurmas.map((turma) => ({
+                id: turma.id,
+                nome: turma.nome,
+                ano_lectivo: turma.ano_lectivo,
+                alunos: (alunos || [])
+                    .filter((a) => a.turma_id === turma.id)
+                    .map((a) => ({
+                        nome_completo: a.nome_completo,
+                        genero: a.genero,
+                        numero_processo: a.numero_processo,
+                    })),
+            }))
+
+            const result = await generateTurmasListasPDF({
+                turmas: grupos,
+                headerConfig,
+                escolaNomeFallback: escolaProfile?.nome || headerConfig?.nome_escola,
+            })
+
+            setSuccess(
+                `Listas geradas: ${result.turmasComAlunos} turma(s), ${result.totalAlunos} aluno(s).`
+            )
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Erro ao gerar listas das turmas'
+            setError(translateError(message))
+        } finally {
+            setPrintingListas(false)
+        }
+    }
+
     if (loading) {
         return (
             <div className="space-y-8 animate-fade-in">
@@ -467,14 +536,30 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ onNavigate, searchQuer
                     <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Minhas Turmas</h2>
                     <p className="text-slate-500 mt-1">Gerencie suas turmas, alunos e pautas.</p>
                 </div>
-                <Button
-                    variant="primary"
-                    icon={<Icons.UserPlus />}
-                    onClick={handleNewTurma}
-                    className="w-full sm:w-auto btn-premium shadow-lg shadow-primary-500/20"
-                >
-                    Nova Turma
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <Button
+                        variant="secondary"
+                        onClick={handlePrintAllListas}
+                        loading={printingListas}
+                        disabled={printingListas || filteredTurmas.length === 0}
+                        className="w-full sm:w-auto"
+                        icon={
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                            </svg>
+                        }
+                    >
+                        Imprimir Listas
+                    </Button>
+                    <Button
+                        variant="primary"
+                        icon={<Icons.UserPlus />}
+                        onClick={handleNewTurma}
+                        className="w-full sm:w-auto btn-premium shadow-lg shadow-primary-500/20"
+                    >
+                        Nova Turma
+                    </Button>
+                </div>
             </div>
 
             {/* Messages */}

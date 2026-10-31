@@ -4,6 +4,7 @@ import JSZip from 'jszip'
 import { HeaderConfig, getOrgaoEducacao } from './headerConfigUtils'
 import { imageUrlToBase64, getImageFormat } from './imageUtils'
 import { GradeColorConfig, getGradeColorFromConfig, hexToRGB } from './gradeColorConfigUtils'
+import { drawStandardPdfFooter, APP_DOCUMENT_BRAND_LINE } from './pdfFooter'
 
 interface TrimestreData {
     notas: Record<string, number>
@@ -174,12 +175,14 @@ async function renderPDFHeader(
 function addPDFFooter(doc: jsPDF, pageWidth: number, pageHeight: number) {
     const pageCount = (doc as any).internal.getNumberOfPages()
     const currentPage = (doc as any).internal.getCurrentPageInfo().pageNumber
-
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(0, 0, 0)
-    doc.text(`Página ${currentPage} de ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' })
-    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-PT')}`, 14, pageHeight - 10)
+    drawStandardPdfFooter(doc, {
+        pageWidth,
+        pageHeight,
+        currentPage,
+        pageCount,
+        dateOnly: true,
+        dateLocale: 'pt-AO',
+    })
 }
 
 /**
@@ -2425,6 +2428,11 @@ export async function generateMapaAproveitamentoPDF(
     const escola = headerConfig?.nome_escola || data.escola.nome
     const provincia = headerConfig?.provincia || data.escola.provincia
     const municipio = headerConfig?.municipio || data.escola.municipio
+    const dataImpressao = new Date().toLocaleDateString('pt-PT', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    })
 
     for (let ti = 0; ti < data.turmas.length; ti++) {
         const turma = data.turmas[ti]
@@ -2625,30 +2633,54 @@ export async function generateMapaAproveitamentoPDF(
                 doc.setFont('helvetica', 'normal')
                 doc.setTextColor(120, 120, 120)
                 doc.text(
-                    `M=Masculino  F=Feminino  T=Total  |  Gerado em: ${new Date().toLocaleDateString('pt-PT')}`,
-                    pageWidth / 2, pageHeight - 6, { align: 'center' }
+                    `M=Masculino  F=Feminino  T=Total  |  Data de impressão: ${dataImpressao}`,
+                    pageWidth / 2, pageHeight - 9, { align: 'center' }
                 )
                 const pg = (doc as any).internal.getCurrentPageInfo().pageNumber
                 const total = (doc as any).internal.getNumberOfPages()
-                doc.text(`Pág. ${pg}/${total}`, pageWidth - 14, pageHeight - 6, { align: 'right' })
+                doc.text(`Pág. ${pg}/${total}`, pageWidth - 14, pageHeight - 9, { align: 'right' })
+                doc.text(APP_DOCUMENT_BRAND_LINE, pageWidth / 2, pageHeight - 4.5, { align: 'center' })
                 doc.setTextColor(0, 0, 0)
             }
         })
     }
 
     // ── Signature block (last page) ──────────────────────────────────────────
-    const finalY = (doc as any).lastAutoTable?.finalY || pageHeight - 50
-    if (finalY + 30 < pageHeight - 15) {
-        const sigY = finalY + 10
-        doc.setFontSize(9)
-        doc.setFont('helvetica', 'normal')
-        doc.text('O(A) Director(a) da Escola', 40, sigY + 12, { align: 'center' })
-        doc.line(14, sigY + 10, 66, sigY + 10)
-        doc.text('O(A) Responsável Pedagógico(a)', pageWidth / 2, sigY + 12, { align: 'center' })
-        doc.line(pageWidth / 2 - 35, sigY + 10, pageWidth / 2 + 35, sigY + 10)
-        doc.text('O(A) Delegado(a) Municipal de Educação', pageWidth - 40, sigY + 12, { align: 'center' })
-        doc.line(pageWidth - 70, sigY + 10, pageWidth - 14, sigY + 10)
+    // Line first, then labels BELOW with enough gap so text never overlaps the line
+    const signatureLabels = [
+        'O(A) Director(a) da Escola',
+        'O(A) Responsável Pedagógico(a)',
+        'O(A) Director(a) Municipal'
+    ]
+    const signWidth = (pageWidth - 56) / 3
+    const signGap = 14
+    const signX = [14, 14 + signWidth + signGap, 14 + (signWidth + signGap) * 2]
+    const neededSpace = 36 // date + gap + line + label + footer margin
+
+    let finalY = (doc as any).lastAutoTable?.finalY || pageHeight - 50
+    if (finalY + neededSpace > pageHeight - 12) {
+        doc.addPage()
+        finalY = 20
     }
+
+    // Print date (visible on the document body, not only in footer)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(0, 0, 0)
+    doc.text(`Data de impressão: ${dataImpressao}`, 14, finalY + 8)
+
+    const sigY = finalY + 22
+    doc.setDrawColor(80, 80, 80)
+    doc.setLineWidth(0.3)
+    signX.forEach((x) => {
+        doc.line(x, sigY, x + signWidth, sigY)
+    })
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    signatureLabels.forEach((label, i) => {
+        doc.text(label, signX[i] + signWidth / 2, sigY + 6, { align: 'center' })
+    })
 
     const filename = `mapa_aproveitamento_${data.ano_lectivo}_${data.trimestre === 'anual' ? 'anual' : `T${data.trimestre}`}.pdf`
     doc.save(filename)

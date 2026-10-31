@@ -9,7 +9,14 @@
  */
 
 import { supabase } from '../lib/supabaseClient'
-import { Matricula, StatusTransicao, EstadoMatricula, Aluno, Turma } from '../types'
+import {
+    Matricula,
+    Aluno,
+    Turma,
+    AnoLectivo,
+    EstadoCicloMatriculas,
+    ProntidaoPautasFinais
+} from '../types'
 import { classifyStudent, DisciplinaGrade, ClassificationResult } from './studentClassification'
 
 // ============================================
@@ -40,6 +47,79 @@ export function determinarProximaClasse(classeAtual: string): string {
 export function extrairClasse(turmaNome: string): string | undefined {
     const match = turmaNome.match(/(\d+[ªº]\s*Classe)/i)
     return match ? match[1] : undefined
+}
+
+/** Número da classe a partir de "7ª Classe", "7a Classe", "7ª", etc. */
+export function numeroDaClasse(classe?: string | null): number | null {
+    if (!classe) return null
+    const match = classe.match(/(\d+)/)
+    return match ? parseInt(match[1], 10) : null
+}
+
+/**
+ * Verifica se o nome da turma corresponde à classe esperada
+ * (ex.: turma "8ª Classe B" ↔ classe "8ª Classe")
+ */
+export function turmaPertenceAClasse(turmaNome: string, classeEsperada?: string | null): boolean {
+    if (!classeEsperada) return false
+    const nTurma = numeroDaClasse(extrairClasse(turmaNome) || turmaNome)
+    const nEsperada = numeroDaClasse(classeEsperada)
+    if (nTurma !== null && nEsperada !== null) return nTurma === nEsperada
+    return turmaNome.toLowerCase().includes(classeEsperada.toLowerCase().trim())
+}
+
+/**
+ * Resolve a classe de confirmação a partir da observação da Pauta Final
+ * (status_transicao / observacao_padronizada):
+ * - Transita → classe seguinte
+ * - Não Transita → mesma classe
+ */
+export function resolverDestinoPorObservacaoPauta(matricula: {
+    status_transicao: string
+    observacao_padronizada?: string | null
+    classe_origem?: string | null
+    classe_destino?: string | null
+}): {
+    observacao: 'Transita' | 'Não Transita' | null
+    promove: boolean
+    classeEsperada: string | null
+    mensagem: string
+} {
+    const raw = (matricula.status_transicao || matricula.observacao_padronizada || '').trim()
+    const observacao: 'Transita' | 'Não Transita' | null =
+        raw === 'Transita' || /^transita$/i.test(raw)
+            ? 'Transita'
+            : raw === 'Não Transita' || /^n[aã]o\s*transita$/i.test(raw)
+                ? 'Não Transita'
+                : null
+
+    if (observacao === 'Transita') {
+        const classeEsperada = matricula.classe_destino
+            || (matricula.classe_origem ? determinarProximaClasse(matricula.classe_origem) : null)
+        return {
+            observacao,
+            promove: true,
+            classeEsperada,
+            mensagem: 'Observação da Pauta Final: Transita — matrícula confirmada na classe seguinte.'
+        }
+    }
+
+    if (observacao === 'Não Transita') {
+        const classeEsperada = matricula.classe_origem || null
+        return {
+            observacao,
+            promove: false,
+            classeEsperada,
+            mensagem: 'Observação da Pauta Final: Não Transita — matrícula confirmada na mesma classe.'
+        }
+    }
+
+    return {
+        observacao: null,
+        promove: false,
+        classeEsperada: null,
+        mensagem: 'Só é possível confirmar matrícula com observação definitiva da Pauta Final (Transita ou Não Transita).'
+    }
 }
 
 /**
@@ -156,8 +236,10 @@ export async function atualizarClassificacaoMatricula(
             classe_destino: classification.status === 'Transita' || classification.status === 'Condicional'
                 ? (classeOrigem ? determinarProximaClasse(classeOrigem) : null)
                 : classeOrigem, // Non-promoted stays in same class
-            // If conditional, set to aguardando_exame
-            estado_matricula: classification.status === 'Condicional' ? 'aguardando_exame' : 'pendente',
+            // Condicional → exame; AguardandoNotas permanece pendente mas bloqueado na confirmação
+            estado_matricula: classification.status === 'Condicional'
+                ? 'aguardando_exame'
+                : 'pendente',
             updated_at: new Date().toISOString()
         })
         .eq('id', matriculaId)
@@ -165,9 +247,171 @@ export async function atualizarClassificacaoMatricula(
     if (error) throw error
 }
 
+// ============================================
+// CICLO DO ANO LECTIVO
+// ============================================
+
+export async function listarAnosLectivos(escolaId: string): Promise<AnoLectivo[]> {
+    const { data, error } = await supabase
+        .from('anos_lectivos')
+        .select('*')
+        .eq('escola_id', escolaId)
+        .order('ano', { ascending: false })
+
+    if (error) throw error
+    return (data || []) as AnoLectivo[]
+}
+
 /**
- * Confirm enrollment for a promoted student
- * Creates the student in the destination class
+ * Anos disponíveis a partir das turmas (mesmo que ainda não exista registo em anos_lectivos)
+ */
+export async function listarAnosLectivosDasTurmas(escolaId: string): Promise<string[]> {
+    const { data, error } = await supabase
+        .from('turmas')
+        .select('ano_lectivo')
+        .eq('escola_id', escolaId)
+
+    if (error) throw error
+
+    const anos = Array.from(
+        new Set((data || []).map(t => String(t.ano_lectivo)).filter(Boolean))
+    ).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+
+    return anos
+}
+
+function throwRpcError(error: { message: string; code?: string; details?: string; hint?: string }): never {
+    const err = new Error(error.message) as Error & { code?: string; details?: string; hint?: string }
+    err.code = error.code
+    err.details = error.details
+    err.hint = error.hint
+    throw err
+}
+
+export async function verificarProntidaoPautasFinais(
+    escolaId: string,
+    anoLectivo: string
+): Promise<ProntidaoPautasFinais> {
+    const { data, error } = await supabase.rpc('verificar_prontidao_pautas_finais', {
+        p_escola_id: escolaId,
+        p_ano_lectivo: anoLectivo
+    })
+
+    if (error) throwRpcError(error)
+    return data as ProntidaoPautasFinais
+}
+
+export async function obterEstadoCicloMatriculas(
+    escolaId: string,
+    anoOrigem: string,
+    anoDestino: string
+): Promise<EstadoCicloMatriculas> {
+    const { data, error } = await supabase.rpc('obter_estado_ciclo_matriculas', {
+        p_escola_id: escolaId,
+        p_ano_origem: anoOrigem,
+        p_ano_destino: anoDestino
+    })
+
+    if (error) throwRpcError(error)
+    return data as EstadoCicloMatriculas
+}
+
+export async function abrirAnoLectivo(
+    escolaId: string,
+    ano: string,
+    observacao?: string
+): Promise<AnoLectivo> {
+    const { data, error } = await supabase.rpc('abrir_ano_lectivo', {
+        p_escola_id: escolaId,
+        p_ano: ano,
+        p_observacao: observacao || null
+    })
+
+    if (error) throwRpcError(error)
+    return data as AnoLectivo
+}
+
+export async function encerrarAnoLectivo(
+    escolaId: string,
+    ano: string
+): Promise<AnoLectivo> {
+    const { data, error } = await supabase.rpc('encerrar_ano_lectivo', {
+        p_escola_id: escolaId,
+        p_ano: ano,
+        p_forcar: false
+    })
+
+    if (error) throwRpcError(error)
+    return data as AnoLectivo
+}
+
+export async function gerarMatriculasAnoLectivo(
+    escolaId: string,
+    anoOrigem: string,
+    anoDestino: string
+): Promise<{ turmas_processadas: number; matriculas_geradas: number; detalhes: Array<{ turma_id: string; turma_nome: string; matriculas_geradas: number }> }> {
+    const { data, error } = await supabase.rpc('gerar_matriculas_ano_lectivo', {
+        p_escola_id: escolaId,
+        p_ano_origem: anoOrigem,
+        p_ano_destino: anoDestino
+    })
+
+    if (error) throwRpcError(error)
+    return data as {
+        turmas_processadas: number
+        matriculas_geradas: number
+        detalhes: Array<{ turma_id: string; turma_nome: string; matriculas_geradas: number }>
+    }
+}
+
+/**
+ * Classifica e actualiza todas as matrículas geradas para um ano de origem
+ */
+export async function classificarMatriculasDoAno(
+    escolaId: string,
+    anoOrigem: string,
+    turmas: Array<{ id: string; nome: string; nivel_ensino: string }>
+): Promise<number> {
+    const matriculas = await carregarMatriculasPendentes(escolaId, anoOrigem)
+    let actualizadas = 0
+
+    for (const turma of turmas) {
+        const classe = extrairClasse(turma.nome) || ''
+        const { data: discObrig } = await supabase
+            .from('disciplinas_obrigatorias')
+            .select('disciplina_id')
+            .eq('turma_id', turma.id)
+            .eq('is_obrigatoria', true)
+
+        const discObrigIds = (discObrig || []).map(d => d.disciplina_id)
+        const classificacoes = await calcularClassificacaoTurma(
+            turma.id,
+            turma.nivel_ensino,
+            classe,
+            discObrigIds
+        )
+
+        const turmaMatriculas = matriculas.filter(m => m.turma_origem_id === turma.id)
+        for (const matricula of turmaMatriculas) {
+            const classificacao = classificacoes.find(c => c.aluno.id === matricula.aluno_id)
+            if (classificacao) {
+                await atualizarClassificacaoMatricula(
+                    matricula.id,
+                    classificacao.classification,
+                    classificacao.mediaGeral,
+                    classe
+                )
+                actualizadas++
+            }
+        }
+    }
+
+    return actualizadas
+}
+
+/**
+ * Confirm enrollment according to Pauta Final observation:
+ * Transita → next class; Não Transita → same class.
  */
 export async function confirmarMatricula(
     matriculaId: string,
@@ -181,27 +425,52 @@ export async function confirmarMatricula(
             p_classe_destino: classeDestino
         })
 
-    if (error) throw error
+    if (error) throwRpcError(error)
 }
 
 /**
- * Confirm repeating for a non-promoted student
- * Student stays in the same class level
+ * Confirm repeating for a non-promoted student (Não Transita → mesma classe)
  */
 export async function confirmarRepetencia(
     matriculaId: string,
-    turmaDestinoId: string
+    turmaDestinoId: string,
+    classeOrigem?: string
 ): Promise<void> {
-    // For repeating students, we use the same function but the destination
-    // class is the same as origin class
     const { error } = await supabase
         .rpc('confirmar_matricula', {
             p_matricula_id: matriculaId,
             p_turma_destino_id: turmaDestinoId,
-            p_classe_destino: null // Will be inferred from turma
+            p_classe_destino: classeOrigem || null
         })
 
-    if (error) throw error
+    if (error) throwRpcError(error)
+}
+
+/**
+ * Confirma matrícula respeitando a observação da Pauta Final e a turma escolhida.
+ */
+export async function confirmarMatriculaPorObservacaoPauta(
+    matricula: MatriculaComAluno,
+    turmaDestino: Turma
+): Promise<void> {
+    const destino = resolverDestinoPorObservacaoPauta(matricula)
+    if (!destino.observacao || !destino.classeEsperada) {
+        throw new Error(destino.mensagem)
+    }
+
+    if (!turmaPertenceAClasse(turmaDestino.nome, destino.classeEsperada)) {
+        throw new Error(
+            destino.promove
+                ? `Com observação «Transita», a turma de destino deve ser da classe seguinte (${destino.classeEsperada}).`
+                : `Com observação «Não Transita», a turma de destino deve ser da mesma classe (${destino.classeEsperada}).`
+        )
+    }
+
+    if (destino.promove) {
+        await confirmarMatricula(matricula.id, turmaDestino.id, destino.classeEsperada)
+    } else {
+        await confirmarRepetencia(matricula.id, turmaDestino.id, destino.classeEsperada)
+    }
 }
 
 /**
@@ -227,24 +496,25 @@ export async function registrarResultadoExame(
 }
 
 /**
- * Confirm multiple enrollments at once (batch operation)
+ * Confirma várias matrículas na mesma turma de destino,
+ * validando a observação da Pauta Final (Transita / Não Transita) em cada uma.
  */
 export async function confirmarMatriculasEmLote(
-    matriculaIds: string[],
-    turmaDestinoId: string
+    matriculas: MatriculaComAluno[],
+    turmaDestino: Turma
 ): Promise<{ success: number; errors: Array<{ id: string; error: string }> }> {
     const results = {
         success: 0,
         errors: [] as Array<{ id: string; error: string }>
     }
 
-    for (const matriculaId of matriculaIds) {
+    for (const matricula of matriculas) {
         try {
-            await confirmarMatricula(matriculaId, turmaDestinoId)
+            await confirmarMatriculaPorObservacaoPauta(matricula, turmaDestino)
             results.success++
         } catch (err) {
             results.errors.push({
-                id: matriculaId,
+                id: matricula.id,
                 error: err instanceof Error ? err.message : 'Erro desconhecido'
             })
         }

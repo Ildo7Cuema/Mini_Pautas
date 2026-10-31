@@ -22,7 +22,6 @@ import { evaluateFormula, parseFormula } from '../utils/formulaUtils'
 import { FormulaConfig, loadFormulaConfig } from '../utils/formulaConfigUtils'
 import { ConfiguracaoFormulasModal } from './ConfiguracaoFormulasModal'
 import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
-import { ConfiguracaoCabecalhoModal } from './ConfiguracaoCabecalhoModal'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
 import { ConfiguracaoCoresModal } from './ConfiguracaoCoresModal'
 import { PautaGeralPage } from './PautaGeralPage'
@@ -125,7 +124,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
     const [mtConfig, setMtConfig] = useState<FormulaConfig | null>(null)
     const [showConfigModal, setShowConfigModal] = useState(false)
     const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
-    const [showHeaderConfigModal, setShowHeaderConfigModal] = useState(false)
     const [showOrdenarDisciplinasModal, setShowOrdenarDisciplinasModal] = useState(false)
     const [colorConfig, setColorConfig] = useState<GradeColorConfig | null>(null)
     const [showColorConfigModal, setShowColorConfigModal] = useState(false)
@@ -2165,14 +2163,19 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                 ? await supabase.from('escolas').select('nome, provincia, municipio, codigo_escola').eq('id', escola_id).single()
                 : { data: null }
 
-            // Load turmas info
+            // Load turmas info (classe is not a DB column — derived from nome)
             const { data: turmasData, error: turmasError } = await supabase
                 .from('turmas')
-                .select('id, nome, codigo_turma, ano_lectivo, nivel_ensino, classe')
+                .select('id, nome, codigo_turma, ano_lectivo, nivel_ensino')
                 .in('id', turmaIds)
 
             if (turmasError) throw turmasError
             if (!turmasData || turmasData.length === 0) throw new Error('Turmas não encontradas')
+
+            const extractClasseFromNome = (turmaName: string): string => {
+                const match = turmaName.match(/(\d+[ªº]\s*Classe)/i)
+                return match ? match[1] : turmaName
+            }
 
             const anoLectivo = turmasData[0].ano_lectivo
 
@@ -2344,7 +2347,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                     turma_id: turma.id,
                     turma_nome: turma.nome,
                     turma_codigo: turma.codigo_turma,
-                    classe: turma.classe || turma.nome,
+                    classe: extractClasseFromNome(turma.nome),
                     nivel_ensino: turma.nivel_ensino || '',
                     disciplinas: disciplinasProcessadas
                 })
@@ -2670,16 +2673,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                                                     </svg>
                                                     <span className="hidden md:inline">CSV</span>
                                                 </button>
-                                                {/* Header Config */}
-                                                <button
-                                                    onClick={() => setShowHeaderConfigModal(true)}
-                                                    className="flex items-center gap-2 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition-all duration-200 touch-feedback min-h-touch"
-                                                >
-                                                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                    </svg>
-                                                    <span className="hidden md:inline">Cabeçalho</span>
-                                                </button>
                                             </>
                                         )}
                                     </div>
@@ -2724,17 +2717,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                             setShowConfigModal(false)
                             loadMiniPautaData()
                         }}
-                    />
-
-                    {/* Header Configuration Modal */}
-                    <ConfiguracaoCabecalhoModal
-                        isOpen={showHeaderConfigModal}
-                        onClose={() => setShowHeaderConfigModal(false)}
-                        onSave={() => {
-                            setShowHeaderConfigModal(false)
-                            loadHeaderConfiguration()
-                        }}
-                        escolaId={escolaProfile?.id || professorProfile?.escola_id || secretarioProfile?.escola_id || ''}
                     />
 
                     {/* Ordenar Disciplinas Modal */}

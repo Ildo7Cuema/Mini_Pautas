@@ -15,7 +15,8 @@ interface ConfiguracaoCabecalhoModalProps {
     onClose: () => void
     onSave: () => void
     escolaId: string // Required school ID for configuration isolation
-    documentType?: 'Mini-Pauta' | 'Pauta-Geral' // Type of document this header is for
+    /** @deprecated Kept for call-site compatibility; header is shared across all school documents */
+    documentType?: 'Mini-Pauta' | 'Pauta-Geral' | 'Documentos'
 }
 
 export const ConfiguracaoCabecalhoModal: React.FC<ConfiguracaoCabecalhoModalProps> = ({
@@ -23,7 +24,7 @@ export const ConfiguracaoCabecalhoModal: React.FC<ConfiguracaoCabecalhoModalProp
     onClose,
     onSave,
     escolaId,
-    documentType = 'Mini-Pauta' // Default to Mini-Pauta for backward compatibility
+    documentType = 'Documentos',
 }) => {
     const [config, setConfig] = useState<Partial<HeaderConfig>>(getDefaultHeaderConfig())
     const [loading, setLoading] = useState(false)
@@ -130,7 +131,7 @@ export const ConfiguracaoCabecalhoModal: React.FC<ConfiguracaoCabecalhoModalProp
             <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-slate-900">Configurar Cabeçalho da {documentType}</h2>
+                    <h2 className="text-xl font-bold text-slate-900">Configurar Cabeçalho dos Documentos</h2>
                     <button
                         onClick={onClose}
                         className="text-slate-400 hover:text-slate-600 transition"
@@ -321,7 +322,7 @@ export const ConfiguracaoCabecalhoModal: React.FC<ConfiguracaoCabecalhoModalProp
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        Tamanho Fonte "{documentType.toUpperCase()}"
+                                        Tamanho Fonte "Mini-Pauta"
                                     </label>
                                     <input
                                         type="number"

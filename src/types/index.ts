@@ -1084,6 +1084,54 @@ export interface TutorialPerfil {
 export type StatusTransicao = 'Transita' | 'Não Transita' | 'Condicional' | 'AguardandoNotas';
 export type EstadoMatricula = 'pendente' | 'confirmada' | 'cancelada' | 'aguardando_exame' | 'exame_realizado';
 export type ResultadoExame = 'aprovado' | 'reprovado';
+export type EstadoAnoLectivo = 'aberto' | 'em_encerramento' | 'fechado' | 'inexistente';
+
+export interface AnoLectivo {
+    id: string;
+    escola_id: string;
+    ano: string;
+    estado: Exclude<EstadoAnoLectivo, 'inexistente'>;
+    aberto_em?: string;
+    aberto_por?: string;
+    fechado_em?: string;
+    fechado_por?: string;
+    observacao?: string;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface TurmaProntidaoPauta {
+    turma_id: string;
+    turma_nome: string;
+    nivel_ensino?: string;
+    pronta: boolean;
+    motivo: string;
+    alunos_ativos: number;
+    alunos_completos: number;
+    componentes_mf: number;
+}
+
+export interface ProntidaoPautasFinais {
+    escola_id: string;
+    ano_lectivo: string;
+    pronta: boolean;
+    total_turmas: number;
+    turmas_prontas: number;
+    turmas_sem_mf: number;
+    turmas_incompletas: number;
+    turmas: TurmaProntidaoPauta[];
+}
+
+export interface EstadoCicloMatriculas {
+    ano_origem: string;
+    ano_destino: string;
+    origem_existe: boolean;
+    origem_estado: EstadoAnoLectivo;
+    destino_existe: boolean;
+    destino_estado: EstadoAnoLectivo;
+    pode_gerar_matriculas: boolean;
+    prontidao_pautas: ProntidaoPautasFinais;
+}
 
 export interface Matricula {
     id: string;

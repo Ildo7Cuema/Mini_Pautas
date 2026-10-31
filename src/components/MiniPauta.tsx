@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { Turma, Disciplina, ViewMiniPauta, ViewEstatisticasTurma } from '../types'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { applyStandardPdfFooters } from '../utils/pdfFooter'
 
 interface MiniPautaProps {
     turma: Turma
@@ -107,24 +108,7 @@ export const MiniPauta: React.FC<MiniPautaProps> = ({ turma, disciplina }) => {
                 doc.text(`Taxa de Aprovação: ${estatisticas.taxa_aprovacao}%`, 14, finalY + 37)
             }
 
-            // Footer
-            const pageCount = doc.getNumberOfPages()
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i)
-                doc.setFontSize(8)
-                doc.text(
-                    `Página ${i} de ${pageCount}`,
-                    105,
-                    doc.internal.pageSize.height - 10,
-                    { align: 'center' }
-                )
-                doc.text(
-                    `Gerado em: ${new Date().toLocaleString('pt-AO')}`,
-                    105,
-                    doc.internal.pageSize.height - 5,
-                    { align: 'center' }
-                )
-            }
+            applyStandardPdfFooters(doc)
 
             // Save
             doc.save(`mini-pauta-${turma.codigo_turma}-${disciplina.codigo_disciplina}-T${turma.trimestre}.pdf`)
