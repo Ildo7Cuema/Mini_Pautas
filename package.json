@@ -10,7 +10,9 @@
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "test": "vitest",
         "test:ui": "vitest --ui",
-        "type-check": "tsc --noEmit"
+        "type-check": "tsc --noEmit",
+        "seed:test": "node scripts/seed-test-data.mjs",
+        "seed:test:clean": "node scripts/unseed-test-data.mjs"
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.39.0",
