@@ -1113,7 +1113,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(60vw, 1100px);
+  width: min(52vw, 1000px);
   pointer-events: none;
 }
 
@@ -1122,11 +1122,11 @@
   inset: 0;
   /* dissolve para a esquerda, em cima e em baixo: sem limites visíveis */
   -webkit-mask-image:
-    linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.55) 22%, #000 46%),
+    linear-gradient(to right, transparent 0%, transparent 14%, rgba(0, 0, 0, 0.5) 34%, #000 58%),
     linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
   -webkit-mask-composite: source-in;
   mask-image:
-    linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.55) 22%, #000 46%),
+    linear-gradient(to right, transparent 0%, transparent 14%, rgba(0, 0, 0, 0.5) 34%, #000 58%),
     linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
   mask-composite: intersect;
 }
