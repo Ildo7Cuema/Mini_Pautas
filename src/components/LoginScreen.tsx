@@ -7,7 +7,7 @@ component-meta:
   tested-on: [360x800, 375x812, 768x1024, 1440x900]
 */
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
@@ -18,11 +18,129 @@ import { SchoolRegistration } from './SchoolRegistration'
 import { BlockedSchoolMessage } from './BlockedSchoolMessage'
 import { logSystemVisit } from '../utils/superadmin'
 import { sendSuggestionToSuperAdmin } from '../utils/notificationApi'
+import { AuthBackdrop } from './auth/AuthShell'
 
-type AuthMode = 'login' | 'signup' | 'school-registration'
+type AuthMode = 'login' | 'signup' | 'school-registration' | 'direcao-municipal' | 'direcao-provincial'
+
+// Páginas de registo institucional carregadas sob demanda (transição suave, sem recarregar a página)
+const loadDirecaoMunicipal = () => import('./DirecaoMunicipalRegistration')
+const loadDirecaoProvincial = () => import('./DirecaoProvincialRegistration')
+const DirecaoMunicipalRegistration = lazy(() =>
+    loadDirecaoMunicipal().then((m) => ({ default: m.DirecaoMunicipalRegistration }))
+)
+const DirecaoProvincialRegistration = lazy(() =>
+    loadDirecaoProvincial().then((m) => ({ default: m.DirecaoProvincialRegistration }))
+)
+
+const MODE_PATHS: Partial<Record<AuthMode, string>> = {
+    login: '/',
+    'direcao-municipal': '/register-direcao-municipal',
+    'direcao-provincial': '/register-direcao-provincial',
+}
+
+const PAGE_LEAVE_MS = 180
+
+function AuthPageFallback() {
+    return (
+        <div className="auth-card rounded-xl p-6 space-y-4" aria-busy="true" aria-live="polite">
+            <div className="h-5 w-40 rounded-md bg-slate-200/80 animate-pulse" />
+            <div className="h-11 w-full rounded-xl bg-slate-100 animate-pulse" />
+            <div className="h-11 w-full rounded-xl bg-slate-100 animate-pulse" />
+            <div className="h-11 w-full rounded-xl bg-slate-200/80 animate-pulse" />
+        </div>
+    )
+}
+
+interface AuthOptionCardProps {
+    title: string
+    subtitle: string
+    tone: 'primary' | 'emerald' | 'sky'
+    icon: React.ReactNode
+    onClick: () => void
+    onPrefetch?: () => void
+}
+
+const OPTION_TONES: Record<AuthOptionCardProps['tone'], { icon: string; hover: string; title: string }> = {
+    primary: {
+        icon: 'from-primary-500 to-blue-600',
+        hover: 'hover:border-primary-300 hover:bg-primary-50/60 focus-visible:ring-primary-400',
+        title: 'group-hover:text-primary-700',
+    },
+    emerald: {
+        icon: 'from-emerald-400 to-teal-500',
+        hover: 'hover:border-emerald-300 hover:bg-emerald-50/60 focus-visible:ring-emerald-400',
+        title: 'group-hover:text-emerald-700',
+    },
+    sky: {
+        icon: 'from-sky-500 to-blue-600',
+        hover: 'hover:border-sky-300 hover:bg-sky-50/60 focus-visible:ring-sky-400',
+        title: 'group-hover:text-sky-700',
+    },
+}
+
+/** Cartão de acesso rápido — todos com exactamente o mesmo tamanho. */
+function AuthOptionCard({ title, subtitle, tone, icon, onClick, onPrefetch }: AuthOptionCardProps) {
+    const t = OPTION_TONES[tone]
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={onPrefetch}
+            onFocus={onPrefetch}
+            onTouchStart={onPrefetch}
+            className={`auth-option group flex h-[104px] w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white/80 px-2 text-center outline-none transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 ${t.hover}`}
+        >
+            <span
+                className={`flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br ${t.icon} text-white shadow-sm transition-transform duration-300 group-hover:scale-110`}
+            >
+                {icon}
+            </span>
+            <span className="min-w-0">
+                <span className={`block text-xs font-semibold leading-tight text-slate-800 transition-colors ${t.title}`}>
+                    {title}
+                </span>
+                <span className="mt-0.5 block text-[10px] leading-tight text-slate-400">{subtitle}</span>
+            </span>
+        </button>
+    )
+}
 
 export const LoginScreen: React.FC = () => {
-    const [mode, setMode] = useState<AuthMode>('login')
+    const [mode, setModeState] = useState<AuthMode>('login')
+    const [leaving, setLeaving] = useState(false)
+    const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    /** Troca de página com saída suave (fade) e entrada animada; actualiza o URL sem recarregar. */
+    const goTo = useCallback((next: AuthMode) => {
+        if (leaveTimer.current) clearTimeout(leaveTimer.current)
+        setLeaving(true)
+        leaveTimer.current = setTimeout(() => {
+            setModeState(next)
+            setLeaving(false)
+            const path = MODE_PATHS[next]
+            if (path && window.location.pathname !== path) {
+                window.history.pushState({ authMode: next }, '', path)
+            }
+            window.scrollTo({ top: 0 })
+        }, PAGE_LEAVE_MS)
+    }, [])
+
+    // Botão "voltar" do browser dentro das páginas de registo
+    useEffect(() => {
+        const onPop = () => {
+            const p = window.location.pathname
+            setModeState(
+                p === '/register-direcao-municipal' ? 'direcao-municipal' : p === '/register-direcao-provincial' ? 'direcao-provincial' : 'login'
+            )
+        }
+        window.addEventListener('popstate', onPop)
+        return () => {
+            window.removeEventListener('popstate', onPop)
+            if (leaveTimer.current) clearTimeout(leaveTimer.current)
+        }
+    }, [])
+
+    const setMode = goTo
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
@@ -393,61 +511,49 @@ export const LoginScreen: React.FC = () => {
         }
     }
 
-    // If in school registration mode, show the SchoolRegistration component
-    if (mode === 'school-registration') {
+    // Páginas de registo: mesmo fundo (globo) + transição suave
+    if (mode === 'school-registration' || mode === 'direcao-municipal' || mode === 'direcao-provincial') {
+        const back = () => setMode('login')
         return (
-            <SchoolRegistration
-                onSuccess={() => {
-                    // Voltar para a tela de login após cadastro bem-sucedido
-                    setMode('login')
-                }}
-                onCancel={() => setMode('login')}
-            />
+            <AuthBackdrop>
+                <div key={mode} className={leaving ? 'auth-page-leave' : 'auth-page-enter'}>
+                    {mode === 'school-registration' && <SchoolRegistration onSuccess={back} onCancel={back} />}
+                    <Suspense fallback={<AuthPageFallback />}>
+                        {mode === 'direcao-municipal' && <DirecaoMunicipalRegistration onSuccess={back} onCancel={back} />}
+                        {mode === 'direcao-provincial' && <DirecaoProvincialRegistration onSuccess={back} onCancel={back} />}
+                    </Suspense>
+                </div>
+            </AuthBackdrop>
         )
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
-            {/* Animated Background Blobs */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="blob blob-1 w-[500px] h-[500px] -top-32 -right-32" />
-                <div className="blob blob-2 w-[400px] h-[400px] -bottom-24 -left-24" />
-                <div className="blob blob-3 w-[350px] h-[350px] top-1/3 left-1/4 opacity-25" />
-            </div>
-
-            {/* Subtle Grid Pattern Overlay */}
-            <div
-                className="absolute inset-0 opacity-[0.015] pointer-events-none"
-                style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                }}
-            />
-
-            <div className="w-full max-w-md relative z-10">
+        <AuthBackdrop>
+            <div key={mode} className={leaving ? 'auth-page-leave' : 'auth-page-enter'}>
                 {/* Logo and Title */}
-                <div className="text-center mb-8 animate-fade-in">
-                    <div className="logo-container inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl shadow-lg mb-5">
-                        <svg className="w-11 h-11 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="text-center mb-4 animate-fade-in">
+                    <div className="logo-container inline-flex items-center justify-center w-12 h-12 bg-white/95 rounded-xl shadow-md mb-2 ring-1 ring-slate-200/60">
+                        <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                         </svg>
                     </div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-2 tracking-tight">
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-800 mb-0.5 tracking-tight">
                         EduGest Angola
                     </h1>
-                    <p className="text-slate-500 text-sm sm:text-base font-medium">
+                    <p className="text-slate-500 text-xs sm:text-sm font-medium">
                         Sistema de Gestão Escolar
                     </p>
                 </div>
 
                 {/* Auth Card */}
-                <div className="auth-card rounded-2xl animate-slide-up">
-                    <CardBody className="p-6 sm:p-8">
+                <div className="auth-card rounded-xl animate-slide-up">
+                    <CardBody className="p-5 sm:p-6">
                         {/* Welcome Text */}
-                        <div className="mb-6">
-                            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1">
+                        <div className="mb-4">
+                            <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-0.5">
                                 Bem-vindo de volta!
                             </h2>
-                            <p className="text-slate-500 text-sm">
+                            <p className="text-slate-500 text-xs sm:text-sm">
                                 Entre com as suas credenciais para continuar
                             </p>
                         </div>
@@ -455,7 +561,7 @@ export const LoginScreen: React.FC = () => {
                         {/* Error Message */}
                         {error && (
                             <div
-                                className="flex items-start gap-3 p-4 mb-5 bg-red-50 border border-red-100 rounded-xl animate-slide-down form-error-shake"
+                                className="flex items-start gap-2.5 p-3 mb-4 bg-red-50 border border-red-100 rounded-lg animate-slide-down form-error-shake"
                                 role="alert"
                             >
                                 <div className="flex-shrink-0 w-5 h-5 mt-0.5 text-red-500">
@@ -467,9 +573,9 @@ export const LoginScreen: React.FC = () => {
                             </div>
                         )}
 
-                        <form onSubmit={handleSubmit} className="space-y-5">
+                        <form onSubmit={handleSubmit} className="space-y-3">
                             {/* Email */}
-                            <div className="input-glow rounded-xl">
+                            <div className="input-glow rounded-lg">
                                 <Input
                                     label="Email"
                                     type="email"
@@ -479,12 +585,12 @@ export const LoginScreen: React.FC = () => {
                                     required
                                     autoComplete="email"
                                     icon={<Icons.Email />}
-                                    inputSize="md"
+                                    inputSize="sm"
                                 />
                             </div>
 
                             {/* Password */}
-                            <div className="input-glow rounded-xl">
+                            <div className="input-glow rounded-lg">
                                 <Input
                                     label="Senha"
                                     type="password"
@@ -494,12 +600,12 @@ export const LoginScreen: React.FC = () => {
                                     required
                                     autoComplete="current-password"
                                     icon={<Icons.Lock />}
-                                    inputSize="md"
+                                    inputSize="sm"
                                 />
                             </div>
 
                             {/* Forgot Password Link */}
-                            <div className="flex justify-end">
+                            <div className="flex justify-end -mt-1">
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -517,10 +623,10 @@ export const LoginScreen: React.FC = () => {
                             <Button
                                 type="submit"
                                 variant="primary"
-                                size="lg"
+                                size="md"
                                 loading={loading}
                                 fullWidth
-                                className="btn-premium mt-2 !py-3.5 !text-base font-semibold"
+                                className="btn-premium mt-1 font-semibold"
                                 icon={<Icons.Login />}
                             >
                                 {loading ? 'Processando...' : 'Entrar'}
@@ -528,105 +634,61 @@ export const LoginScreen: React.FC = () => {
                         </form>
 
                         {/* Divider */}
-                        <div className="relative my-6">
-                            <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-slate-200" />
-                            </div>
-                            <div className="relative flex justify-center text-sm">
-                                <span className="px-3 bg-white text-slate-400">Novo por aqui?</span>
-                            </div>
+                        <div className="auth-divider my-4">
+                            <span>Novo por aqui?</span>
                         </div>
 
-                        {/* Registration Options */}
-                        <div className="space-y-4">
-                            {/* Primary - School Registration */}
-                            <button
-                                type="button"
+                        {/* Registration Options — três cartões idênticos */}
+                        <div className="grid grid-cols-3 gap-2.5">
+                            <AuthOptionCard
+                                title="Cadastrar Escola"
+                                subtitle="Estabelecimento"
+                                tone="primary"
                                 onClick={() => setMode('school-registration')}
-                                className="w-full group relative overflow-hidden rounded-xl border-2 border-primary-100 bg-gradient-to-br from-primary-50 to-blue-50 p-4 transition-all duration-300 hover:border-primary-300 hover:shadow-lg hover:shadow-primary-100/50 hover:-translate-y-0.5"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-blue-600 flex items-center justify-center shadow-lg shadow-primary-200/50 group-hover:scale-110 transition-transform duration-300">
-                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                        </svg>
-                                    </div>
-                                    <div className="flex-1 text-left">
-                                        <h3 className="font-bold text-slate-800 group-hover:text-primary-700 transition-colors">
-                                            Cadastrar Escola
-                                        </h3>
-                                        <p className="text-xs text-slate-500 mt-0.5">
-                                            Registar estabelecimento de ensino
-                                        </p>
-                                    </div>
-                                    <div className="flex-shrink-0 text-primary-400 group-hover:text-primary-600 group-hover:translate-x-1 transition-all">
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </button>
-
-                            {/* Institutional Registration Grid */}
-                            <div className="grid grid-cols-2 gap-3">
-                                {/* Municipal Direction */}
-                                <a
-                                    href="/register-direcao-municipal"
-                                    className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:border-emerald-300 hover:bg-emerald-50/50 hover:shadow-md hover:-translate-y-0.5"
-                                >
-                                    <div className="flex flex-col items-center text-center gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-300">
-                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
-                                            </svg>
-                                        </div>
-                                        <div>
-                                            <h3 className="font-semibold text-sm text-slate-700 group-hover:text-emerald-700 transition-colors">
-                                                Direção Municipal
-                                            </h3>
-                                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
-                                                Órgão municipal de educação
-                                            </p>
-                                        </div>
-                                    </div>
-                                </a>
-
-                                {/* Provincial Direction */}
-                                <a
-                                    href="/register-direcao-provincial"
-                                    className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:border-purple-300 hover:bg-purple-50/50 hover:shadow-md hover:-translate-y-0.5"
-                                >
-                                    <div className="flex flex-col items-center text-center gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-300">
-                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                        </div>
-                                        <div>
-                                            <h3 className="font-semibold text-sm text-slate-700 group-hover:text-purple-700 transition-colors">
-                                                Direção Provincial
-                                            </h3>
-                                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
-                                                Órgão provincial de educação
-                                            </p>
-                                        </div>
-                                    </div>
-                                </a>
-                            </div>
+                                icon={
+                                    <svg className="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                    </svg>
+                                }
+                            />
+                            <AuthOptionCard
+                                title="Dir. Municipal"
+                                subtitle="Órgão municipal"
+                                tone="emerald"
+                                onClick={() => setMode('direcao-municipal')}
+                                onPrefetch={() => void loadDirecaoMunicipal()}
+                                icon={
+                                    <svg className="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+                                    </svg>
+                                }
+                            />
+                            <AuthOptionCard
+                                title="Dir. Provincial"
+                                subtitle="Órgão provincial"
+                                tone="sky"
+                                onClick={() => setMode('direcao-provincial')}
+                                onPrefetch={() => void loadDirecaoProvincial()}
+                                icon={
+                                    <svg className="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                }
+                            />
                         </div>
                     </CardBody>
                 </div>
 
                 {/* Footer */}
-                <div className="mt-8 text-center space-y-3">
+                <div className="mt-3 text-center space-y-2">
                     {/* Action Links */}
-                    <div className="flex flex-wrap items-center justify-center gap-3">
+                    <div className="flex flex-wrap items-center justify-center gap-2">
                         {/* Tutorials Link */}
                         <a
                             href="/tutoriais"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-white/80 hover:bg-white rounded-xl text-sm font-medium text-primary-600 hover:text-primary-700 shadow-sm hover:shadow transition-all"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/70 hover:bg-white rounded-lg text-xs font-medium text-primary-600 hover:text-primary-700 shadow-sm hover:shadow transition-all"
                         >
-                            <span>📹</span>
+                            <span aria-hidden="true">📹</span>
                             Ver Tutoriais
                         </a>
 
@@ -638,23 +700,17 @@ export const LoginScreen: React.FC = () => {
                                 setSuggestionError(null)
                                 setSuggestionSuccess(false)
                             }}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-white/80 hover:bg-white rounded-xl text-sm font-medium text-amber-600 hover:text-amber-700 shadow-sm hover:shadow transition-all"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/70 hover:bg-white rounded-lg text-xs font-medium text-amber-600 hover:text-amber-700 shadow-sm hover:shadow transition-all"
                         >
-                            <span>💡</span>
+                            <span aria-hidden="true">💡</span>
                             Enviar Sugestão
                         </button>
                     </div>
 
-                    <p className="text-slate-500 text-sm">
-                        © 2025 EduGest Angola · Sistema de Gestão Escolar
-                    </p>
-                    <p className="text-slate-400 text-xs flex items-center justify-center gap-1">
-                        Desenvolvido com
-                        <span className="text-red-400 animate-pulse">❤</span>
-                        para a educação
+                    <p className="text-slate-500 text-xs">
+                        © 2026 EduGest Angola · Sistema de Gestão Escolar
                     </p>
                 </div>
-            </div>
 
             {/* Forgot Password Modal */}
             {showForgotPasswordModal && (
@@ -965,6 +1021,7 @@ export const LoginScreen: React.FC = () => {
                     }}
                 />
             )}
-        </div>
+            </div>
+        </AuthBackdrop>
     )
 }

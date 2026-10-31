@@ -16,6 +16,7 @@ import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { notifyAdminNewRegistration, buildRegistrationMessage } from '../utils/registrationNotifications'
 import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
+import { AuthShell } from './auth/AuthShell'
 
 interface DirecaoProvincialRegistrationForm {
     nome: string
@@ -217,13 +218,13 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
     // Tela de sucesso
     if (success) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50/80 to-indigo-100 flex items-center justify-center p-4">
-                <Card className="w-full max-w-md">
-                    <CardBody className="p-8 text-center">
-                        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <span className="text-4xl">⏳</span>
+            <AuthShell maxWidth="sm">
+                <Card className="w-full auth-card rounded-xl">
+                    <CardBody className="p-6 text-center">
+                        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span className="text-3xl">⏳</span>
                         </div>
-                        <h2 className="text-2xl font-bold text-slate-900 mb-3">
+                        <h2 className="text-xl font-bold text-slate-900 mb-2">
                             Registo Submetido!
                         </h2>
                         <p className="text-slate-600 mb-4">
@@ -257,25 +258,18 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                         )}
                     </CardBody>
                 </Card>
-            </div>
+            </AuthShell>
         )
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50/80 to-indigo-100 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
-            {/* Background decorations */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="blob blob-1 w-[500px] h-[500px] -top-32 -right-32 bg-purple-200 opacity-20" />
-                <div className="blob blob-2 w-[400px] h-[400px] -bottom-24 -left-24 bg-indigo-200 opacity-20" />
-            </div>
-
-            <div className="w-full max-w-lg relative z-10">
+        <AuthShell maxWidth="sm">
                 {/* Header */}
-                <div className="text-center mb-8 animate-fade-in">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-                        <span className="text-3xl">🏛️</span>
+                <div className="text-center mb-5 animate-fade-in">
+                    <div className="inline-flex items-center justify-center w-12 h-12 bg-white/95 rounded-xl shadow-md mb-3 ring-1 ring-slate-200/60">
+                        <span className="text-2xl">🏛️</span>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-2">
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-800 mb-1">
                         Registo de Direção Provincial
                     </h1>
                     <p className="text-slate-500 text-sm">
@@ -301,8 +295,8 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                 </div>
 
                 {/* Form Card */}
-                <Card className="auth-card rounded-2xl animate-slide-up">
-                    <CardBody className="p-6 sm:p-8">
+                <Card className="auth-card rounded-xl animate-slide-up">
+                    <CardBody className="p-5 sm:p-6">
                         {error && (
                             <div className="flex items-start gap-3 p-4 mb-5 bg-red-50 border border-red-100 rounded-xl" role="alert">
                                 <div className="flex-shrink-0 w-5 h-5 mt-0.5 text-red-500">
@@ -456,18 +450,23 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                 </Card>
 
                 {/* Footer */}
-                <div className="mt-6 text-center">
+                <div className="mt-5 text-center">
                     <p className="text-slate-500 text-sm">
                         Já tem conta?{' '}
                         <a
                             href="/"
+                            onClick={(e) => {
+                                if (onCancel) {
+                                    e.preventDefault()
+                                    onCancel()
+                                }
+                            }}
                             className="text-primary-600 hover:text-primary-700 font-semibold"
                         >
                             Faça login
                         </a>
                     </p>
                 </div>
-            </div>
-        </div>
+        </AuthShell>
     )
 }

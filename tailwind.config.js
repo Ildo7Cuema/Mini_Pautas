@@ -110,6 +110,10 @@ export default {
                 'md': '720px',
                 'lg': '1024px',
                 'xl': '1280px',
+                /* Auth surfaces: compact cards on desktop (global max-w-md stays 720px for app modals) */
+                'auth': '26rem',
+                'auth-md': '32rem',
+                'auth-lg': '36rem',
             },
             minWidth: {
                 'touch': '2.75rem', /* 44px */

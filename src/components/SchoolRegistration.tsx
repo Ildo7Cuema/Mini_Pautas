@@ -11,12 +11,13 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
-import { Card, CardBody } from './ui/Card'
+import { CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { notifyAdminNewRegistration, buildRegistrationMessage } from '../utils/registrationNotifications'
 import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
 import { generateUniqueSchoolCode } from '../utils/schoolCodeGenerator'
+import { AuthShell } from './auth/AuthShell'
 
 interface SchoolRegistrationForm {
     // Dados da Escola
@@ -282,21 +283,15 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
     // Success screen
     if (success) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100 flex items-center justify-center p-4">
-                {/* Animated Background Blobs */}
-                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    <div className="blob blob-1 w-[500px] h-[500px] -top-32 -right-32" />
-                    <div className="blob blob-2 w-[400px] h-[400px] -bottom-24 -left-24" />
-                </div>
-
-                <div className="auth-card w-full max-w-md rounded-2xl animate-fade-in shadow-xl bg-white/95">
-                    <CardBody className="p-8 text-center">
-                        <div className="success-ring inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
-                            <svg className="success-checkmark w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <AuthShell maxWidth="sm">
+                <div className="auth-card w-full rounded-xl animate-fade-in">
+                    <CardBody className="p-6 text-center">
+                        <div className="success-ring inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                            <svg className="success-checkmark w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                             </svg>
                         </div>
-                        <h2 className="text-2xl font-bold text-slate-900 mb-3 tracking-tight">Cadastro Realizado!</h2>
+                        <h2 className="text-xl font-bold text-slate-900 mb-2 tracking-tight">Cadastro Realizado!</h2>
                         <p className="text-slate-600 mb-6 leading-relaxed">
                             A escola <strong>{formData.nome_escola}</strong> foi registada com sucesso.
                             Verifique seu email para confirmar a conta.
@@ -319,7 +314,7 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                         {waOpened && (
                             <Button
                                 variant="primary"
-                                className="btn-premium mt-6"
+                                className="btn-premium mt-4"
                                 onClick={handleGoToLogin}
                                 fullWidth
                             >
@@ -328,31 +323,23 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                         )}
                     </CardBody>
                 </div>
-            </div>
+            </AuthShell>
         )
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
-            {/* Animated Background Blobs */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="blob blob-1 w-[600px] h-[600px] -top-40 -right-40 opacity-30" />
-                <div className="blob blob-2 w-[500px] h-[500px] -bottom-32 -left-32 opacity-30" />
-                <div className="blob blob-3 w-[400px] h-[400px] top-1/2 left-1/2 opacity-20" />
-            </div>
-
-            <div className="w-full max-w-2xl relative z-10">
+        <AuthShell maxWidth="md">
                 {/* Header */}
-                <div className="text-center mb-8 animate-fade-in">
-                    <div className="logo-container inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-                        <Icons.School className="w-8 h-8 text-primary-600" />
+                <div className="text-center mb-5 animate-fade-in">
+                    <div className="logo-container inline-flex items-center justify-center w-12 h-12 bg-white/95 rounded-xl shadow-md mb-3 ring-1 ring-slate-200/60">
+                        <Icons.School className="w-6 h-6 text-primary-600" />
                     </div>
-                    <h1 className="text-3xl font-bold text-slate-800 mb-2 tracking-tight">Cadastro de Escola</h1>
-                    <p className="text-slate-500 font-medium">Junte-se à plataforma EduGest Angola</p>
+                    <h1 className="text-2xl font-bold text-slate-800 mb-1 tracking-tight">Cadastro de Escola</h1>
+                    <p className="text-slate-500 text-sm font-medium">Junte-se à plataforma EduGest Angola</p>
                 </div>
 
                 {/* Progress Stepper */}
-                <div className="mb-8 max-w-sm mx-auto">
+                <div className="mb-10 max-w-xs mx-auto">
                     <div className="relative flex items-center justify-between">
                         {/* Connecting Line */}
                         <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-1 bg-slate-200 rounded-full -z-10"></div>
@@ -401,8 +388,8 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                     </div>
                 </div>
 
-                <div className="auth-card rounded-2xl animate-slide-up shadow-xl overflow-hidden">
-                    <CardBody className="p-6 sm:p-8">
+                <div className="auth-card rounded-xl animate-slide-up overflow-hidden">
+                    <CardBody className="p-5 sm:p-6">
                         {/* Error Message */}
                         {error && (
                             <div className="flex items-start gap-3 p-4 mb-6 bg-red-50 border border-red-100 rounded-xl animate-slide-down form-error-shake" role="alert">
@@ -668,12 +655,11 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                 </div>
 
                 {/* Footer */}
-                <div className="mt-8 text-center">
+                <div className="mt-5 text-center">
                     <p className="text-slate-500 text-xs">
                         Ao criar uma conta, você concorda com os <a href="#" className="text-primary-600 hover:underline">Termos de Uso</a> e <a href="#" className="text-primary-600 hover:underline">Política de Privacidade</a>
                     </p>
                 </div>
-            </div>
-        </div>
+        </AuthShell>
     )
 }

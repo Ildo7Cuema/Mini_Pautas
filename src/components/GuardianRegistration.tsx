@@ -13,6 +13,7 @@ import { Input } from './ui/Input'
 import { CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
+import { AuthShell } from './auth/AuthShell'
 
 export const GuardianRegistration: React.FC = () => {
     const [email, setEmail] = useState('')
@@ -184,32 +185,27 @@ export const GuardianRegistration: React.FC = () => {
 
     if (validating) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-amber-50/80 to-orange-100 flex items-center justify-center p-4">
+            <AuthShell maxWidth="sm">
                 <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600"></div>
-                    <p className="mt-4 text-slate-600">Validando convite...</p>
+                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-amber-600"></div>
+                    <p className="mt-4 text-slate-600 text-sm">Validando convite...</p>
                 </div>
-            </div>
+            </AuthShell>
         )
     }
 
     if (success) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-amber-50/80 to-orange-100 flex items-center justify-center p-4">
-                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    <div className="blob blob-1 w-[500px] h-[500px] -top-32 -right-32" />
-                    <div className="blob blob-2 w-[400px] h-[400px] -bottom-24 -left-24" />
-                </div>
-
-                <div className="auth-card w-full max-w-md rounded-2xl animate-fade-in shadow-xl bg-white/95">
-                    <CardBody className="p-8 text-center">
-                        <div className="success-ring inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
-                            <svg className="success-checkmark w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <AuthShell maxWidth="sm">
+                <div className="auth-card w-full rounded-xl animate-fade-in">
+                    <CardBody className="p-6 text-center">
+                        <div className="success-ring inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                            <svg className="success-checkmark w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                             </svg>
                         </div>
-                        <h2 className="text-2xl font-bold text-slate-900 mb-3 tracking-tight">Conta Criada!</h2>
-                        <p className="text-slate-600 mb-6 leading-relaxed">
+                        <h2 className="text-xl font-bold text-slate-900 mb-2 tracking-tight">Conta Criada!</h2>
+                        <p className="text-slate-600 mb-5 text-sm leading-relaxed">
                             Sua conta de encarregado foi criada com sucesso. Agora pode fazer login para acompanhar as notas do seu educando.
                         </p>
                         <Button
@@ -222,35 +218,28 @@ export const GuardianRegistration: React.FC = () => {
                         </Button>
                     </CardBody>
                 </div>
-            </div>
+            </AuthShell>
         )
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-amber-50/80 to-orange-100 flex items-center justify-center p-4 relative overflow-hidden">
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="blob blob-1 w-[600px] h-[600px] -top-40 -right-40 opacity-30" />
-                <div className="blob blob-2 w-[500px] h-[500px] -bottom-32 -left-32 opacity-30" />
-                <div className="blob blob-3 w-[400px] h-[400px] top-1/2 left-1/2 opacity-20" />
-            </div>
-
-            <div className="w-full max-w-md relative z-10">
-                <div className="text-center mb-8 animate-fade-in">
-                    <div className="logo-container inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-                        <Icons.Users className="w-8 h-8 text-amber-600" />
+        <AuthShell maxWidth="sm">
+                <div className="text-center mb-5 animate-fade-in">
+                    <div className="logo-container inline-flex items-center justify-center w-12 h-12 bg-white/95 rounded-xl shadow-md mb-3 ring-1 ring-slate-200/60">
+                        <Icons.Users className="w-6 h-6 text-amber-600" />
                     </div>
-                    <h1 className="text-3xl font-bold text-slate-800 mb-2 tracking-tight">Bem-vindo Encarregado</h1>
+                    <h1 className="text-2xl font-bold text-slate-800 mb-1 tracking-tight">Bem-vindo Encarregado</h1>
                     {guardianName && (
-                        <p className="text-amber-600 font-semibold text-lg mb-1">{guardianName}</p>
+                        <p className="text-amber-600 font-semibold text-base mb-1">{guardianName}</p>
                     )}
                     {studentName && (
                         <p className="text-slate-500 text-sm">Educando: {studentName}</p>
                     )}
-                    <p className="text-slate-500 font-medium mt-2">Crie sua conta para acompanhar as notas</p>
+                    <p className="text-slate-500 text-sm font-medium mt-1">Crie sua conta para acompanhar as notas</p>
                 </div>
 
-                <div className="auth-card rounded-2xl animate-slide-up shadow-xl backdrop-blur-sm bg-white/90">
-                    <CardBody className="p-6 sm:p-8">
+                <div className="auth-card rounded-xl animate-slide-up">
+                    <CardBody className="p-5 sm:p-6">
                         {error && (
                             <div className="flex items-start gap-3 p-4 mb-6 bg-red-50 border border-red-100 rounded-xl animate-slide-down form-error-shake" role="alert">
                                 <div className="flex-shrink-0 w-5 h-5 mt-0.5 text-red-500">
@@ -332,12 +321,11 @@ export const GuardianRegistration: React.FC = () => {
                     </CardBody>
                 </div>
 
-                <div className="mt-8 text-center space-y-2">
-                    <p className="text-slate-500 text-sm">
-                        © 2025 EduGest Angola
+                <div className="mt-5 text-center">
+                    <p className="text-slate-500 text-xs">
+                        © 2026 EduGest Angola
                     </p>
                 </div>
-            </div>
-        </div>
+        </AuthShell>
     )
 }

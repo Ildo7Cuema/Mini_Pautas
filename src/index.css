@@ -957,16 +957,517 @@
   box-shadow: 0 20px 40px -12px rgba(59, 130, 246, 0.35);
 }
 
-/* Auth Card Premium */
+/* Auth Card Premium — compact & elegant on desktop */
 .auth-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.05),
-    0 10px 20px -5px rgba(0, 0, 0, 0.1),
-    0 25px 50px -12px rgba(59, 130, 246, 0.15);
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -8px rgba(15, 23, 42, 0.12),
+    0 20px 40px -16px rgba(37, 99, 235, 0.12);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease;
+}
+
+.auth-card:hover {
+  box-shadow:
+    0 2px 4px rgba(15, 23, 42, 0.05),
+    0 12px 28px -8px rgba(15, 23, 42, 0.14),
+    0 24px 48px -16px rgba(37, 99, 235, 0.16);
+}
+
+/* ============================================
+   AUTH SHELL — Angola map background
+   ============================================ */
+
+.auth-shell {
+  isolation: isolate;
+}
+
+/* ---------- Globo (canto superior esquerdo) ---------- */
+/* Globo fixo ao viewport: à esquerda, centrado na vertical, não acompanha o scroll */
+.angola-globe {
+  --globe-size: clamp(420px, min(92vh, 54vw), 980px);
+  position: absolute;
+  width: var(--globe-size);
+  height: var(--globe-size);
+  top: 50%;
+  margin-top: calc(var(--globe-size) / -2);
+  left: calc(var(--globe-size) * -0.1);
+}
+
+/* Ecrãs estreitos: globo grande e discreto, centrado atrás do formulário */
+@media (max-width: 1023px) {
+  .angola-globe {
+    --globe-size: clamp(320px, 120vw, 640px);
+    left: 50%;
+    margin-left: calc(var(--globe-size) / -2);
+    opacity: 0.38;
+  }
+}
+
+.angola-globe__shadow {
+  position: absolute;
+  inset: 6% 4% -2% 4%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 60%, rgba(30, 64, 175, 0.28), rgba(30, 64, 175, 0) 70%);
+  filter: blur(26px);
+  transform: translateY(5%);
+}
+
+.angola-globe__sphere {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.95) 0%, rgba(219, 234, 254, 0.9) 26%, rgba(147, 197, 253, 0.85) 58%, rgba(59, 130, 246, 0.75) 100%);
+  box-shadow:
+    inset -30px -40px 90px rgba(30, 58, 138, 0.35),
+    inset 16px 20px 44px rgba(255, 255, 255, 0.7),
+    0 34px 90px -34px rgba(30, 64, 175, 0.5);
+}
+
+/* Graticula: paralelos fixos + meridianos a rodar (scaleX ≈ cos θ) */
+.angola-globe__graticule {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: rgba(30, 58, 138, 0.32);
+  stroke-width: 0.5;
+}
+
+.angola-globe__meridian {
+  transform-origin: 0 0;
+  transform-box: view-box;
+  animation: angolaMeridianSpin 44s ease-in-out infinite;
+  will-change: transform;
+}
+
+.angola-globe__rim {
+  stroke: rgba(30, 58, 138, 0.45);
+  stroke-width: 0.9;
+}
+
+/* Mapa fixo à frente do globo (ligeiro balanço) */
+.angola-globe__map {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 74%;
+  transform: translate(-50%, -50%);
+  animation: angolaMapSway 14s ease-in-out infinite;
+  filter: drop-shadow(0 10px 24px rgba(30, 58, 138, 0.25));
+}
+
+.angola-globe__shade {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, rgba(255, 255, 255, 0) 40%, rgba(30, 58, 138, 0.18) 85%, rgba(30, 58, 138, 0.35) 100%);
+  pointer-events: none;
+}
+
+.angola-globe__gloss {
+  position: absolute;
+  left: 12%;
+  top: 6%;
+  width: 46%;
+  height: 26%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0));
+  filter: blur(6px);
+  transform: rotate(-18deg);
+  pointer-events: none;
+}
+
+.angola-map-svg svg.angola-provinces-map {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* 21 províncias — traços muito finos (non-scaling-stroke => px reais) e nomes legíveis */
+.angola-map-svg .angola-province {
+  stroke-width: 1.1;
+  transition: fill-opacity 0.6s ease;
+}
+
+.angola-map-svg .angola-province-newborder {
+  stroke-width: 1.1;
+}
+
+.angola-map-svg .angola-province-label,
+.angola-map-svg .angola-province-leader {
+  pointer-events: none;
+}
+
+/* ---------- Carrossel em background (lado direito, ≥ 1280px) — sem moldura, imagens a sangrar e a dissolver-se no fundo ---------- */
+.auth-carousel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(60vw, 1100px);
+  pointer-events: none;
+}
+
+.auth-carousel__frame {
+  position: absolute;
+  inset: 0;
+  /* dissolve para a esquerda, em cima e em baixo: sem limites visíveis */
+  -webkit-mask-image:
+    linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.55) 22%, #000 46%),
+    linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.55) 22%, #000 46%),
+    linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  mask-composite: intersect;
+}
+
+.auth-carousel__slide {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.auth-carousel__slide.is-active {
+  opacity: 1;
+  z-index: 1;
+}
+
+.auth-carousel__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 62% 30%;
+  user-select: none;
+  transform: scale(1);
+}
+
+.auth-carousel__slide.is-active .auth-carousel__img {
+  animation: authCarouselZoom 12s ease-out both;
+}
+
+/* Legenda e controlos ficam fora da máscara, por cima do fundo */
+.auth-carousel__shade {
+  display: none;
+}
+
+.auth-carousel__caption {
+  position: fixed;
+  right: clamp(24px, 4vw, 96px);
+  bottom: clamp(28px, 6vh, 64px);
+  z-index: 2;
+  display: flex;
+  max-width: min(340px, 24vw);
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.9rem 1.1rem 1rem;
+  border-radius: 1rem;
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px -12px rgba(30, 64, 175, 0.35);
+  pointer-events: none;
+}
+
+.auth-carousel__caption > * {
+  animation: authCarouselText 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-carousel__caption > *:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.auth-carousel__caption > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+
+.auth-carousel__role {
+  align-self: flex-start;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.auth-carousel__title {
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.auth-carousel__text {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.auth-carousel__brand {
+  display: none;
+}
+
+.auth-carousel__dots {
+  position: fixed;
+  right: clamp(24px, 4vw, 96px);
+  bottom: clamp(8px, 2.4vh, 24px);
+  z-index: 3;
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.auth-carousel__dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(30, 64, 175, 0.28);
+  cursor: pointer;
+  transition: width 0.35s ease, background 0.35s ease;
+}
+
+.auth-carousel__dot:hover {
+  background: rgba(30, 64, 175, 0.55);
+}
+
+.auth-carousel__dot.is-active {
+  width: 22px;
+  background: #2563eb;
+}
+
+.auth-carousel__dot:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@keyframes authCarouselZoom {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.07);
+  }
+}
+
+@keyframes authCarouselText {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-carousel__slide.is-active .auth-carousel__img,
+  .auth-carousel__caption > * {
+    animation: none !important;
+  }
+}
+
+/* ---------- Transição suave entre páginas de autenticação ---------- */
+.auth-page-enter {
+  animation: authPageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-page-leave {
+  animation: authPageLeave 0.18s ease-in both;
+  pointer-events: none;
+}
+
+@keyframes authPageEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(18px, 0, 0) scale(0.985);
+    filter: blur(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes authPageLeave {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(-14px, 0, 0) scale(0.99);
+  }
+}
+
+/* ---------- Aparência profissional e medidas uniformes (todas as páginas de autenticação) ---------- */
+.auth-card {
+  border-radius: 1rem;
+  position: relative;
+}
+
+.auth-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  border-radius: 1rem 1rem 0 0;
+  background: linear-gradient(90deg, #2563eb 0%, #38bdf8 55%, #10b981 100%);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.auth-shell label,
+.auth-shell .form-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: #334155;
+  margin-bottom: 0.375rem;
+}
+
+/* Campos: mesma altura, raio, tipografia e contorno em todo o lado */
+.auth-shell input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+.auth-shell select {
+  min-height: 44px;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  border-radius: 0.75rem;
+  border-color: #cbd5e1;
+  background-color: rgba(255, 255, 255, 0.95);
+}
+
+.auth-shell textarea {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  border-radius: 0.75rem;
+  border-color: #cbd5e1;
+  padding: 0.625rem 1rem;
+}
+
+.auth-shell input:not([type='checkbox']):not([type='radio']):hover,
+.auth-shell select:hover,
+.auth-shell textarea:hover {
+  border-color: #94a3b8;
+}
+
+.auth-shell input:focus,
+.auth-shell select:focus,
+.auth-shell textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  outline: none;
+}
+
+.auth-shell select {
+  padding-left: 1rem;
+  padding-right: 2rem;
+}
+
+/* Botões: mesma altura e raio */
+.auth-shell .btn {
+  min-height: 44px;
+  padding: 0 1.125rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 0.75rem;
+}
+
+.auth-shell .btn-primary {
+  background-image: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 6px 16px -6px rgba(37, 99, 235, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.auth-shell .btn-primary:hover:not(:disabled) {
+  background-image: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+}
+
+/* Separador "Novo por aqui?" */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e2e8f0 40%, #e2e8f0 60%, transparent);
+}
+
+.auth-option {
+  min-width: 0;
+}
+
+@keyframes angolaMeridianSpin {
+  0% {
+    transform: scaleX(1);
+  }
+
+  50% {
+    transform: scaleX(-1);
+  }
+
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes angolaMapSway {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) rotate(-0.6deg);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) rotate(0.6deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .angola-globe,
+  .angola-globe__meridian,
+  .angola-globe__map,
+  .blob {
+    animation: none !important;
+  }
+
+  .auth-card:hover {
+    transform: none;
+  }
 }
 
 /* Tab Button Active */
