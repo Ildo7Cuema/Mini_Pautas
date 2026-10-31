@@ -5,9 +5,9 @@
 import { ANO_LECTIVO, SEED_PASSWORD, seedEmail } from './_shared.mjs'
 
 const COMPONENTES_PADRAO = [
-    { nome: 'Média das Avaliações Contínuas', codigo_componente: 'MAC', peso_percentual: 30, ordem: 1 },
-    { nome: 'Prova do Professor', codigo_componente: 'PP', peso_percentual: 30, ordem: 2 },
-    { nome: 'Prova Trimestral', codigo_componente: 'PT', peso_percentual: 40, ordem: 3 },
+    { nome: 'Média das Avaliações Contínuas', codigo_componente: 'MAC', peso_percentual: 100, ordem: 1 },
+    { nome: 'Nota da Prova Trimestral', codigo_componente: 'NPT', peso_percentual: 100, ordem: 2 },
+    { nome: 'Média Trimestral', codigo_componente: 'MT', peso_percentual: 100, ordem: 3 },
 ]
 
 function withComponentes(disciplinas) {

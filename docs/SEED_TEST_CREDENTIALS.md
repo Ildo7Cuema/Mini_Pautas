@@ -130,7 +130,7 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 
 1. Utilizador auth + perfil **ESCOLA** (administrador)  
 2. Licença **anual activa**  
-3. **Templates** de disciplinas com componentes **MAC (30%) · PP (30%) · PT (40%)** nos 3 trimestres  
+3. **Templates** de disciplinas com componentes **MAC (100%) · NPT (100%) · MT (100%)** nos 3 trimestres  
 4. **5 professores** com login activo  
 5. **5 turmas** com templates aplicados (disciplinas + componentes)  
 6. **20 alunos** com dados pessoais, encarregado, morada e dados académicos  
