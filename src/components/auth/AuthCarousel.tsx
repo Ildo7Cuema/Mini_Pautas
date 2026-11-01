@@ -15,7 +15,7 @@ interface Slide {
     text: string
 }
 
-const SLIDES: Slide[] = [
+export const SLIDES: Slide[] = [
     {
         src: '/auth-carousel/auth-carousel-professor-laptop.jpg',
         alt: 'Professor a usar o EduGest Angola num laptop na sala de aula',
@@ -48,7 +48,8 @@ const SLIDES: Slide[] = [
 
 const INTERVAL_MS = 5500
 
-export function AuthCarousel() {
+/** Estado partilhado do carrossel: índice, rotação automática, pausa e imagens já carregadas. */
+export function useCarouselState() {
     const [index, setIndex] = useState(0)
     const [paused, setPaused] = useState(false)
     const [reduceMotion, setReduceMotion] = useState(false)
@@ -80,6 +81,12 @@ export function AuthCarousel() {
         }, INTERVAL_MS)
         return () => window.clearInterval(id)
     }, [paused, reduceMotion, next, index])
+
+    return { index, setIndex, setPaused, seen }
+}
+
+export function AuthCarousel() {
+    const { index, setIndex, setPaused, seen } = useCarouselState()
 
     return (
         <aside

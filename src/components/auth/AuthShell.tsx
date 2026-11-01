@@ -5,9 +5,25 @@ component-meta:
   responsive: true
 */
 
-import { ReactNode, createContext, useContext } from 'react'
-import angolaProvincesSvg from '../../assets/angola-provinces.svg?raw'
+import { ReactNode, createContext, useContext, useEffect, useState } from 'react'
+import { AngolaGlobe } from './AngolaGlobe'
 import { AuthCarousel } from './AuthCarousel'
+import { AuthShowcase } from './AuthShowcase'
+
+/** Telemóvel (< 640px): globo e fotos passam a faixa visível no topo, em vez de fundo discreto. */
+const PHONE_QUERY = '(max-width: 639px)'
+
+function useIsPhone() {
+    const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches)
+    useEffect(() => {
+        const mq = window.matchMedia(PHONE_QUERY)
+        const onChange = (e: MediaQueryListEvent) => setIsPhone(e.matches)
+        setIsPhone(mq.matches)
+        mq.addEventListener('change', onChange)
+        return () => mq.removeEventListener('change', onChange)
+    }, [])
+    return isPhone
+}
 
 type AuthWidth = 'sm' | 'md' | 'lg'
 
@@ -22,46 +38,7 @@ interface AuthShellProps {
 /** Largura única para todos os cartões de autenticação (login, registos, reset). */
 export const AUTH_CARD_WIDTH = 'max-w-[28rem]'
 
-const MERIDIANS = [0, 1, 2, 3, 4, 5, 6, 7]
-const PARALLELS = [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75]
-
-/** Globo com graticula animada (meridianos a "rodar") e o mapa de Angola fixo à frente. */
-function AngolaGlobe() {
-    return (
-        <div className="angola-globe" aria-hidden="true">
-            <div className="angola-globe__shadow" />
-            <div className="angola-globe__sphere">
-                <svg className="angola-globe__graticule" viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet">
-                    {PARALLELS.map((p) => {
-                        const y = p * 100
-                        const half = Math.sqrt(Math.max(0, 100 * 100 - y * y))
-                        return <line key={p} x1={-half} y1={y} x2={half} y2={y} />
-                    })}
-                    {MERIDIANS.map((i) => (
-                        <circle
-                            key={i}
-                            className="angola-globe__meridian"
-                            cx="0"
-                            cy="0"
-                            r="99"
-                            style={{ animationDelay: `${(-i * 44) / MERIDIANS.length}s` }}
-                        />
-                    ))}
-                    <circle cx="0" cy="0" r="99" className="angola-globe__rim" />
-                </svg>
-
-                <div className="angola-globe__map">
-                    <div className="angola-map-svg" dangerouslySetInnerHTML={{ __html: angolaProvincesSvg }} />
-                </div>
-
-                <div className="angola-globe__shade" />
-                <div className="angola-globe__gloss" />
-            </div>
-        </div>
-    )
-}
-
-function BackdropLayers() {
+function BackdropLayers({ phone }: { phone: boolean }) {
     return (
         <div className="auth-map-layer pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
             <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-sky-50/70 to-blue-100/80" />
@@ -76,10 +53,11 @@ function BackdropLayers() {
             <div className="blob blob-1 w-[420px] h-[420px] -top-28 -right-28 opacity-15" />
             <div className="blob blob-2 w-[360px] h-[360px] -bottom-24 -left-20 opacity-10" />
 
-            <AngolaGlobe />
+            {/* Telemóvel: globo e fotos vão para a faixa visível (AuthShowcase) */}
+            {!phone && <AngolaGlobe />}
 
-            {/* Carrossel: à direita no desktop (≥ 1280px); fundo discreto em tablet/telemóvel */}
-            <AuthCarousel />
+            {/* Carrossel: à direita no desktop (≥ 1280px); fundo discreto em tablet */}
+            {!phone && <AuthCarousel />}
         </div>
     )
 }
@@ -97,6 +75,7 @@ interface AuthBackdropProps {
  * mudança de página fica suave (sem "piscar" do fundo).
  */
 export function AuthBackdrop({ children, className = '' }: AuthBackdropProps) {
+    const phone = useIsPhone()
     return (
         <BackdropContext.Provider value={true}>
             <div
@@ -104,8 +83,11 @@ export function AuthBackdrop({ children, className = '' }: AuthBackdropProps) {
                 // dvh: altura real em browsers móveis (barra de endereço dinâmica); ignorado onde não suportado
                 style={{ minHeight: '100dvh' }}
             >
-                <BackdropLayers />
-                <div className={`w-full ${AUTH_CARD_WIDTH} relative z-10 py-2 sm:py-3`}>{children}</div>
+                <BackdropLayers phone={phone} />
+                <div className={`w-full ${AUTH_CARD_WIDTH} relative z-10 py-2 sm:py-3`}>
+                    {phone && <AuthShowcase />}
+                    {children}
+                </div>
             </div>
         </BackdropContext.Provider>
     )

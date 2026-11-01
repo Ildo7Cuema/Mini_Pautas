@@ -1334,6 +1334,175 @@
   }
 }
 
+/* ---------- Faixa de destaque para telemóvel (< 640px): globo + fotos visíveis, em fluxo normal ---------- */
+.auth-showcase {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  height: 128px;
+  margin-bottom: 0.875rem;
+  animation: authPageEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Globo compacto: sobrepõe o posicionamento fixo/absoluto do fundo */
+.angola-globe.angola-globe--compact {
+  --globe-size: 124px;
+  position: relative;
+  top: auto;
+  left: auto;
+  margin: 0;
+  opacity: 1;
+  z-index: auto;
+  width: var(--globe-size);
+  height: var(--globe-size);
+}
+
+.angola-globe--compact .angola-globe__sphere {
+  box-shadow:
+    inset -8px -10px 22px rgba(30, 58, 138, 0.35),
+    inset 4px 5px 12px rgba(255, 255, 255, 0.7),
+    0 10px 22px -10px rgba(30, 64, 175, 0.5);
+}
+
+.angola-globe--compact .angola-globe__shadow {
+  filter: blur(10px);
+}
+
+.angola-globe--compact .angola-globe__map {
+  width: 80%;
+  filter: drop-shadow(0 3px 6px rgba(30, 58, 138, 0.25));
+}
+
+/* Nomes das províncias ilegíveis a este tamanho: ficam só os limites */
+.angola-globe--compact .angola-province-label,
+.angola-globe--compact .angola-province-leader {
+  display: none;
+}
+
+.auth-showcase__carousel {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 10px 26px -12px rgba(30, 64, 175, 0.45);
+  background: #dbeafe;
+  touch-action: pan-y;
+}
+
+.auth-showcase__slide {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+
+.auth-showcase__slide.is-active {
+  opacity: 1;
+  z-index: 1;
+}
+
+.auth-showcase__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 60% 25%;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.auth-showcase__slide.is-active .auth-showcase__img {
+  animation: authCarouselZoom 10s ease-out both;
+}
+
+.auth-showcase__shade {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.72) 0%, rgba(15, 23, 42, 0.18) 55%, rgba(15, 23, 42, 0) 100%);
+  pointer-events: none;
+}
+
+.auth-showcase__caption {
+  position: absolute;
+  left: 0.7rem;
+  right: 0.7rem;
+  bottom: 0.55rem;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  color: #fff;
+  pointer-events: none;
+}
+
+.auth-showcase__caption > * {
+  animation: authCarouselText 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-showcase__role {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: rgba(37, 99, 235, 0.85);
+}
+
+.auth-showcase__title {
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  font-weight: 700;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+
+.auth-showcase__dots {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 4;
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.auth-showcase__dots .auth-carousel__dot {
+  position: relative;
+}
+
+.auth-showcase__dots .auth-carousel__dot::after {
+  content: '';
+  position: absolute;
+  inset: -12px -4px;
+}
+
+@media (max-width: 359px) {
+  .auth-showcase {
+    grid-template-columns: 96px minmax(0, 1fr);
+    height: 112px;
+  }
+
+  .angola-globe.angola-globe--compact {
+    --globe-size: 96px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-showcase,
+  .auth-showcase__slide.is-active .auth-showcase__img,
+  .auth-showcase__caption > * {
+    animation: none !important;
+  }
+}
+
 /* ---------- Transição suave entre páginas de autenticação ---------- */
 .auth-page-enter {
   animation: authPageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
