@@ -3,6 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext'
 import { supabase } from '../../../lib/supabaseClient'
 import { gerarQuestionarioCenso } from '../api/censoAggregation'
 import { exportCensoQuestionarioPdf } from '../api/censoPdfExport'
+import { abrirJanelaPreviewPdf, fecharJanelaPreviewPdf } from '../api/censoPdfOutput'
 import {
     emptyInfraestrutura,
     loadCensoInfraestrutura,
@@ -193,6 +194,8 @@ export function CensoEscolarPage() {
             return
         }
         setAnoLectivo(ano)
+        // Abrir a aba do PDF já no clique (antes dos awaits) para não ser bloqueada como pop-up
+        const janelaPdf = abrirJanelaPreviewPdf()
         setLoading(true)
         setError(null)
         setSuccess(null)
@@ -230,13 +233,15 @@ export function CensoEscolarPage() {
             }
 
             try {
-                await exportCensoQuestionarioPdf(res.payload)
-                msg += ' PDF exportado no formato do modelo MED/INE.'
+                await exportCensoQuestionarioPdf(res.payload, janelaPdf)
+                msg += ' PDF aberto numa nova aba (formato do modelo MED/INE).'
             } catch (pdfErr: any) {
+                fecharJanelaPreviewPdf(janelaPdf)
                 msg += ` PDF não exportado: ${pdfErr?.message || 'erro desconhecido'}.`
             }
             setSuccess(msg)
         } catch (e: any) {
+            fecharJanelaPreviewPdf(janelaPdf)
             setError(e.message || 'Erro ao gerar o censo.')
         } finally {
             setLoading(false)
@@ -256,12 +261,14 @@ export function CensoEscolarPage() {
 
     const handleExportPdf = async () => {
         if (!resultado) return
+        const janelaPdf = abrirJanelaPreviewPdf()
         setExportingPdf(true)
         setError(null)
         try {
-            await exportCensoQuestionarioPdf(resultado.payload)
-            setSuccess('PDF exportado no formato do modelo oficial do Censo Escolar.')
+            await exportCensoQuestionarioPdf(resultado.payload, janelaPdf)
+            setSuccess('PDF aberto numa nova aba (formato do modelo oficial do Censo Escolar).')
         } catch (e: any) {
+            fecharJanelaPreviewPdf(janelaPdf)
             setError(e.message || 'Erro ao exportar PDF.')
         } finally {
             setExportingPdf(false)
@@ -497,7 +504,7 @@ export function CensoEscolarPage() {
                                         onClick={handleExportPdf}
                                         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                                     >
-                                        {exportingPdf ? 'A exportar PDF…' : 'Exportar PDF (modelo MED)'}
+                                        {exportingPdf ? 'A abrir PDF…' : 'Ver PDF (modelo MED)'}
                                     </button>
                                     <button
                                         type="button"

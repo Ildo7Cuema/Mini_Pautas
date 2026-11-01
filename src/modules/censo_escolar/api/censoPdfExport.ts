@@ -1,3 +1,4 @@
+import { mostrarPdfNoNavegador } from './censoPdfOutput'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { imageUrlToBase64 } from '../../../utils/imageUtils'
@@ -104,10 +105,13 @@ function footer(doc: jsPDF, pageWidth: number, pageHeight: number, page: number,
 /**
  * Gera PDF do questionário do Censo Escolar no formato dos modelos MED/INE.
  */
-export async function exportCensoQuestionarioPdf(payload: CensoQuestionarioPayload): Promise<void> {
+export async function exportCensoQuestionarioPdf(
+    payload: CensoQuestionarioPayload,
+    janela?: Window | null
+): Promise<void> {
     // Ensino Primário Geral: reprodução fiel do modelo oficial do MED (7 páginas)
     if (payload.cabecalho.modalidade_codigo === 'ensino_primario_geral') {
-        await exportCensoPrimarioGeralPdf(payload)
+        await exportCensoPrimarioGeralPdf(payload, janela)
         return
     }
 
@@ -390,5 +394,5 @@ export async function exportCensoQuestionarioPdf(payload: CensoQuestionarioPaylo
 
     const safeMod = payload.cabecalho.modalidade_codigo
     const safeAno = payload.cabecalho.ano_lectivo.replace(/[\/\\]/g, '-')
-    doc.save(`Censo_Escolar_${safeMod}_${safeAno}.pdf`)
+    mostrarPdfNoNavegador(doc, `Censo_Escolar_${safeMod}_${safeAno}.pdf`, janela)
 }

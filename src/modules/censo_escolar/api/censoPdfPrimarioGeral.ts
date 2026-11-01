@@ -8,6 +8,7 @@
  *
  * Coordenadas em pontos (pt), medidas directamente do PDF oficial.
  */
+import { mostrarPdfNoNavegador } from './censoPdfOutput'
 import jsPDF from 'jspdf'
 import { imageUrlToBase64 } from '../../../utils/imageUtils'
 import {
@@ -1390,7 +1391,10 @@ function page7(doc: jsPDF, _ctx: Ctx) {
 /* Entrada                                                             */
 /* ------------------------------------------------------------------ */
 
-export async function exportCensoPrimarioGeralPdf(payload: CensoQuestionarioPayload): Promise<void> {
+export async function exportCensoPrimarioGeralPdf(
+    payload: CensoQuestionarioPayload,
+    janela?: Window | null
+): Promise<void> {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
 
     let logo: string | null = null
@@ -1416,5 +1420,5 @@ export async function exportCensoPrimarioGeralPdf(payload: CensoQuestionarioPayl
     })
 
     const safeAno = ctx.ano.replace(/[\/\\]/g, '-')
-    doc.save(`Censo_Escolar_${payload.cabecalho.modalidade_codigo}_${safeAno}.pdf`)
+    mostrarPdfNoNavegador(doc, `Censo_Escolar_${payload.cabecalho.modalidade_codigo}_${safeAno}.pdf`, janela)
 }
