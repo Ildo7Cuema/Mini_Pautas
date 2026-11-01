@@ -46,8 +46,12 @@ ALTER TABLE professores
 ALTER TABLE professores
     ADD COLUMN IF NOT EXISTS formacao_diferenciada_sala BOOLEAN DEFAULT false;
 
+ALTER TABLE professores
+    ADD COLUMN IF NOT EXISTS participou_dpc_12_meses BOOLEAN DEFAULT false;
+
 COMMENT ON COLUMN professores.formacao_pedagogica IS 'Possui formação pedagógica (Censo Escolar)';
 COMMENT ON COLUMN professores.nacionalidade_censo IS 'Nacional ou estrangeiro para agregação do censo';
+COMMENT ON COLUMN professores.participou_dpc_12_meses IS 'Participou em Desenvolvimento Profissional Contínuo (DPC) nos últimos 12 meses';
 
 -- Perfil institucional estável da escola (ficha-mãe, campos essenciais)
 CREATE TABLE IF NOT EXISTS censo_escola_perfil (

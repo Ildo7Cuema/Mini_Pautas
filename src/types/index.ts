@@ -72,6 +72,7 @@ export interface Professor {
     nacionalidade_censo?: 'nacional' | 'estrangeiro';
     interprete_lingua_gestual?: boolean;
     formacao_diferenciada_sala?: boolean;
+    participou_dpc_12_meses?: boolean;
 }
 
 export interface Turma {

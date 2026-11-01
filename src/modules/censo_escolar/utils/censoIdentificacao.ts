@@ -13,6 +13,7 @@ import { CensoIdentificacaoMed, ModalidadeCensoCodigo } from '../types'
 interface CensoConfig {
     codigo_escola_med?: string
     ids_questionario?: Record<string, string>
+    vagas_classe_ingresso?: Record<string, number>
 }
 
 function chaveQuestionario(anoLectivo: string, modalidade: ModalidadeCensoCodigo): string {
@@ -31,9 +32,12 @@ export function lerIdentificacaoCenso(
     modalidade: ModalidadeCensoCodigo
 ): CensoIdentificacaoMed {
     const censo = lerCensoConfig(configuracoes)
+    const chave = chaveQuestionario(anoLectivo, modalidade)
+    const vagas = censo.vagas_classe_ingresso?.[chave]
     return {
         codigo_escola_med: censo.codigo_escola_med || '',
-        id_questionario: censo.ids_questionario?.[chaveQuestionario(anoLectivo, modalidade)] || '',
+        id_questionario: censo.ids_questionario?.[chave] || '',
+        vagas_classe_ingresso: typeof vagas === 'number' ? vagas : null,
     }
 }
 
@@ -56,12 +60,18 @@ export async function guardarIdentificacaoCenso(params: {
     if (idNovo) ids[chave] = idNovo
     else delete ids[chave]
 
+    const vagasMap = { ...(censoAtual.vagas_classe_ingresso || {}) }
+    const vagas = params.identificacao.vagas_classe_ingresso
+    if (typeof vagas === 'number' && vagas >= 0) vagasMap[chave] = vagas
+    else delete vagasMap[chave]
+
     const novaConfig: Record<string, unknown> = {
         ...base,
         censo: {
             ...censoAtual,
             codigo_escola_med: params.identificacao.codigo_escola_med.trim(),
             ids_questionario: ids,
+            vagas_classe_ingresso: vagasMap,
         },
     }
 

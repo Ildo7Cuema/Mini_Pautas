@@ -56,6 +56,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
         grau_academico: '',
         formacao_pedagogica: '' as '' | 'sim' | 'nao',
         nacionalidade_censo: '' as '' | 'nacional' | 'estrangeiro',
+        formacao_diferenciada_sala: '' as '' | 'sim' | 'nao',
+        interprete_lingua_gestual: '' as '' | 'sim' | 'nao',
+        participou_dpc_12_meses: '' as '' | 'sim' | 'nao',
         area_formacao: '',
         especialidade: '',
         data_inicio_funcoes: '',
@@ -159,6 +162,18 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                         : formData.formacao_pedagogica === 'nao' ? false
                             : null,
                 nacionalidade_censo: optionalTextOrNull(formData.nacionalidade_censo),
+                formacao_diferenciada_sala:
+                    formData.formacao_diferenciada_sala === 'sim' ? true
+                        : formData.formacao_diferenciada_sala === 'nao' ? false
+                            : null,
+                interprete_lingua_gestual:
+                    formData.interprete_lingua_gestual === 'sim' ? true
+                        : formData.interprete_lingua_gestual === 'nao' ? false
+                            : null,
+                participou_dpc_12_meses:
+                    formData.participou_dpc_12_meses === 'sim' ? true
+                        : formData.participou_dpc_12_meses === 'nao' ? false
+                            : null,
                 area_formacao: optionalTextOrNull(formData.area_formacao),
                 especialidade: optionalTextOrNull(formData.especialidade),
                 data_inicio_funcoes: optionalTextOrNull(formData.data_inicio_funcoes),
@@ -234,6 +249,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
             grau_academico: '',
             formacao_pedagogica: '',
             nacionalidade_censo: '',
+            formacao_diferenciada_sala: '',
+            interprete_lingua_gestual: '',
+            participou_dpc_12_meses: '',
             area_formacao: '',
             especialidade: '',
             data_inicio_funcoes: '',
@@ -271,6 +289,18 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                     : professor.formacao_pedagogica === false ? 'nao'
                         : '',
             nacionalidade_censo: professor.nacionalidade_censo || '',
+            formacao_diferenciada_sala:
+                professor.formacao_diferenciada_sala === true ? 'sim'
+                    : professor.formacao_diferenciada_sala === false ? 'nao'
+                        : '',
+            interprete_lingua_gestual:
+                professor.interprete_lingua_gestual === true ? 'sim'
+                    : professor.interprete_lingua_gestual === false ? 'nao'
+                        : '',
+            participou_dpc_12_meses:
+                professor.participou_dpc_12_meses === true ? 'sim'
+                    : professor.participou_dpc_12_meses === false ? 'nao'
+                        : '',
             area_formacao: professor.area_formacao || '',
             especialidade: professor.especialidade || '',
             data_inicio_funcoes: professor.data_inicio_funcoes || '',
@@ -781,6 +811,51 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                                                     <option value="">Não indicado</option>
                                                     <option value="nacional">Nacional</option>
                                                     <option value="estrangeiro">Estrangeiro</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Formação diferenciada em sala (Censo)</label>
+                                                <select
+                                                    value={formData.formacao_diferenciada_sala}
+                                                    onChange={(e) => setFormData({
+                                                        ...formData,
+                                                        formacao_diferenciada_sala: e.target.value as '' | 'sim' | 'nao',
+                                                    })}
+                                                    className="form-input min-h-touch"
+                                                >
+                                                    <option value="">Não indicado</option>
+                                                    <option value="sim">Sim</option>
+                                                    <option value="nao">Não</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Intérprete de Língua Gestual Angolana (Censo)</label>
+                                                <select
+                                                    value={formData.interprete_lingua_gestual}
+                                                    onChange={(e) => setFormData({
+                                                        ...formData,
+                                                        interprete_lingua_gestual: e.target.value as '' | 'sim' | 'nao',
+                                                    })}
+                                                    className="form-input min-h-touch"
+                                                >
+                                                    <option value="">Não indicado</option>
+                                                    <option value="sim">Sim</option>
+                                                    <option value="nao">Não</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="form-label">DPC nos últimos 12 meses (Censo)</label>
+                                                <select
+                                                    value={formData.participou_dpc_12_meses}
+                                                    onChange={(e) => setFormData({
+                                                        ...formData,
+                                                        participou_dpc_12_meses: e.target.value as '' | 'sim' | 'nao',
+                                                    })}
+                                                    className="form-input min-h-touch"
+                                                >
+                                                    <option value="">Não indicado</option>
+                                                    <option value="sim">Sim</option>
+                                                    <option value="nao">Não</option>
                                                 </select>
                                             </div>
                                         </div>

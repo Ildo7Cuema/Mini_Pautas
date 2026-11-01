@@ -85,12 +85,21 @@ export interface ContagemNacionalidadeMF {
     estrangeiros: ContagemMF
 }
 
-/** Secção 9 do questionário Ensino Primário Geral: formação × nacionalidade × sexo. */
+/** Formação × nacionalidade × sexo (secção 9 Primário / 8 I Ciclo). */
 export interface ProfessoresCruzamento {
     com_formacao_pedagogica: ContagemNacionalidadeMF
     sem_formacao_pedagogica: ContagemNacionalidadeMF
     formacao_diferenciada: ContagemNacionalidadeMF
     interpretes_lga: ContagemNacionalidadeMF
+    /** Desenvolvimento Profissional Contínuo nos últimos 12 meses (I/II Ciclo). */
+    dpc_12_meses?: ContagemNacionalidadeMF
+}
+
+/** Informações da classe de ingresso (1ª no Primário, 7ª no I Ciclo, 10ª no II Ciclo). */
+export interface CensoInfoClasseIngresso {
+    classe: string
+    vagas: number | null
+    primeira_vez: ContagemMF
 }
 
 export interface AproveitamentoClasse {
@@ -148,6 +157,8 @@ export interface CensoIdentificacaoMed {
     codigo_escola_med: string
     /** ID do questionário (por ano lectivo + modalidade) */
     id_questionario: string
+    /** Vagas disponibilizadas na classe de ingresso (1ª / 7ª / 10ª conforme modalidade) */
+    vagas_classe_ingresso?: number | null
 }
 
 export interface CensoCabecalho {
@@ -178,6 +189,7 @@ export interface CensoQuestionarioPayload {
     professores_qualificacao: ProfessoresQualificacao
     professores_cruzamento?: ProfessoresCruzamento
     aproveitamento_ano_anterior: AproveitamentoClasse[]
+    info_classe_ingresso?: CensoInfoClasseIngresso
     totais: {
         alunos: number
         turmas: number

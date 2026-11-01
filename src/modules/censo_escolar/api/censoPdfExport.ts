@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable'
 import { imageUrlToBase64 } from '../../../utils/imageUtils'
 import { LABELS_DEFICIENCIA, CensoQuestionarioPayload } from '../types'
 import { exportCensoPrimarioGeralPdf } from './censoPdfPrimarioGeral'
+import { exportCensoICicloSecundarioPdf } from './censoPdfICicloSecundario'
 
 const BLUE: [number, number, number] = [0, 112, 192]
 const BLUE_LIGHT: [number, number, number] = [217, 226, 243]
@@ -112,6 +113,11 @@ export async function exportCensoQuestionarioPdf(
     // Ensino Primário Geral: reprodução fiel do modelo oficial do MED (7 páginas)
     if (payload.cabecalho.modalidade_codigo === 'ensino_primario_geral') {
         await exportCensoPrimarioGeralPdf(payload, janela)
+        return
+    }
+    // I Ciclo do Ensino Secundário Geral: reprodução fiel do modelo oficial do MED (5 páginas)
+    if (payload.cabecalho.modalidade_codigo === 'i_ciclo_secundario_geral') {
+        await exportCensoICicloSecundarioPdf(payload, janela)
         return
     }
 

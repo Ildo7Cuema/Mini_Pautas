@@ -138,27 +138,35 @@ export async function gerarQuestionarioCenso(params: {
         genero: string | null
         data_nascimento: string | null
         tipo_deficiencia: string | null
+        primeira_matricula_na_classe: boolean | null
         ativo: boolean | null
     }> = []
 
     if (turmaIds.length > 0) {
         const { data: alunosData, error: alunosError } = await supabase
             .from('alunos')
-            .select('id, turma_id, genero, data_nascimento, tipo_deficiencia, ativo')
+            .select('id, turma_id, genero, data_nascimento, tipo_deficiencia, primeira_matricula_na_classe, ativo')
             .in('turma_id', turmaIds)
             .eq('ativo', true)
 
         if (alunosError) {
-            // Coluna tipo_deficiencia pode ainda não existir se migration não aplicada
-            if (alunosError.message?.includes('tipo_deficiencia')) {
-                lacunas.push('Campo tipo_deficiencia ainda não está na base de dados. Aplique a migration do censo.')
+            // Colunas do censo podem ainda não existir se a migration não estiver aplicada
+            if (
+                alunosError.message?.includes('tipo_deficiencia') ||
+                alunosError.message?.includes('primeira_matricula')
+            ) {
+                lacunas.push('Campos do censo nos alunos ainda não estão na base de dados. Aplique a migration do censo.')
                 const { data: fallback, error: fbErr } = await supabase
                     .from('alunos')
                     .select('id, turma_id, genero, data_nascimento, ativo')
                     .in('turma_id', turmaIds)
                     .eq('ativo', true)
                 if (fbErr) throw fbErr
-                alunos = (fallback || []).map(a => ({ ...a, tipo_deficiencia: null }))
+                alunos = (fallback || []).map(a => ({
+                    ...a,
+                    tipo_deficiencia: null,
+                    primeira_matricula_na_classe: null,
+                }))
             } else {
                 throw alunosError
             }
@@ -277,6 +285,7 @@ export async function gerarQuestionarioCenso(params: {
         nacionalidade_censo: string | null
         interprete_lingua_gestual: boolean | null
         formacao_diferenciada_sala: boolean | null
+        participou_dpc_12_meses: boolean | null
         ativo: boolean | null
         nacionalidade: string | null
     }
@@ -284,7 +293,7 @@ export async function gerarQuestionarioCenso(params: {
     let profs: ProfRow[] = []
     const { data: professores, error: profError } = await supabase
         .from('professores')
-        .select('id, genero, grau_academico, formacao_pedagogica, nacionalidade_censo, interprete_lingua_gestual, formacao_diferenciada_sala, ativo, nacionalidade')
+        .select('id, genero, grau_academico, formacao_pedagogica, nacionalidade_censo, interprete_lingua_gestual, formacao_diferenciada_sala, participou_dpc_12_meses, ativo, nacionalidade')
         .eq('escola_id', params.escolaId)
         .eq('ativo', true)
 
@@ -302,9 +311,13 @@ export async function gerarQuestionarioCenso(params: {
             nacionalidade_censo: null,
             interprete_lingua_gestual: null,
             formacao_diferenciada_sala: null,
+            participou_dpc_12_meses: null,
         }))
     } else {
-        profs = professores || []
+        profs = (professores || []).map(p => ({
+            ...p,
+            participou_dpc_12_meses: (p as any).participou_dpc_12_meses ?? null,
+        }))
     }
     const nivelMap = new Map<string, ProfessoresPorNivelAcademico>()
     const qualificacao: ProfessoresQualificacao = {
@@ -322,6 +335,7 @@ export async function gerarQuestionarioCenso(params: {
         sem_formacao_pedagogica: emptyNac(),
         formacao_diferenciada: emptyNac(),
         interpretes_lga: emptyNac(),
+        dpc_12_meses: emptyNac(),
     }
 
     let profsSemGenero = 0
@@ -356,6 +370,27 @@ export async function gerarQuestionarioCenso(params: {
             else if (p.formacao_pedagogica === false) addSexo(cruzamento.sem_formacao_pedagogica[nacKey], sexo)
             if (p.formacao_diferenciada_sala) addSexo(cruzamento.formacao_diferenciada[nacKey], sexo)
             if (p.interprete_lingua_gestual) addSexo(cruzamento.interpretes_lga[nacKey], sexo)
+            if (p.participou_dpc_12_meses) addSexo(cruzamento.dpc_12_meses![nacKey], sexo)
+        }
+    }
+
+    const classeIngresso =
+        params.modalidadeCodigo === 'ensino_primario_geral'
+            ? '1ª Classe'
+            : params.modalidadeCodigo === 'i_ciclo_secundario_geral'
+              ? '7ª Classe'
+              : '10ª Classe'
+    const infoClasseIngresso = {
+        classe: classeIngresso,
+        vagas: params.identificacao?.vagas_classe_ingresso ?? null,
+        primeira_vez: emptyMF(),
+    }
+    for (const aluno of alunos) {
+        const turma = turmaById.get(aluno.turma_id)
+        if (!turma || turma.classe !== classeIngresso) continue
+        if (aluno.genero !== 'M' && aluno.genero !== 'F') continue
+        if ((aluno as any).primeira_matricula_na_classe) {
+            addSexo(infoClasseIngresso.primeira_vez, aluno.genero)
         }
     }
 
@@ -448,6 +483,7 @@ export async function gerarQuestionarioCenso(params: {
         professores_qualificacao: qualificacao,
         professores_cruzamento: cruzamento,
         aproveitamento_ano_anterior: aproveitamento,
+        info_classe_ingresso: infoClasseIngresso,
         totais: {
             alunos: totalAlunos,
             turmas: turmasUnicas.size,

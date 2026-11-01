@@ -68,6 +68,7 @@ export function CensoEscolarPage() {
     const [tab, setTab] = useState<'gerar' | 'identificacao' | 'infra' | 'resultado'>('gerar')
     const [codigoEscolaMed, setCodigoEscolaMed] = useState('')
     const [idQuestionario, setIdQuestionario] = useState('')
+    const [vagasClasseIngresso, setVagasClasseIngresso] = useState<number | null>(null)
     const [savingIdent, setSavingIdent] = useState(false)
 
     const tipoEscolaInfo = useMemo(() => {
@@ -117,6 +118,7 @@ export function CensoEscolarPage() {
         const ident = lerIdentificacaoCenso(escolaProfile?.configuracoes, anoLectivo, modalidade)
         setCodigoEscolaMed(ident.codigo_escola_med)
         setIdQuestionario(ident.id_questionario)
+        setVagasClasseIngresso(ident.vagas_classe_ingresso ?? null)
     }, [escolaProfile?.configuracoes, anoLectivo, modalidade])
 
     // Garantir que a modalidade seleccionada é válida para o tipo da escola
@@ -175,7 +177,11 @@ export function CensoEscolarPage() {
                 configuracoesActuais: escolaProfile?.configuracoes,
                 anoLectivo: ano,
                 modalidade,
-                identificacao: { codigo_escola_med: codigoEscolaMed, id_questionario: idQuestionario },
+                identificacao: {
+                    codigo_escola_med: codigoEscolaMed,
+                    id_questionario: idQuestionario,
+                    vagas_classe_ingresso: vagasClasseIngresso,
+                },
             })
             await refreshProfile()
             setSuccess('Identificação do censo guardada.')
@@ -208,7 +214,11 @@ export function CensoEscolarPage() {
                 modalidadeCodigo: modalidade,
                 dataReferenciaIdade: dataRef,
                 infraestrutura: infraAno,
-                identificacao: { codigo_escola_med: codigoEscolaMed, id_questionario: idQuestionario },
+                identificacao: {
+                    codigo_escola_med: codigoEscolaMed,
+                    id_questionario: idQuestionario,
+                    vagas_classe_ingresso: vagasClasseIngresso,
+                },
             })
             setResultado(res)
             setTab('resultado')
@@ -432,6 +442,31 @@ export function CensoEscolarPage() {
                             />
                             <span className="mt-1 block text-xs text-slate-500">
                                 Específico de: {anoLectivo || '—'} · {modalidadeDef?.nome || modalidade}.
+                            </span>
+                        </label>
+                        <label className="block text-sm md:col-span-2">
+                            <span className="font-medium text-slate-700">
+                                Vagas da classe de ingresso
+                                {modalidade === 'ensino_primario_geral'
+                                    ? ' (1ª Classe)'
+                                    : modalidade === 'i_ciclo_secundario_geral'
+                                      ? ' (7ª Classe)'
+                                      : ' (10ª Classe)'}
+                            </span>
+                            <input
+                                type="number"
+                                min={0}
+                                className="mt-1 w-full max-w-xs rounded-lg border border-slate-200 px-3 py-2"
+                                value={vagasClasseIngresso ?? ''}
+                                onChange={e =>
+                                    setVagasClasseIngresso(
+                                        e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)
+                                    )
+                                }
+                                placeholder="Número de vagas"
+                            />
+                            <span className="mt-1 block text-xs text-slate-500">
+                                Entra automaticamente na secção de informações específicas da classe de ingresso no PDF.
                             </span>
                         </label>
                     </div>
