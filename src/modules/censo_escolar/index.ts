@@ -1,5 +1,0 @@
-export { CensoEscolarPage } from './components/CensoEscolarPage'
-export { MODALIDADES_MVP, getModalidade } from './catalog'
-export { gerarQuestionarioCenso } from './api/censoAggregation'
-export { exportCensoQuestionarioPdf } from './api/censoPdfExport'
-export * from './types'

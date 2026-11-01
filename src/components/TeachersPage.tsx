@@ -54,8 +54,6 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
         numero_agente: '',
         categoria_docente: '',
         grau_academico: '',
-        formacao_pedagogica: '' as '' | 'sim' | 'nao',
-        nacionalidade_censo: '' as '' | 'nacional' | 'estrangeiro',
         area_formacao: '',
         especialidade: '',
         data_inicio_funcoes: '',
@@ -154,11 +152,6 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                 numero_agente: optionalTextOrNull(formData.numero_agente),
                 categoria_docente: optionalTextOrNull(formData.categoria_docente),
                 grau_academico: optionalTextOrNull(formData.grau_academico),
-                formacao_pedagogica:
-                    formData.formacao_pedagogica === 'sim' ? true
-                        : formData.formacao_pedagogica === 'nao' ? false
-                            : null,
-                nacionalidade_censo: optionalTextOrNull(formData.nacionalidade_censo),
                 area_formacao: optionalTextOrNull(formData.area_formacao),
                 especialidade: optionalTextOrNull(formData.especialidade),
                 data_inicio_funcoes: optionalTextOrNull(formData.data_inicio_funcoes),
@@ -232,8 +225,6 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
             numero_agente: '',
             categoria_docente: '',
             grau_academico: '',
-            formacao_pedagogica: '',
-            nacionalidade_censo: '',
             area_formacao: '',
             especialidade: '',
             data_inicio_funcoes: '',
@@ -266,11 +257,6 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
             numero_agente: professor.numero_agente || '',
             categoria_docente: professor.categoria_docente || '',
             grau_academico: professor.grau_academico || '',
-            formacao_pedagogica:
-                professor.formacao_pedagogica === true ? 'sim'
-                    : professor.formacao_pedagogica === false ? 'nao'
-                        : '',
-            nacionalidade_censo: professor.nacionalidade_censo || '',
             area_formacao: professor.area_formacao || '',
             especialidade: professor.especialidade || '',
             data_inicio_funcoes: professor.data_inicio_funcoes || '',
@@ -750,39 +736,6 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                                                 value={formData.data_inicio_funcoes}
                                                 onChange={(e) => setFormData({ ...formData, data_inicio_funcoes: e.target.value })}
                                             />
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="form-label">Formação pedagógica (Censo)</label>
-                                                <select
-                                                    value={formData.formacao_pedagogica}
-                                                    onChange={(e) => setFormData({
-                                                        ...formData,
-                                                        formacao_pedagogica: e.target.value as '' | 'sim' | 'nao',
-                                                    })}
-                                                    className="form-input min-h-touch"
-                                                >
-                                                    <option value="">Não indicado</option>
-                                                    <option value="sim">Com formação pedagógica</option>
-                                                    <option value="nao">Sem formação pedagógica</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="form-label">Nacionalidade (Censo)</label>
-                                                <select
-                                                    value={formData.nacionalidade_censo}
-                                                    onChange={(e) => setFormData({
-                                                        ...formData,
-                                                        nacionalidade_censo: e.target.value as '' | 'nacional' | 'estrangeiro',
-                                                    })}
-                                                    className="form-input min-h-touch"
-                                                >
-                                                    <option value="">Não indicado</option>
-                                                    <option value="nacional">Nacional</option>
-                                                    <option value="estrangeiro">Estrangeiro</option>
-                                                </select>
-                                            </div>
                                         </div>
 
                                         <Input

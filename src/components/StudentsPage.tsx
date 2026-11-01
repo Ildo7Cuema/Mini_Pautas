@@ -49,6 +49,8 @@ interface Aluno {
     classe_anterior?: string
     observacoes_academicas?: string
     tipo_deficiencia?: string
+    primeira_matricula_na_classe?: boolean
+    frequentou_pre_escolar?: boolean
     frequencia_anual?: number
     tipo_exame?: 'Nacional' | 'Extraordinário' | 'Recurso'
     turma?: {
@@ -95,6 +97,8 @@ const initialFormData = {
     classe_anterior: '',
     observacoes_academicas: '',
     tipo_deficiencia: 'nenhuma',
+    primeira_matricula_na_classe: false,
+    frequentou_pre_escolar: false,
     frequencia_anual: '',
     tipo_exame: '',
     // Conta de Acesso (ALUNO)
@@ -220,6 +224,8 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                     classe_anterior,
                     observacoes_academicas,
                     tipo_deficiencia,
+                    primeira_matricula_na_classe,
+                    frequentou_pre_escolar,
                     frequencia_anual,
                     tipo_exame,
                     turmas(nome)
@@ -344,6 +350,8 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                 classe_anterior: formData.classe_anterior || null,
                 observacoes_academicas: formData.observacoes_academicas || null,
                 tipo_deficiencia: formData.tipo_deficiencia || 'nenhuma',
+                primeira_matricula_na_classe: !!formData.primeira_matricula_na_classe,
+                frequentou_pre_escolar: !!formData.frequentou_pre_escolar,
                 ano_ingresso: formData.ano_ingresso ? parseInt(formData.ano_ingresso) : null,
                 frequencia_anual: formData.frequencia_anual ? parseFloat(formData.frequencia_anual) : null,
                 tipo_exame: formData.tipo_exame || null,
@@ -471,6 +479,8 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
             classe_anterior: aluno.classe_anterior || '',
             observacoes_academicas: aluno.observacoes_academicas || '',
             tipo_deficiencia: aluno.tipo_deficiencia || 'nenhuma',
+            primeira_matricula_na_classe: !!aluno.primeira_matricula_na_classe,
+            frequentou_pre_escolar: !!aluno.frequentou_pre_escolar,
             frequencia_anual: aluno.frequencia_anual?.toString() || '',
             tipo_exame: aluno.tipo_exame || '',
             // Account fields - default to false/empty for editing existing students
@@ -508,6 +518,8 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                 ...studentData,
                 genero: formData.genero || null,
                 tipo_deficiencia: formData.tipo_deficiencia || 'nenhuma',
+                primeira_matricula_na_classe: !!formData.primeira_matricula_na_classe,
+                frequentou_pre_escolar: !!formData.frequentou_pre_escolar,
                 ano_ingresso: formData.ano_ingresso ? parseInt(formData.ano_ingresso) : null,
                 frequencia_anual: formData.frequencia_anual ? parseFloat(formData.frequencia_anual) : null,
                 tipo_exame: formData.tipo_exame || null,
@@ -1109,6 +1121,29 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                                 <option value="outra">Outra</option>
                             </select>
                         </div>
+
+                        <label className="flex items-start gap-2 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={!!formData.primeira_matricula_na_classe}
+                                onChange={e =>
+                                    setFormData({ ...formData, primeira_matricula_na_classe: e.target.checked })
+                                }
+                            />
+                            <span>Matriculado pela primeira vez nesta classe (Censo Escolar — 1ª classe / ingresso)</span>
+                        </label>
+                        <label className="flex items-start gap-2 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={!!formData.frequentou_pre_escolar}
+                                onChange={e =>
+                                    setFormData({ ...formData, frequentou_pre_escolar: e.target.checked })
+                                }
+                            />
+                            <span>Frequentou o Ensino Pré-Escolar antes da 1ª classe (Censo Escolar)</span>
+                        </label>
 
                         <div>
                             <label className="form-label">Observações Académicas</label>
