@@ -11,8 +11,10 @@ import {
     saveCensoQuestionario,
 } from '../api/censoPersistence'
 import {
+    CensoDadosComplementares,
     CensoGeracaoResultado,
     CensoInfraestrutura,
+    CLASSES_MANUAIS_PRIMARIO,
     LABELS_DEFICIENCIA,
     ModalidadeCensoCodigo,
 } from '../types'
@@ -21,6 +23,12 @@ import {
     normalizeAnoLectivoInput,
     suggestAnoLectivoCenso,
 } from '../utils/ageBands'
+import {
+    chaveManual,
+    emptyDadosComplementares,
+    guardarDadosComplementares,
+    lerDadosComplementares,
+} from '../utils/censoComplementares'
 import { guardarIdentificacaoCenso, lerIdentificacaoCenso } from '../utils/censoIdentificacao'
 import {
     defaultModalidadeForTipo,
@@ -65,11 +73,14 @@ export function CensoEscolarPage() {
     const [exportingPdf, setExportingPdf] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
-    const [tab, setTab] = useState<'gerar' | 'identificacao' | 'infra' | 'resultado'>('gerar')
+    const [tab, setTab] = useState<'gerar' | 'identificacao' | 'mapa' | 'infra' | 'resultado'>('gerar')
     const [codigoEscolaMed, setCodigoEscolaMed] = useState('')
     const [idQuestionario, setIdQuestionario] = useState('')
     const [vagasClasseIngresso, setVagasClasseIngresso] = useState<number | null>(null)
     const [savingIdent, setSavingIdent] = useState(false)
+    const [complementares, setComplementares] = useState<CensoDadosComplementares>(emptyDadosComplementares())
+    const [savingMapa, setSavingMapa] = useState(false)
+    const [turmasAno, setTurmasAno] = useState<Array<{ id: string; nome: string; turno: string | null }>>([])
 
     const tipoEscolaInfo = useMemo(() => {
         return resolveTipoEscolaCenso({
@@ -119,7 +130,29 @@ export function CensoEscolarPage() {
         setCodigoEscolaMed(ident.codigo_escola_med)
         setIdQuestionario(ident.id_questionario)
         setVagasClasseIngresso(ident.vagas_classe_ingresso ?? null)
+        setComplementares(lerDadosComplementares(escolaProfile?.configuracoes, anoLectivo, modalidade))
     }, [escolaProfile?.configuracoes, anoLectivo, modalidade])
+
+    useEffect(() => {
+        if (!escolaId || !anoLectivo) return
+        const ano = normalizeAnoLectivoInput(anoLectivo) || anoLectivo
+        ;(async () => {
+            const { data } = await supabase
+                .from('turmas')
+                .select('id, nome, turno, trimestre')
+                .eq('escola_id', escolaId)
+                .eq('ano_lectivo', ano)
+            const seen = new Set<string>()
+            const list: Array<{ id: string; nome: string; turno: string | null }> = []
+            for (const t of data || []) {
+                const k = `${t.nome}|${t.turno || ''}`
+                if (seen.has(k)) continue
+                seen.add(k)
+                list.push({ id: t.id, nome: t.nome, turno: t.turno })
+            }
+            setTurmasAno(list)
+        })()
+    }, [escolaId, anoLectivo])
 
     // Garantir que a modalidade seleccionada é válida para o tipo da escola
     useEffect(() => {
@@ -192,6 +225,29 @@ export function CensoEscolarPage() {
         }
     }
 
+    const handleSaveMapa = async () => {
+        if (!escolaId) return
+        const ano = normalizeAnoLectivoInput(anoLectivo) || anoLectivo
+        setSavingMapa(true)
+        setError(null)
+        setSuccess(null)
+        try {
+            await guardarDadosComplementares({
+                escolaId,
+                configuracoesActuais: escolaProfile?.configuracoes,
+                anoLectivo: ano,
+                modalidade,
+                dados: complementares,
+            })
+            await refreshProfile()
+            setSuccess('Dados do mapa guardados.')
+        } catch (e: any) {
+            setError(e.message || 'Erro ao guardar os dados do mapa.')
+        } finally {
+            setSavingMapa(false)
+        }
+    }
+
     const handleGerar = async () => {
         if (!escolaId) return
         const ano = normalizeAnoLectivoInput(anoLectivo)
@@ -219,6 +275,7 @@ export function CensoEscolarPage() {
                     id_questionario: idQuestionario,
                     vagas_classe_ingresso: vagasClasseIngresso,
                 },
+                complementares,
             })
             setResultado(res)
             setTab('resultado')
@@ -321,6 +378,7 @@ export function CensoEscolarPage() {
                 {([
                     ['gerar', 'Gerar'],
                     ['identificacao', 'Identificação'],
+                    ['mapa', 'Dados do mapa'],
                     ['infra', 'Infraestrutura'],
                     ['resultado', 'Resultado'],
                 ] as const).map(([id, label]) => (
@@ -480,6 +538,243 @@ export function CensoEscolarPage() {
                     </button>
                 </div>
             )}
+            {tab === 'mapa' && (
+                <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-5">
+                    <div>
+                        <h2 className="text-lg font-semibold text-slate-900">
+                            Dados do mapa que não estão no cadastro operacional
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                            Estes números entram automaticamente no PDF. As vagas da classe de ingresso ficam em
+                            Identificação; 1ª vez / pré-escolar e formação diferenciada / LGA preenchem-se nos
+                            cadastros de alunos e professores.
+                        </p>
+                    </div>
+
+                    <section className="space-y-2">
+                        <h3 className="font-medium text-slate-800">Turmas ao ar livre</h3>
+                        {turmasAno.length === 0 ? (
+                            <p className="text-sm text-slate-500">Não há turmas neste ano lectivo.</p>
+                        ) : (
+                            <ul className="grid gap-2 sm:grid-cols-2">
+                                {turmasAno.map(t => (
+                                    <li key={t.id}>
+                                        <label className="flex items-center gap-2 text-sm text-slate-700">
+                                            <input
+                                                type="checkbox"
+                                                checked={!!complementares.turmas_ar_livre?.[t.id]}
+                                                onChange={e =>
+                                                    setComplementares({
+                                                        ...complementares,
+                                                        turmas_ar_livre: {
+                                                            ...(complementares.turmas_ar_livre || {}),
+                                                            [t.id]: e.target.checked,
+                                                        },
+                                                    })
+                                                }
+                                            />
+                                            <span>
+                                                {t.nome}
+                                                {t.turno ? ` · ${t.turno}` : ''}
+                                            </span>
+                                        </label>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+
+                    {modalidade === 'ensino_primario_geral' && (
+                        <>
+                            <section className="space-y-3">
+                                <h3 className="font-medium text-slate-800">Manuais (professores e alunos)</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-xs">
+                                        <thead className="bg-slate-50 text-slate-600">
+                                            <tr>
+                                                <th className="px-2 py-1 text-left">Manual</th>
+                                                <th className="px-2 py-1 text-left">Destino</th>
+                                                {CLASSES_MANUAIS_PRIMARIO.map(c => (
+                                                    <th key={c} className="px-1 py-1">
+                                                        {c.replace(' Classe', '').replace('PRAEER ', 'P.')}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(
+                                                [
+                                                    ['matematica', 'Matemática'],
+                                                    ['lingua_portuguesa', 'Língua portuguesa'],
+                                                    ['braille', 'Braille'],
+                                                    ['outros', 'Outros'],
+                                                ] as const
+                                            ).flatMap(([grupo, label]) =>
+                                                (['professor', 'aluno'] as const).map(ben => (
+                                                    <tr key={`${grupo}-${ben}`} className="border-t border-slate-100">
+                                                        <td className="px-2 py-1 font-medium">{label}</td>
+                                                        <td className="px-2 py-1 capitalize">{ben}</td>
+                                                        {CLASSES_MANUAIS_PRIMARIO.map(cls => {
+                                                            const k = chaveManual(grupo, ben, cls)
+                                                            return (
+                                                                <td key={k} className="px-1 py-1">
+                                                                    <input
+                                                                        type="number"
+                                                                        min={0}
+                                                                        className="w-14 rounded border border-slate-200 px-1 py-0.5"
+                                                                        value={complementares.manuais?.[k] ?? ''}
+                                                                        onChange={e => {
+                                                                            const next = {
+                                                                                ...(complementares.manuais || {}),
+                                                                            }
+                                                                            const v = e.target.value
+                                                                            if (v === '') delete next[k]
+                                                                            else
+                                                                                next[k] = Math.max(
+                                                                                    0,
+                                                                                    Number(v) || 0
+                                                                                )
+                                                                            setComplementares({
+                                                                                ...complementares,
+                                                                                manuais: next,
+                                                                            })
+                                                                        }}
+                                                                    />
+                                                                </td>
+                                                            )
+                                                        })}
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+
+                            <section className="space-y-3">
+                                <h3 className="font-medium text-slate-800">PRAEER (se a escola tiver o programa)</h3>
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    {(['1', '2', '3'] as const).map(etapa => (
+                                        <div key={etapa} className="rounded-lg border border-slate-200 p-3">
+                                            <div className="mb-2 text-sm font-semibold text-slate-800">
+                                                Etapa {etapa}
+                                            </div>
+                                            {(['manhã', 'tarde'] as const).map(turno => (
+                                                <div key={turno} className="mb-2 grid grid-cols-3 gap-2">
+                                                    <div className="col-span-3 text-xs font-medium capitalize text-slate-500">
+                                                        {turno}
+                                                    </div>
+                                                    {numInput(
+                                                        'Matrículas',
+                                                        complementares.praeer?.[etapa]?.[turno].matriculas || 0,
+                                                        n =>
+                                                            setComplementares({
+                                                                ...complementares,
+                                                                praeer: {
+                                                                    ...emptyDadosComplementares().praeer!,
+                                                                    ...complementares.praeer,
+                                                                    [etapa]: {
+                                                                        ...emptyDadosComplementares().praeer![
+                                                                            etapa
+                                                                        ],
+                                                                        ...complementares.praeer?.[etapa],
+                                                                        [turno]: {
+                                                                            ...complementares.praeer?.[etapa]?.[
+                                                                                turno
+                                                                            ],
+                                                                            matriculas: n,
+                                                                            turmas:
+                                                                                complementares.praeer?.[etapa]?.[
+                                                                                    turno
+                                                                                ].turmas || 0,
+                                                                            turmas_ar_livre:
+                                                                                complementares.praeer?.[etapa]?.[
+                                                                                    turno
+                                                                                ].turmas_ar_livre || 0,
+                                                                        },
+                                                                    },
+                                                                },
+                                                            })
+                                                    )}
+                                                    {numInput(
+                                                        'Turmas',
+                                                        complementares.praeer?.[etapa]?.[turno].turmas || 0,
+                                                        n =>
+                                                            setComplementares({
+                                                                ...complementares,
+                                                                praeer: {
+                                                                    ...emptyDadosComplementares().praeer!,
+                                                                    ...complementares.praeer,
+                                                                    [etapa]: {
+                                                                        ...emptyDadosComplementares().praeer![
+                                                                            etapa
+                                                                        ],
+                                                                        ...complementares.praeer?.[etapa],
+                                                                        [turno]: {
+                                                                            matriculas:
+                                                                                complementares.praeer?.[etapa]?.[
+                                                                                    turno
+                                                                                ].matriculas || 0,
+                                                                            turmas: n,
+                                                                            turmas_ar_livre:
+                                                                                complementares.praeer?.[etapa]?.[
+                                                                                    turno
+                                                                                ].turmas_ar_livre || 0,
+                                                                        },
+                                                                    },
+                                                                },
+                                                            })
+                                                    )}
+                                                    {numInput(
+                                                        'Ao ar livre',
+                                                        complementares.praeer?.[etapa]?.[turno].turmas_ar_livre ||
+                                                            0,
+                                                        n =>
+                                                            setComplementares({
+                                                                ...complementares,
+                                                                praeer: {
+                                                                    ...emptyDadosComplementares().praeer!,
+                                                                    ...complementares.praeer,
+                                                                    [etapa]: {
+                                                                        ...emptyDadosComplementares().praeer![
+                                                                            etapa
+                                                                        ],
+                                                                        ...complementares.praeer?.[etapa],
+                                                                        [turno]: {
+                                                                            matriculas:
+                                                                                complementares.praeer?.[etapa]?.[
+                                                                                    turno
+                                                                                ].matriculas || 0,
+                                                                            turmas:
+                                                                                complementares.praeer?.[etapa]?.[
+                                                                                    turno
+                                                                                ].turmas || 0,
+                                                                            turmas_ar_livre: n,
+                                                                        },
+                                                                    },
+                                                                },
+                                                            })
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        </>
+                    )}
+
+                    <button
+                        type="button"
+                        disabled={savingMapa}
+                        onClick={handleSaveMapa}
+                        className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-60"
+                    >
+                        {savingMapa ? 'A guardar…' : 'Guardar dados do mapa'}
+                    </button>
+                </div>
+            )}
+
             {tab === 'infra' && infra && (
                 <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
                     <h2 className="text-lg font-semibold text-slate-900">Infraestrutura e mobiliário</h2>

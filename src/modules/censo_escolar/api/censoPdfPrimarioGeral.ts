@@ -423,11 +423,42 @@ function page2(doc: jsPDF, ctx: Ctx) {
         { nome: ['Manuais', 'transcritos em', 'braille'], y1: rows3[4], y2: rows3[6], mid: rows3[5] },
         { nome: ['Outros'], y1: rows3[6], y2: rows3[8], mid: rows3[7] },
     ]
-    grupos.forEach(g => {
+    const manuais = p.manuais || {}
+    const gruposKey: Array<'matematica' | 'lingua_portuguesa' | 'braille' | 'outros'> = [
+        'matematica',
+        'lingua_portuguesa',
+        'braille',
+        'outros',
+    ]
+    const classesManuais = [...CLASSES, 'PRAEER Etapa 1', 'PRAEER Etapa 2', 'PRAEER Etapa 3']
+    grupos.forEach((g, gi) => {
         cellText(doc, g.nome, L, g.y1, 128.2, g.y2, { size: 8, bold: true, lineH: 11 })
         cellText(doc, ['Professor'], 128.2, g.y1, 198.8, g.mid, { size: 8, bold: true })
         cellText(doc, ['Aluno'], 128.2, g.mid, 198.8, g.y2, { size: 8, bold: true })
         hLine(doc, 128.2, 812.8, g.mid, 'd')
+        let totP = 0
+        let totA = 0
+        let tem = false
+        classesManuais.forEach((cls, ci) => {
+            const x1 = xs3[2 + ci]
+            const x2 = xs3[3 + ci]
+            const prof = manuais[`${gruposKey[gi]}|professor|${cls}`]
+            const alu = manuais[`${gruposKey[gi]}|aluno|${cls}`]
+            if (typeof prof === 'number') {
+                cellText(doc, [String(prof)], x1, g.y1, x2, g.mid, { size: 8 })
+                totP += prof
+                tem = true
+            }
+            if (typeof alu === 'number') {
+                cellText(doc, [String(alu)], x1, g.mid, x2, g.y2, { size: 8 })
+                totA += alu
+                tem = true
+            }
+        })
+        if (tem) {
+            cellText(doc, [String(totP)], x744, g.y1, 812.8, g.mid, { size: 8, bold: true })
+            cellText(doc, [String(totA)], x744, g.mid, 812.8, g.y2, { size: 8, bold: true })
+        }
     })
 
     // linhas verticais
@@ -481,7 +512,7 @@ function page2(doc: jsPDF, ctx: Ctx) {
         const gx1 = g4[g]
         const gx2 = g4[g + 1]
         const mid = (gx1 + gx2) / 2
-        const classe = g < 6 ? CLASSES[g] : null
+        const classe = g < 6 ? CLASSES[g] : `PRAEER Etapa ${g - 5}`
         cellText(
             doc,
             g < 6 ? [`${g + 1}ª`, 'Classe'] : ['PRAEER -', `Etapa ${g - 5}`],
@@ -803,28 +834,36 @@ function page4(doc: jsPDF, ctx: Ctx) {
 
     sectionBand(doc, '6. INFORMAÇÕES ESPECÍFICAS SOBRE A 1ª CLASSE', L, RX, 74.4, 89.4, 87.6)
 
-    // Linhas de informação (campos para preenchimento manual: sem fonte de dados no sistema)
+    const info1 = p.info_classe_ingresso
     const rowsInfo = [
-        { y1: 90.6, y2: 105.6, label: 'Total de vagas disponibilizadas para a 1ª Classe', mf: false },
-        { y1: 105.6, y2: 120.9, label: 'Total de alunos matriculados pela primeira vez na 1ª classe', mf: true },
+        { y1: 90.6, y2: 105.6, label: 'Total de vagas disponibilizadas para a 1ª Classe', mf: false as const },
+        { y1: 105.6, y2: 120.9, label: 'Total de alunos matriculados pela primeira vez na 1ª classe', mf: true as const },
         {
             y1: 120.9,
             y2: 136.9,
             label: '(Dos quais) Número de alunos matriculados pela primeira vez e que frequentaram o Ensino Pré-Escolar?',
-            mf: true,
+            mf: true as const,
         },
     ]
-    rowsInfo.forEach(r => {
+    rowsInfo.forEach((r, ri) => {
         txt(doc, r.label, L + 3, (r.y1 + r.y2) / 2 + 2.6, { size: 7.5, bold: true })
         hLine(doc, L, 523.8, r.y2, 'd')
         if (!r.mf) {
             box(doc, 523.8, r.y1, 647.5, r.y2, 's')
             fillRect(doc, 647.5, r.y1 + 0.3, RX - 647.5, r.y2 - r.y1 - 0.6, GRAY)
+            if (info1 && info1.vagas != null) {
+                cellText(doc, [String(info1.vagas)], 523.8, r.y1, 647.5, r.y2, { size: 8 })
+            }
         } else {
             txt(doc, 'M', 569, (r.y1 + r.y2) / 2 + 2.8, { size: 7.5, bold: true, align: 'right' })
             box(doc, 571.6, r.y1, 646.2, r.y2, 's')
             txt(doc, 'F', 676.5, (r.y1 + r.y2) / 2 + 2.8, { size: 7.5, bold: true, align: 'right' })
             box(doc, 679.1, r.y1, 752.2, r.y2, 's')
+            const mf = ri === 1 ? info1?.primeira_vez : info1?.frequentou_pre_escolar
+            if (mf) {
+                cellText(doc, [String(mf.M)], 571.6, r.y1, 646.2, r.y2, { size: 8 })
+                cellText(doc, [String(mf.F)], 679.1, r.y1, 752.2, r.y2, { size: 8 })
+            }
         }
     })
 

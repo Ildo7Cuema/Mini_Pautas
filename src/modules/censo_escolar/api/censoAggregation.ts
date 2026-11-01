@@ -2,6 +2,7 @@ import { supabase } from '../../../lib/supabaseClient'
 import { getModalidade, nivelMatchesModalidade } from '../catalog'
 import {
     AproveitamentoClasse,
+    CensoDadosComplementares,
     CensoGeracaoResultado,
     CensoIdentificacaoMed,
     CensoInfraestrutura,
@@ -84,6 +85,7 @@ export async function gerarQuestionarioCenso(params: {
     dataReferenciaIdade?: Date
     infraestrutura?: CensoInfraestrutura | null
     identificacao?: CensoIdentificacaoMed | null
+    complementares?: CensoDadosComplementares | null
 }): Promise<CensoGeracaoResultado> {
     const modalidade = getModalidade(params.modalidadeCodigo)
     const dataRef = params.dataReferenciaIdade || defaultDataReferenciaIdade(params.anoLectivo)
@@ -139,13 +141,16 @@ export async function gerarQuestionarioCenso(params: {
         data_nascimento: string | null
         tipo_deficiencia: string | null
         primeira_matricula_na_classe: boolean | null
+        frequentou_pre_escolar: boolean | null
         ativo: boolean | null
     }> = []
 
     if (turmaIds.length > 0) {
         const { data: alunosData, error: alunosError } = await supabase
             .from('alunos')
-            .select('id, turma_id, genero, data_nascimento, tipo_deficiencia, primeira_matricula_na_classe, ativo')
+            .select(
+                'id, turma_id, genero, data_nascimento, tipo_deficiencia, primeira_matricula_na_classe, frequentou_pre_escolar, ativo'
+            )
             .in('turma_id', turmaIds)
             .eq('ativo', true)
 
@@ -153,7 +158,8 @@ export async function gerarQuestionarioCenso(params: {
             // Colunas do censo podem ainda não existir se a migration não estiver aplicada
             if (
                 alunosError.message?.includes('tipo_deficiencia') ||
-                alunosError.message?.includes('primeira_matricula')
+                alunosError.message?.includes('primeira_matricula') ||
+                alunosError.message?.includes('frequentou_pre')
             ) {
                 lacunas.push('Campos do censo nos alunos ainda não estão na base de dados. Aplique a migration do censo.')
                 const { data: fallback, error: fbErr } = await supabase
@@ -166,6 +172,7 @@ export async function gerarQuestionarioCenso(params: {
                     ...a,
                     tipo_deficiencia: null,
                     primeira_matricula_na_classe: null,
+                    frequentou_pre_escolar: null,
                 }))
             } else {
                 throw alunosError
@@ -204,6 +211,9 @@ export async function gerarQuestionarioCenso(params: {
         if (!turmasUnicas.has(uniqueKey)) {
             turmasUnicas.add(uniqueKey)
             row.turmas++
+            if (params.complementares?.turmas_ar_livre?.[t.id]) {
+                row.turmas_ar_livre++
+            }
         }
     }
 
@@ -382,15 +392,22 @@ export async function gerarQuestionarioCenso(params: {
               : '10ª Classe'
     const infoClasseIngresso = {
         classe: classeIngresso,
-        vagas: params.identificacao?.vagas_classe_ingresso ?? null,
+        vagas:
+            params.identificacao?.vagas_classe_ingresso ??
+            params.complementares?.vagas_1a_classe ??
+            null,
         primeira_vez: emptyMF(),
+        frequentou_pre_escolar: emptyMF(),
     }
     for (const aluno of alunos) {
         const turma = turmaById.get(aluno.turma_id)
         if (!turma || turma.classe !== classeIngresso) continue
         if (aluno.genero !== 'M' && aluno.genero !== 'F') continue
-        if ((aluno as any).primeira_matricula_na_classe) {
+        if (aluno.primeira_matricula_na_classe) {
             addSexo(infoClasseIngresso.primeira_vez, aluno.genero)
+            if (aluno.frequentou_pre_escolar) {
+                addSexo(infoClasseIngresso.frequentou_pre_escolar, aluno.genero)
+            }
         }
     }
 
@@ -435,9 +452,42 @@ export async function gerarQuestionarioCenso(params: {
                 addSexo(row.aprovados, genero)
             } else if (m.status_transicao === 'Não Transita') {
                 addSexo(row.reprovados, genero)
+            } else if (/desist|abandon/i.test(m.status_transicao || '')) {
+                addSexo(row.desistentes, genero)
+            } else if (/transf/i.test(m.status_transicao || '')) {
+                addSexo(row.transferidos, genero)
             }
         }
-        lacunas.push('Desistentes e transferidos ainda não têm tipificação própria no sistema — ficam a zero no MVP.')
+    }
+
+    const praeerRows: MatriculasPorClasseTurno[] = []
+    const praeer = params.complementares?.praeer
+    if (praeer) {
+        ;(['1', '2', '3'] as const).forEach(etapa => {
+            const e = praeer[etapa]
+            ;(['manhã', 'tarde'] as const).forEach(turno => {
+                const t = e?.[turno]
+                if (!t) return
+                if (!t.matriculas && !t.turmas && !t.turmas_ar_livre) return
+                praeerRows.push({
+                    classe: `PRAEER Etapa ${etapa}`,
+                    turno,
+                    matriculas: t.matriculas || 0,
+                    turmas: t.turmas || 0,
+                    turmas_ar_livre: t.turmas_ar_livre || 0,
+                })
+            })
+        })
+    }
+
+    const manuais = params.complementares?.manuais || {}
+    if (params.modalidadeCodigo === 'ensino_primario_geral') {
+        if (!Object.values(manuais).some(v => typeof v === 'number' && v > 0)) {
+            lacunas.push('Manuais escolares não preenchidos — indique-os no separador Dados do mapa.')
+        }
+        if (infoClasseIngresso.vagas == null) {
+            lacunas.push('Vagas da 1ª classe não preenchidas — indique-as no separador Identificação.')
+        }
     }
 
     if (!params.identificacao?.codigo_escola_med?.trim()) {
@@ -476,7 +526,7 @@ export async function gerarQuestionarioCenso(params: {
             mes_termino: params.infraestrutura?.mes_termino ?? null,
         },
         infraestrutura: params.infraestrutura || null,
-        matriculas_classe_turno: Array.from(matriculasMap.values()),
+        matriculas_classe_turno: [...Array.from(matriculasMap.values()), ...praeerRows],
         matriculas_idade: Array.from(idadeMap.values()),
         matriculas_deficiencia: Array.from(defMap.values()),
         professores_nivel_academico: Array.from(nivelMap.values()),
@@ -484,6 +534,8 @@ export async function gerarQuestionarioCenso(params: {
         professores_cruzamento: cruzamento,
         aproveitamento_ano_anterior: aproveitamento,
         info_classe_ingresso: infoClasseIngresso,
+        manuais,
+        dados_complementares: params.complementares || undefined,
         totais: {
             alunos: totalAlunos,
             turmas: turmasUnicas.size,

@@ -100,6 +100,43 @@ export interface CensoInfoClasseIngresso {
     classe: string
     vagas: number | null
     primeira_vez: ContagemMF
+    /** Só aplicável ao Primário (1ª classe × pré-escolar). */
+    frequentou_pre_escolar?: ContagemMF
+}
+
+export type ManualGrupoCenso = 'matematica' | 'lingua_portuguesa' | 'braille' | 'outros'
+export type ManualBeneficiarioCenso = 'professor' | 'aluno'
+
+export const CLASSES_MANUAIS_PRIMARIO = [
+    '1ª Classe',
+    '2ª Classe',
+    '3ª Classe',
+    '4ª Classe',
+    '5ª Classe',
+    '6ª Classe',
+    'PRAEER Etapa 1',
+    'PRAEER Etapa 2',
+    'PRAEER Etapa 3',
+] as const
+
+export interface CensoPraeerTurno {
+    matriculas: number
+    turmas: number
+    turmas_ar_livre: number
+}
+
+export interface CensoPraeerEtapa {
+    manhã: CensoPraeerTurno
+    tarde: CensoPraeerTurno
+}
+
+/** Dados do mapa que não existem no operacional pedagógico (escola × ano × modalidade). */
+export interface CensoDadosComplementares {
+    /** @deprecated Preferir identificacao.vagas_classe_ingresso; mantido por compatibilidade. */
+    vagas_1a_classe?: number | null
+    manuais?: Record<string, number>
+    turmas_ar_livre?: Record<string, boolean>
+    praeer?: Record<'1' | '2' | '3', CensoPraeerEtapa>
 }
 
 export interface AproveitamentoClasse {
@@ -190,6 +227,8 @@ export interface CensoQuestionarioPayload {
     professores_cruzamento?: ProfessoresCruzamento
     aproveitamento_ano_anterior: AproveitamentoClasse[]
     info_classe_ingresso?: CensoInfoClasseIngresso
+    manuais?: Record<string, number>
+    dados_complementares?: CensoDadosComplementares
     totais: {
         alunos: number
         turmas: number
