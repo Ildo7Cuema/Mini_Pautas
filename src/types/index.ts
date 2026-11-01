@@ -66,6 +66,12 @@ export interface Professor {
     numero_diploma?: string;
     instituicao_formacao?: string;
     ano_conclusao?: number;
+
+    // Censo Escolar
+    formacao_pedagogica?: boolean;
+    nacionalidade_censo?: 'nacional' | 'estrangeiro';
+    interprete_lingua_gestual?: boolean;
+    formacao_diferenciada_sala?: boolean;
 }
 
 export interface Turma {
@@ -121,6 +127,11 @@ export interface Aluno {
     escola_anterior?: string;
     classe_anterior?: string;
     observacoes_academicas?: string;
+
+    // Censo Escolar
+    tipo_deficiencia?: string;
+    primeira_matricula_na_classe?: boolean;
+    frequentou_pre_escolar?: boolean;
 
     ativo: boolean;
     created_at: string;

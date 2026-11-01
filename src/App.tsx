@@ -38,6 +38,7 @@ const SecretaryRegistration = lazy(() => import('./components/SecretaryRegistrat
 const TutoriaisPublicosPage = lazy(() => import('./components/TutoriaisPublicosPage').then(m => ({ default: m.TutoriaisPublicosPage })))
 const TutoriaisManagementPage = lazy(() => import('./components/TutoriaisManagementPage').then(m => ({ default: m.TutoriaisManagementPage })))
 const MatriculasPage = lazy(() => import('./components/MatriculasPage').then(m => ({ default: m.MatriculasPage })))
+const CensoEscolarPage = lazy(() => import('./modules/censo_escolar').then(m => ({ default: m.CensoEscolarPage })))
 const DirecaoMunicipalDashboard = lazy(() => import('./components/DirecaoMunicipalDashboard'))
 const EscolasOverviewPage = lazy(() => import('./components/EscolasOverviewPage'))
 const SolicitacoesPage = lazy(() => import('./components/SolicitacoesPage'))
@@ -327,6 +328,8 @@ function App() {
                 return <SecretariesPage searchQuery={searchQuery} />
             case 'matriculas':
                 return <MatriculasPage />
+            case 'censo-escolar':
+                return <CensoEscolarPage />
             case 'templates':
                 return <TemplatesManagement onClose={() => handleNavigate('settings')} />
             default:

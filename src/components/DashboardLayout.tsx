@@ -369,6 +369,16 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             showInMobile: false,
         },
         {
+            name: 'Censo Escolar',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+            ),
+            path: 'censo-escolar',
+            showInMobile: false,
+        },
+        {
             name: 'Subscrição',
             icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -396,6 +406,7 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
         if (item.path === 'classes' || item.path === 'propinas') return isEscola // Hide for professors
         if (item.path === 'subscription') return isEscola // Only show subscription menu for School Admins
         if (item.path === 'matriculas') return isEscola // Only show matriculas menu for School Admins
+        if (item.path === 'censo-escolar') return isEscola // Censo Escolar — escola only (MVP)
         if (item.path === 'templates') return isEscola // Only show templates menu for School Admins
         if (item.path === 'solicitacoes') return isProfessor // Only show solicitacoes for Professors
         return true

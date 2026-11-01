@@ -48,6 +48,7 @@ interface Aluno {
     escola_anterior?: string
     classe_anterior?: string
     observacoes_academicas?: string
+    tipo_deficiencia?: string
     frequencia_anual?: number
     tipo_exame?: 'Nacional' | 'Extraordinário' | 'Recurso'
     turma?: {
@@ -93,6 +94,7 @@ const initialFormData = {
     escola_anterior: '',
     classe_anterior: '',
     observacoes_academicas: '',
+    tipo_deficiencia: 'nenhuma',
     frequencia_anual: '',
     tipo_exame: '',
     // Conta de Acesso (ALUNO)
@@ -217,6 +219,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                     escola_anterior,
                     classe_anterior,
                     observacoes_academicas,
+                    tipo_deficiencia,
                     frequencia_anual,
                     tipo_exame,
                     turmas(nome)
@@ -340,6 +343,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                 escola_anterior: formData.escola_anterior || null,
                 classe_anterior: formData.classe_anterior || null,
                 observacoes_academicas: formData.observacoes_academicas || null,
+                tipo_deficiencia: formData.tipo_deficiencia || 'nenhuma',
                 ano_ingresso: formData.ano_ingresso ? parseInt(formData.ano_ingresso) : null,
                 frequencia_anual: formData.frequencia_anual ? parseFloat(formData.frequencia_anual) : null,
                 tipo_exame: formData.tipo_exame || null,
@@ -466,6 +470,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
             escola_anterior: aluno.escola_anterior || '',
             classe_anterior: aluno.classe_anterior || '',
             observacoes_academicas: aluno.observacoes_academicas || '',
+            tipo_deficiencia: aluno.tipo_deficiencia || 'nenhuma',
             frequencia_anual: aluno.frequencia_anual?.toString() || '',
             tipo_exame: aluno.tipo_exame || '',
             // Account fields - default to false/empty for editing existing students
@@ -502,6 +507,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
             const dataToUpdate = {
                 ...studentData,
                 genero: formData.genero || null,
+                tipo_deficiencia: formData.tipo_deficiencia || 'nenhuma',
                 ano_ingresso: formData.ano_ingresso ? parseInt(formData.ano_ingresso) : null,
                 frequencia_anual: formData.frequencia_anual ? parseFloat(formData.frequencia_anual) : null,
                 tipo_exame: formData.tipo_exame || null,
@@ -1082,6 +1088,27 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({ searchQuery = '' }) 
                             onChange={(e) => setFormData({ ...formData, escola_anterior: e.target.value })}
                             placeholder="Nome da escola de origem"
                         />
+
+                        <div>
+                            <label className="form-label">Tipo de deficiência (Censo Escolar)</label>
+                            <select
+                                className="form-input"
+                                value={formData.tipo_deficiencia}
+                                onChange={(e) => setFormData({ ...formData, tipo_deficiencia: e.target.value })}
+                            >
+                                <option value="nenhuma">Nenhuma / Não aplicável</option>
+                                <option value="visual">Visual</option>
+                                <option value="auditiva">Auditiva</option>
+                                <option value="fisica_motora">Física/Motora</option>
+                                <option value="intelectual">Intelectual</option>
+                                <option value="espectro_autista">Espectro-Autista</option>
+                                <option value="sindrome_down">Síndrome de Down</option>
+                                <option value="surdo_cegueira">Surdo-Cegueira</option>
+                                <option value="altas_habilidades">Altas habilidades</option>
+                                <option value="multiplas">Múltiplas</option>
+                                <option value="outra">Outra</option>
+                            </select>
+                        </div>
 
                         <div>
                             <label className="form-label">Observações Académicas</label>
