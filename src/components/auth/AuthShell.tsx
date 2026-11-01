@@ -9,6 +9,7 @@ import { ReactNode, createContext, useContext, useEffect, useState } from 'react
 import { AngolaGlobe } from './AngolaGlobe'
 import { AuthCarousel } from './AuthCarousel'
 import { AuthShowcase } from './AuthShowcase'
+import { AuthLegalBasis } from './AuthLegalBasis'
 
 /** Telemóvel (< 640px): globo e fotos passam a faixa visível no topo, em vez de fundo discreto. */
 const PHONE_QUERY = '(max-width: 639px)'
@@ -87,6 +88,7 @@ export function AuthBackdrop({ children, className = '' }: AuthBackdropProps) {
                 <div className={`w-full ${AUTH_CARD_WIDTH} relative z-10 py-2 sm:py-3`}>
                     {phone && <AuthShowcase />}
                     {children}
+                    <AuthLegalBasis />
                 </div>
             </div>
         </BackdropContext.Provider>
