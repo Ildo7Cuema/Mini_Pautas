@@ -78,7 +78,7 @@ function BackdropLayers() {
 
             <AngolaGlobe />
 
-            {/* Carrossel à direita (≥ 1280px): professores, alunos e encarregados */}
+            {/* Carrossel: à direita no desktop (≥ 1280px); fundo discreto em tablet/telemóvel */}
             <AuthCarousel />
         </div>
     )
@@ -101,6 +101,8 @@ export function AuthBackdrop({ children, className = '' }: AuthBackdropProps) {
         <BackdropContext.Provider value={true}>
             <div
                 className={`auth-shell min-h-screen flex items-center justify-center p-4 sm:p-5 relative overflow-x-hidden ${className}`}
+                // dvh: altura real em browsers móveis (barra de endereço dinâmica); ignorado onde não suportado
+                style={{ minHeight: '100dvh' }}
             >
                 <BackdropLayers />
                 <div className={`w-full ${AUTH_CARD_WIDTH} relative z-10 py-2 sm:py-3`}>{children}</div>

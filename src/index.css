@@ -996,6 +996,8 @@
   top: 50%;
   margin-top: calc(var(--globe-size) / -2);
   left: calc(var(--globe-size) * -0.1);
+  /* acima das fotos do carrossel (em ecrãs pequenos estas ficam por trás do globo) */
+  z-index: 1;
 }
 
 /* Ecrãs estreitos: globo grande e discreto, centrado atrás do formulário */
@@ -1115,6 +1117,7 @@
   bottom: 0;
   width: min(52vw, 1000px);
   pointer-events: none;
+  z-index: 0;
 }
 
 .auth-carousel__frame {
@@ -1287,6 +1290,47 @@
   .auth-carousel__slide.is-active .auth-carousel__img,
   .auth-carousel__caption > * {
     animation: none !important;
+  }
+}
+
+/* Tablet e telemóvel (< 1280px): fotos como fundo discreto a toda a largura, legenda escondida e pontos no topo */
+@media (max-width: 1279px) {
+  .auth-carousel {
+    width: 100%;
+  }
+
+  .auth-carousel__frame {
+    opacity: 0.3;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+    -webkit-mask-composite: source-over;
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+    mask-composite: add;
+  }
+
+  .auth-carousel__img {
+    object-position: 58% 22%;
+  }
+
+  .auth-carousel__caption {
+    display: none;
+  }
+
+  .auth-carousel__dots {
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    bottom: auto;
+    right: 50%;
+    transform: translateX(50%);
+  }
+
+  .auth-carousel__dot {
+    /* alvo táctil maior sem aumentar o ponto visível */
+    position: relative;
+  }
+
+  .auth-carousel__dot::after {
+    content: '';
+    position: absolute;
+    inset: -10px -4px;
   }
 }
 

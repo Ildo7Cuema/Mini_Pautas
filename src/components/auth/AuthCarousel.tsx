@@ -1,8 +1,8 @@
 /*
 component-meta:
   name: AuthCarousel
-  description: Photo carousel (right side of auth pages, >= xl) showing teachers, students and guardians using EduGest Angola
-  responsive: hidden below 1280px
+  description: Photo carousel used as auth background — right side on desktop (>= 1280px), faint full-bleed background on tablet/mobile
+  responsive: true
 */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -52,6 +52,16 @@ export function AuthCarousel() {
     const [index, setIndex] = useState(0)
     const [paused, setPaused] = useState(false)
     const [reduceMotion, setReduceMotion] = useState(false)
+    // Carrega só a imagem activa e a seguinte (poupa dados em telemóvel)
+    const [seen, setSeen] = useState<number[]>([0, 1])
+
+    useEffect(() => {
+        setSeen((prev) => {
+            const wanted = [index, (index + 1) % SLIDES.length]
+            const merged = Array.from(new Set([...prev, ...wanted]))
+            return merged.length === prev.length ? prev : merged
+        })
+    }, [index])
 
     useEffect(() => {
         const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -73,11 +83,12 @@ export function AuthCarousel() {
 
     return (
         <aside
-            className="auth-carousel hidden xl:block"
+            className="auth-carousel"
             aria-roledescription="carousel"
             aria-label="Quem usa o EduGest Angola"
-            onMouseEnter={() => setPaused(true)}
-            onMouseLeave={() => setPaused(false)}
+            // Pausa só com rato (em ecrãs tácteis o "hover" simulado deixaria o carrossel preso)
+            onPointerEnter={(e) => e.pointerType === 'mouse' && setPaused(true)}
+            onPointerLeave={(e) => e.pointerType === 'mouse' && setPaused(false)}
             onFocus={() => setPaused(true)}
             onBlur={() => setPaused(false)}
         >
@@ -93,14 +104,15 @@ export function AuthCarousel() {
                             aria-roledescription="slide"
                             aria-label={`${i + 1} de ${SLIDES.length}`}
                         >
-                            <img
-                                src={s.src}
-                                alt={s.alt}
-                                className="auth-carousel__img"
-                                loading={i === 0 ? 'eager' : 'lazy'}
-                                decoding="async"
-                                draggable={false}
-                            />
+                            {seen.includes(i) && (
+                                <img
+                                    src={s.src}
+                                    alt={s.alt}
+                                    className="auth-carousel__img"
+                                    decoding="async"
+                                    draggable={false}
+                                />
+                            )}
                         </figure>
                     )
                 })}
