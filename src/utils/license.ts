@@ -38,24 +38,19 @@ export const TIPO_INSTITUICAO_LABELS: Record<TipoInstituicaoAssinatura, string> 
 // ============================================
 
 /**
- * Check license status for a school
+ * Check license status for a school.
+ * Uses a direct RLS-backed query to avoid CORS/preflight failures from the Edge Function
+ * when called from the browser (supabase.functions.invoke always POSTs).
  */
 export async function checkLicenseStatus(escolaId: string): Promise<LicenseStatus> {
     try {
-        // Try Edge Function first for consistent logic
-        const { data, error } = await supabase.functions.invoke('check-license-status', {
-            body: { escola_id: escolaId }
-        })
-
-        if (error) {
-            console.warn('Edge function failed, falling back to direct query:', error)
-            return await checkLicenseStatusDirect(escolaId)
-        }
-
-        return data as LicenseStatus
+        return await checkLicenseStatusDirect(escolaId)
     } catch (error) {
         console.error('Error checking license status:', error)
-        return await checkLicenseStatusDirect(escolaId)
+        return {
+            valid: false,
+            dias_restantes: -1,
+        }
     }
 }
 
@@ -63,19 +58,28 @@ export async function checkLicenseStatus(escolaId: string): Promise<LicenseStatu
  * Direct database query for license status (fallback)
  */
 async function checkLicenseStatusDirect(escolaId: string): Promise<LicenseStatus> {
-    const { data: licenca, error } = await supabase
-        .from('licencas')
-        .select('*')
-        .eq('escola_id', escolaId)
-        .eq('estado', 'ativa')
-        .order('data_fim', { ascending: false })
-        .limit(1)
-        .single()
+    const [{ data: escola }, { data: licenca }] = await Promise.all([
+        supabase
+            .from('escolas')
+            .select('bloqueado, bloqueado_motivo, ativo')
+            .eq('id', escolaId)
+            .maybeSingle(),
+        supabase
+            .from('licencas')
+            .select('*')
+            .eq('escola_id', escolaId)
+            .eq('estado', 'ativa')
+            .order('data_fim', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+    ])
 
-    if (error || !licenca) {
+    if (!licenca) {
         return {
             valid: false,
-            dias_restantes: -1
+            dias_restantes: -1,
+            escola_bloqueada: escola?.bloqueado === true,
+            bloqueio_motivo: escola?.bloqueado_motivo || undefined,
         }
     }
 
@@ -85,14 +89,17 @@ async function checkLicenseStatusDirect(escolaId: string): Promise<LicenseStatus
     dataFim.setHours(0, 0, 0, 0)
 
     const diasRestantes = Math.ceil((dataFim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
+    const licencaValida = diasRestantes >= 0
 
     return {
-        valid: diasRestantes >= 0,
+        valid: licencaValida && !escola?.bloqueado && escola?.ativo !== false,
         dias_restantes: diasRestantes,
         estado: licenca.estado,
         plano: licenca.plano,
         data_fim: licenca.data_fim,
-        licenca: licenca
+        licenca,
+        escola_bloqueada: escola?.bloqueado === true,
+        bloqueio_motivo: escola?.bloqueado_motivo || undefined,
     }
 }
 
@@ -156,9 +163,9 @@ export async function fetchSchoolLicense(escolaId: string): Promise<Licenca | nu
             .eq('escola_id', escolaId)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single()
+            .maybeSingle()
 
-        if (error && error.code !== 'PGRST116') throw error
+        if (error) throw error
         return data
     } catch (error) {
         console.error('Error fetching school license:', error)
@@ -248,7 +255,7 @@ export async function reactivateLicense(licencaId: string): Promise<void> {
             .from('licencas')
             .select('escola_id')
             .eq('id', licencaId)
-            .single()
+            .maybeSingle()
 
         if (licenca) {
             await logSuperAdminAction('REACTIVATE_LICENSE', licenca.escola_id, {
@@ -659,7 +666,7 @@ export async function getSuperAdminContact(): Promise<SuperAdminContact | null> 
             .from('configuracoes_sistema')
             .select('valor')
             .eq('chave', 'superadmin_whatsapp')
-            .single()
+            .maybeSingle()
 
         if (error) {
             console.warn('Error fetching SuperAdmin contact:', error)
@@ -682,7 +689,7 @@ export async function getDadosBancarios(): Promise<DadosBancarios | null> {
             .from('configuracoes_sistema')
             .select('valor')
             .eq('chave', 'dados_bancarios')
-            .single()
+            .maybeSingle()
 
         if (error) {
             console.warn('Error fetching bank details:', error)
@@ -705,7 +712,7 @@ export async function getPaymentModeConfig(): Promise<PaymentModeConfig | null> 
             .from('configuracoes_sistema')
             .select('valor')
             .eq('chave', 'modo_pagamento')
-            .single()
+            .maybeSingle()
 
         if (error) {
             console.warn('Error fetching payment mode:', error)
@@ -745,15 +752,17 @@ export async function requestManualSubscription(
     plano: PlanoLicenca
 ): Promise<{ success: boolean; reference: string; transaction_id?: string; error?: string }> {
     try {
-        // Check if school has an active license
-        const { data: activeLicense, error: licenseError } = await supabase
+        // Check if school has an active license (maybeSingle avoids HTTP 406 when none exists)
+        const { data: activeLicense } = await supabase
             .from('licencas')
             .select('id, estado, data_fim')
             .eq('escola_id', escolaId)
             .eq('estado', 'ativa')
-            .single()
+            .order('data_fim', { ascending: false })
+            .limit(1)
+            .maybeSingle()
 
-        if (activeLicense && !licenseError) {
+        if (activeLicense) {
             return {
                 success: false,
                 reference: '',
@@ -762,15 +771,17 @@ export async function requestManualSubscription(
         }
 
         // Check if school has a pending manual subscription request
-        const { data: pendingTransaction, error: pendingError } = await supabase
+        const { data: pendingTransaction } = await supabase
             .from('transacoes_pagamento')
             .select('id, metadata')
             .eq('escola_id', escolaId)
             .eq('provider', 'manual')
             .eq('estado', 'pendente')
-            .single()
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
 
-        if (pendingTransaction && !pendingError) {
+        if (pendingTransaction) {
             return {
                 success: false,
                 reference: '',

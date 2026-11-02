@@ -993,6 +993,8 @@ export interface LicenseStatus {
     plano?: PlanoLicenca;
     data_fim?: string;
     licenca?: Licenca;
+    escola_bloqueada?: boolean;
+    bloqueio_motivo?: string;
 }
 
 export interface LicenseStats {

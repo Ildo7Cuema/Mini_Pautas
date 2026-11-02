@@ -3,12 +3,19 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 /**
  * Edge Function: Check License Status
- * 
- * GET /check-license-status?escola_id=xxx
- * 
+ *
+ * POST /check-license-status  body: { escola_id }
+ * GET  /check-license-status?escola_id=xxx  (compat)
+ *
  * Returns the current license status for a school.
  * Used by frontend to display license information and handle blocking.
  */
+
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 interface LicenseStatusResponse {
     valid: boolean
@@ -28,39 +35,47 @@ interface LicenseStatusResponse {
     bloqueio_motivo?: string
 }
 
-serve(async (req) => {
-    // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', {
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, OPTIONS',
-                'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-            },
-        })
+async function resolveEscolaId(req: Request): Promise<string | null> {
+    if (req.method === 'GET') {
+        return new URL(req.url).searchParams.get('escola_id')
     }
 
-    // Only allow GET
-    if (req.method !== 'GET') {
+    try {
+        const body = await req.json()
+        return typeof body?.escola_id === 'string' ? body.escola_id : null
+    } catch {
+        return null
+    }
+}
+
+serve(async (req) => {
+    if (req.method === 'OPTIONS') {
+        return new Response('ok', { headers: corsHeaders })
+    }
+
+    if (req.method !== 'GET' && req.method !== 'POST') {
         return new Response(
             JSON.stringify({ error: 'Method not allowed' }),
-            { status: 405, headers: { 'Content-Type': 'application/json' } }
+            {
+                status: 405,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            }
         )
     }
 
     try {
-        // Get escola_id from query params
-        const url = new URL(req.url)
-        const escola_id = url.searchParams.get('escola_id')
+        const escola_id = await resolveEscolaId(req)
 
         if (!escola_id) {
             return new Response(
                 JSON.stringify({ error: 'escola_id é obrigatório' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 400,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                }
             )
         }
 
-        // Create Supabase client with user context
         const supabaseClient = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -71,35 +86,35 @@ serve(async (req) => {
             }
         )
 
-        // Get escola info
         const { data: escola, error: escolaError } = await supabaseClient
             .from('escolas')
             .select('id, nome, bloqueado, bloqueado_motivo, ativo')
             .eq('id', escola_id)
-            .single()
+            .maybeSingle()
 
         if (escolaError || !escola) {
             return new Response(
                 JSON.stringify({ error: 'Escola não encontrada' }),
-                { status: 404, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 404,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                }
             )
         }
 
-        // Get active license
-        const { data: licenca, error: licencaError } = await supabaseClient
+        const { data: licenca } = await supabaseClient
             .from('licencas')
             .select('id, plano, data_inicio, data_fim, estado, valor')
             .eq('escola_id', escola_id)
             .eq('estado', 'ativa')
             .order('data_fim', { ascending: false })
             .limit(1)
-            .single()
+            .maybeSingle()
 
-        // Calculate days remaining
         let diasRestantes = -1
         let licencaValida = false
 
-        if (licenca && !licencaError) {
+        if (licenca) {
             const dataFim = new Date(licenca.data_fim)
             const hoje = new Date()
             hoje.setHours(0, 0, 0, 0)
@@ -115,38 +130,30 @@ serve(async (req) => {
             estado: licenca?.estado,
             plano: licenca?.plano,
             data_fim: licenca?.data_fim,
-            licenca: licenca ? {
-                id: licenca.id,
-                plano: licenca.plano,
-                data_inicio: licenca.data_inicio,
-                data_fim: licenca.data_fim,
-                estado: licenca.estado,
-                valor: licenca.valor
-            } : undefined,
+            licenca: licenca
+                ? {
+                    id: licenca.id,
+                    plano: licenca.plano,
+                    data_inicio: licenca.data_inicio,
+                    data_fim: licenca.data_fim,
+                    estado: licenca.estado,
+                    valor: licenca.valor,
+                }
+                : undefined,
             escola_bloqueada: escola.bloqueado === true,
-            bloqueio_motivo: escola.bloqueado_motivo || undefined
+            bloqueio_motivo: escola.bloqueado_motivo || undefined,
         }
 
-        return new Response(
-            JSON.stringify(response),
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                },
-            }
-        )
-
+        return new Response(JSON.stringify(response), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
     } catch (error) {
         console.error('Error:', error)
         return new Response(
             JSON.stringify({ error: error.message || 'Erro interno do servidor' }),
             {
                 status: 500,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             }
         )
     }
