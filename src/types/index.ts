@@ -1036,8 +1036,10 @@ export interface PropinasConfig {
     id: string;
     escola_id: string;
     turma_id?: string;
-    ano_lectivo: number;
+    ano_lectivo: number | string;
     valor_mensalidade: number;
+    /** Meses lectivos de cobrança (1=Jan .. 12=Dez) definidos pela escola */
+    meses_lectivos?: number[];
     descricao?: string;
     ativo: boolean;
     created_at: string;

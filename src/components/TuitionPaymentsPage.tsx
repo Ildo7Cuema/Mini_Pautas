@@ -25,7 +25,12 @@ import {
     getNomeMes,
     getNomeMesCurto,
     formatarValor,
-    getMetodoPagamentoLabel
+    getMetodoPagamentoLabel,
+    normalizeMesesLectivos,
+    recalcularEstatisticasComMesesLectivos,
+    MESES_LECTIVOS_DEFAULT,
+    MESES_LECTIVOS_FEV_NOV,
+    MESES_LECTIVOS_JAN_NOV
 } from '../utils/tuitionPayments'
 import { generateReceiptPDF } from '../utils/receiptGenerator'
 import type {
@@ -115,11 +120,23 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
     })
     const [configForm, setConfigForm] = useState({
         valor_mensalidade: 0,
+        meses_lectivos: [...MESES_LECTIVOS_DEFAULT] as number[],
         descricao: ''
     })
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
+
+    const mesesLectivos = normalizeMesesLectivos(
+        config?.meses_lectivos ?? (config ? configForm.meses_lectivos : MESES_LECTIVOS_DEFAULT)
+    )
+    const isMesLectivo = (mes: number) => mesesLectivos.includes(mes)
+    const isMesCobravel = (mes: number) => {
+        if (!isMesLectivo(mes)) return false
+        if (currentYear < today.getFullYear()) return true
+        if (currentYear > today.getFullYear()) return false
+        return mes <= currentMonth
+    }
 
     // Load data
     useEffect(() => {
@@ -426,20 +443,41 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
             const configs = await fetchPropinasConfig(escolaId, currentYear)
             console.log('Config fetched:', configs.length)
 
+            let loadedConfig: PropinasConfig | null = null
             if (configs.length > 0) {
+                loadedConfig = configs[0]
                 setConfig(configs[0])
                 setConfigForm({
                     valor_mensalidade: configs[0].valor_mensalidade,
+                    meses_lectivos: normalizeMesesLectivos(configs[0].meses_lectivos),
                     descricao: configs[0].descricao || ''
                 })
                 setPaymentForm(prev => ({ ...prev, valor: configs[0].valor_mensalidade }))
+            } else {
+                setConfig(null)
+                setConfigForm({
+                    valor_mensalidade: 0,
+                    meses_lectivos: [...MESES_LECTIVOS_FEV_NOV],
+                    descricao: ''
+                })
             }
 
-            // Load statistics
+            // Load statistics — adjust with configured lective months
             console.log('Fetching stats...')
             const statsData = await fetchEstatisticasPropinas(escolaId, currentYear)
+            const mesesParaStats = normalizeMesesLectivos(
+                loadedConfig?.meses_lectivos ?? MESES_LECTIVOS_DEFAULT
+            )
+            const statsAjustadas = loadedConfig?.valor_mensalidade
+                ? recalcularEstatisticasComMesesLectivos(
+                    statsData,
+                    loadedConfig.valor_mensalidade,
+                    mesesParaStats,
+                    currentYear
+                )
+                : statsData
             console.log('Stats fetched')
-            setStats(statsData)
+            setStats(statsAjustadas)
 
             // Load recent payments
             console.log('Fetching payments...')
@@ -486,9 +524,23 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
         }
     }
 
+    const toggleMesLectivo = (mes: number) => {
+        setConfigForm(prev => {
+            const exists = prev.meses_lectivos.includes(mes)
+            const next = exists
+                ? prev.meses_lectivos.filter(m => m !== mes)
+                : [...prev.meses_lectivos, mes].sort((a, b) => a - b)
+            return { ...prev, meses_lectivos: next }
+        })
+    }
+
     const handleSaveConfig = async () => {
         if (!configForm.valor_mensalidade || configForm.valor_mensalidade <= 0) {
             setError('Insira um valor de mensalidade válido')
+            return
+        }
+        if (!configForm.meses_lectivos.length) {
+            setError('Seleccione pelo menos um mês lectivo de cobrança')
             return
         }
 
@@ -499,6 +551,7 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                 escola_id: escolaId,
                 ano_lectivo: currentYear,
                 valor_mensalidade: configForm.valor_mensalidade,
+                meses_lectivos: configForm.meses_lectivos,
                 descricao: configForm.descricao
             })
             setSuccess('Configuração guardada com sucesso!')
@@ -910,7 +963,37 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                         </select>
                     </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                    {/* Current configured tuition value — always visible, editable by school admin */}
+                    <div className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                        <div className="min-w-0">
+                            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Mensalidade</p>
+                            <p className="text-sm font-bold text-slate-900 tabular-nums">
+                                {config?.valor_mensalidade
+                                    ? formatarValor(config.valor_mensalidade)
+                                    : 'Não configurada'}
+                            </p>
+                            {config?.valor_mensalidade ? (
+                                <p className="text-[11px] text-slate-500">
+                                    {mesesLectivos.length === 1
+                                        ? '1 mês lectivo'
+                                        : `${mesesLectivos.length} meses lectivos`}
+                                </p>
+                            ) : null}
+                        </div>
+                        {!secretarioProfile && (
+                            <button
+                                onClick={() => setShowConfigModal(true)}
+                                className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                                title={config ? 'Editar valor e meses lectivos' : 'Configurar valor e meses lectivos'}
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                {config ? 'Editar' : 'Definir'}
+                            </button>
+                        )}
+                    </div>
                     <button
                         onClick={() => setShowExportModal(true)}
                         className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors font-medium"
@@ -1116,7 +1199,8 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                             {/* Mobile: Card View */}
                             <div className="md:hidden space-y-3">
                                 {filteredAlunos.slice(0, 10).map(aluno => {
-                                    const pendentes = aluno.pagamentos.filter(p => p.status !== 'pago' && p.mes <= currentMonth).length
+                                    const pagamentosVisiveis = aluno.pagamentos.filter(p => isMesLectivo(p.mes))
+                                    const pendentes = pagamentosVisiveis.filter(p => p.status !== 'pago' && isMesCobravel(p.mes)).length
 
                                     return (
                                         <div key={aluno.id} className="tuition-student-card">
@@ -1134,14 +1218,14 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                                     {pendentes === 0 ? '✓ Em dia' : `${pendentes} pend.`}
                                                 </span>
                                             </div>
-                                            {/* Month Pills Grid */}
-                                            <div className="grid grid-cols-6 gap-1.5">
-                                                {aluno.pagamentos.map(pag => (
+                                            {/* Month Pills Grid — only lective months */}
+                                            <div className="grid grid-cols-5 sm:grid-cols-6 gap-1.5">
+                                                {pagamentosVisiveis.map(pag => (
                                                     <button
                                                         key={`mob-pill-${aluno.id}-${pag.mes}`}
-                                                        onClick={() => pag.status !== 'pago' && pag.mes <= currentMonth && handleOpenPaymentModal(aluno, pag.mes)}
-                                                        disabled={pag.status === 'pago' || pag.mes > currentMonth}
-                                                        className={`month-pill ${pag.status === 'pago' ? 'month-pill-paid' : pag.status === 'parcial' ? 'bg-amber-100 text-amber-700 border-amber-200' : pag.mes <= currentMonth ? 'month-pill-pending' : 'month-pill-future'}`}
+                                                        onClick={() => pag.status !== 'pago' && isMesCobravel(pag.mes) && handleOpenPaymentModal(aluno, pag.mes)}
+                                                        disabled={pag.status === 'pago' || !isMesCobravel(pag.mes)}
+                                                        className={`month-pill ${pag.status === 'pago' ? 'month-pill-paid' : pag.status === 'parcial' ? 'bg-amber-100 text-amber-700 border-amber-200' : isMesCobravel(pag.mes) ? 'month-pill-pending' : 'month-pill-future'}`}
                                                     >
                                                         {getNomeMesCurto(pag.mes).substring(0, 3)}
                                                     </button>
@@ -1160,13 +1244,13 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                 )}
                             </div>
 
-                            {/* Desktop: Table View */}
+                            {/* Desktop: Table View — only lective months */}
                             <div className="hidden md:block overflow-x-auto">
                                 <table className="table-excel">
                                     <thead>
                                         <tr>
                                             <th className="text-left px-4 py-3 min-w-[180px]">Aluno</th>
-                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(mes => (
+                                            {mesesLectivos.map(mes => (
                                                 <th key={`header-mes-${mes}`} className="text-center px-2 py-3 w-12">
                                                     {getNomeMesCurto(mes)}
                                                 </th>
@@ -1174,7 +1258,9 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredAlunos.slice(0, 15).map(aluno => (
+                                        {filteredAlunos.slice(0, 15).map(aluno => {
+                                            const pagamentosVisiveis = aluno.pagamentos.filter(p => isMesLectivo(p.mes))
+                                            return (
                                             <tr key={aluno.id}>
                                                 <td className="px-4 py-3">
                                                     <div className="flex items-center gap-3">
@@ -1187,13 +1273,11 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                                         </div>
                                                     </div>
                                                 </td>
-                                                {aluno.pagamentos.map(pag => (
+                                                {pagamentosVisiveis.map(pag => (
                                                     <td key={`cell-${aluno.id}-${pag.mes}`} className="text-center px-2 py-3">
                                                         {pag.status === 'pago' ? (
                                                             <button
                                                                 onClick={() => {
-                                                                    // Find the last payment for this month to view receipt
-                                                                    // Ideally logic should handle multiple receipts, but for now show latest
                                                                     const pagamento = pagamentos.find(
                                                                         p => p.aluno_id === aluno.id && p.mes_referencia === pag.mes
                                                                     )
@@ -1206,7 +1290,7 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                                 </svg>
                                                             </button>
-                                                        ) : pag.mes <= currentMonth ? (
+                                                        ) : isMesCobravel(pag.mes) ? (
                                                             <button
                                                                 onClick={() => handleOpenPaymentModal(aluno, pag.mes)}
                                                                 className={`w-8 h-8 rounded-lg flex items-center justify-center mx-auto hover:shadow-sm transition-all ${pag.status === 'parcial' ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100'}`}
@@ -1221,7 +1305,7 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                                                 )}
                                                             </button>
                                                         ) : (
-                                                            <div className="w-8 h-8 bg-slate-100 text-slate-400 rounded-lg flex items-center justify-center mx-auto" title="Futuro">
+                                                            <div className="w-8 h-8 bg-slate-100 text-slate-400 rounded-lg flex items-center justify-center mx-auto" title="Fora do período de cobrança">
                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                                                                 </svg>
@@ -1230,7 +1314,8 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                                     </td>
                                                 ))}
                                             </tr>
-                                        ))}
+                                            )
+                                        })}
                                     </tbody>
                                 </table>
                                 {filteredAlunos.length > 15 && (
@@ -1246,7 +1331,8 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                     {activeTab === 'students' && (
                         <div className="space-y-3 stagger-children">
                             {filteredAlunos.map(aluno => {
-                                const totalPendente = aluno.pagamentos.filter(p => p.status !== 'pago' && p.mes <= currentMonth).length
+                                const pagamentosVisiveis = aluno.pagamentos.filter(p => isMesLectivo(p.mes))
+                                const totalPendente = pagamentosVisiveis.filter(p => p.status !== 'pago' && isMesCobravel(p.mes)).length
 
                                 return (
                                     <div key={aluno.id} className="tuition-student-card">
@@ -1276,18 +1362,18 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                                 ) : `${totalPendente} pend.`}
                                             </span>
                                         </div>
-                                        {/* Month Pills - Grid Layout */}
-                                        <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5">
-                                            {aluno.pagamentos.map(pag => (
+                                        {/* Month Pills — only lective months */}
+                                        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-10 gap-1.5">
+                                            {pagamentosVisiveis.map(pag => (
                                                 <button
                                                     key={`stud-pill-${aluno.id}-${pag.mes}`}
-                                                    onClick={() => pag.status !== 'pago' && pag.mes <= currentMonth && handleOpenPaymentModal(aluno, pag.mes)}
-                                                    disabled={pag.status === 'pago' || pag.mes > currentMonth}
+                                                    onClick={() => pag.status !== 'pago' && isMesCobravel(pag.mes) && handleOpenPaymentModal(aluno, pag.mes)}
+                                                    disabled={pag.status === 'pago' || !isMesCobravel(pag.mes)}
                                                     className={`month-pill ${pag.status === 'pago'
                                                         ? 'month-pill-paid'
                                                         : pag.status === 'parcial'
                                                             ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                                            : pag.mes <= currentMonth
+                                                            : isMesCobravel(pag.mes)
                                                                 ? 'month-pill-pending'
                                                                 : 'month-pill-future'
                                                         }`}
@@ -1808,36 +1894,107 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                 </div>
             )}
 
-            {/* Config Modal */}
+            {/* Config Modal — value + lective billing months */}
             {showConfigModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowConfigModal(false)} />
-                    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-slide-up">
-                        <h3 className="text-lg font-bold text-slate-900 mb-1">Configurar Propinas</h3>
-                        <p className="text-sm text-slate-500 mb-5">Defina o valor da mensalidade para {currentYear}</p>
+                    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-slide-up max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">
+                            {config ? 'Editar Configuração de Propinas' : 'Configurar Propinas'}
+                        </h3>
+                        <p className="text-sm text-slate-500 mb-5">
+                            Defina o valor e os meses lectivos de cobrança para {currentYear}
+                        </p>
 
-                        <div className="space-y-4">
+                        <div className="space-y-5">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Valor da Mensalidade</label>
+                                <label htmlFor="config-valor-mensalidade" className="block text-sm font-medium text-slate-700 mb-1">
+                                    Valor da Mensalidade (Kz)
+                                </label>
                                 <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">Kz</span>
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">Kz</span>
                                     <input
+                                        id="config-valor-mensalidade"
                                         type="number"
-                                        value={configForm.valor_mensalidade}
-                                        onChange={(e) => setConfigForm({ ...configForm, valor_mensalidade: Number(e.target.value) })}
-                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                                        min="0"
+                                        step="0.01"
+                                        value={configForm.valor_mensalidade || ''}
+                                        onChange={(e) => setConfigForm({
+                                            ...configForm,
+                                            valor_mensalidade: e.target.value === '' ? 0 : Number(e.target.value)
+                                        })}
+                                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         placeholder="0.00"
+                                        autoFocus
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Descrição (opcional)</label>
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <label className="block text-sm font-medium text-slate-700">
+                                        Meses lectivos de cobrança
+                                    </label>
+                                    <span className="text-xs text-slate-500">
+                                        {configForm.meses_lectivos.length} seleccionado{configForm.meses_lectivos.length !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfigForm(prev => ({ ...prev, meses_lectivos: [...MESES_LECTIVOS_FEV_NOV] }))}
+                                        className="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                    >
+                                        Fev–Nov (10)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfigForm(prev => ({ ...prev, meses_lectivos: [...MESES_LECTIVOS_JAN_NOV] }))}
+                                        className="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                    >
+                                        Jan–Nov (11)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfigForm(prev => ({ ...prev, meses_lectivos: [...MESES_LECTIVOS_DEFAULT] }))}
+                                        className="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                    >
+                                        Ano completo (12)
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(mes => {
+                                        const selected = configForm.meses_lectivos.includes(mes)
+                                        return (
+                                            <button
+                                                key={`cfg-mes-${mes}`}
+                                                type="button"
+                                                onClick={() => toggleMesLectivo(mes)}
+                                                className={`px-2 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                                                    selected
+                                                        ? 'bg-primary-600 text-white border-primary-600'
+                                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                                }`}
+                                                aria-pressed={selected}
+                                            >
+                                                {getNomeMesCurto(mes)}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                                <p className="mt-2 text-xs text-slate-500">
+                                    A cobrança e as estatísticas usam apenas estes meses — não o calendário civil completo.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label htmlFor="config-descricao" className="block text-sm font-medium text-slate-700 mb-1">Descrição (opcional)</label>
                                 <input
+                                    id="config-descricao"
                                     type="text"
                                     value={configForm.descricao}
                                     onChange={(e) => setConfigForm({ ...configForm, descricao: e.target.value })}
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                     placeholder="Ex: Mensalidade padrão"
                                 />
                             </div>
@@ -1852,10 +2009,10 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                             </button>
                             <button
                                 onClick={handleSaveConfig}
-                                disabled={submitting || !configForm.valor_mensalidade}
+                                disabled={submitting || !configForm.valor_mensalidade || configForm.valor_mensalidade <= 0 || configForm.meses_lectivos.length === 0}
                                 className="flex-1 px-4 py-2.5 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {submitting ? 'Guardando...' : 'Guardar'}
+                                {submitting ? 'Guardando...' : config ? 'Actualizar' : 'Guardar'}
                             </button>
                         </div>
                     </div>
@@ -1878,8 +2035,8 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                     onChange={(e) => setExportMes(Number(e.target.value))}
                                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                 >
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(mes => (
-                                        <option key={`opt-mes-${mes}`} value={mes}>{getNomeMes(mes)} {mes > currentMonth ? currentYear - 1 : currentYear}</option>
+                                    {mesesLectivos.map(mes => (
+                                        <option key={`opt-mes-${mes}`} value={mes}>{getNomeMes(mes)} {currentYear}</option>
                                     ))}
                                 </select>
                             </div>
