@@ -16,7 +16,12 @@ import { dirname, join } from 'path'
 import pg from 'pg'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const migrationPath = join(__dirname, 'supabase', 'migrations', '20261029_fix_delete_escola_catalog_fk.sql')
+const migrationPath = join(
+  __dirname,
+  'supabase',
+  'migrations',
+  process.env.MIGRATION_FILE || '20261102_delete_escola_with_responsavel.sql'
+)
 
 function loadEnvFile() {
   const envPath = join(__dirname, '.env')

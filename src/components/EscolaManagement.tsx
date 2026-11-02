@@ -683,7 +683,7 @@ export const EscolaManagement: React.FC<EscolaManagementProps> = ({ initialFilte
                                 ⚠️ ATENÇÃO: Esta acção é irreversível!
                             </p>
                             <p className="text-xs text-red-700">
-                                Serão eliminados permanentemente: todos os professores, turmas, alunos, notas e dados relacionados desta escola.
+                                Serão eliminados permanentemente: a conta do responsável da escola, professores, secretários e demais utilizadores exclusivos desta escola, bem como turmas, alunos, notas, licenças e todos os dados relacionados.
                             </p>
                         </div>
 

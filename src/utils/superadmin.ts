@@ -507,24 +507,97 @@ export async function updateEscola(
     }
 }
 
+type DeleteEscolaResult = {
+    success: boolean
+    backup_id?: string
+    message?: string
+    error?: string
+    deleted_auth_users?: number
+}
+
 /**
- * Delete a school with optional backup
+ * Delete a school with optional backup.
+ * Also removes the school responsável and exclusive school user auth accounts.
+ *
+ * Order:
+ * 1) Local Vite API /api/superadmin-delete-escola (dev)
+ * 2) Edge Function superadmin-delete-escola
+ * 3) RPC backup_and_delete_escola (production after migration 20261102)
  */
 export async function deleteEscola(
     escolaId: string,
     motivo: string,
     createBackup: boolean = true
-): Promise<{ success: boolean; backup_id?: string; message?: string; error?: string }> {
+): Promise<DeleteEscolaResult> {
     try {
+        const body = {
+            escola_id: escolaId,
+            motivo,
+            create_backup: createBackup,
+        }
+
+        // 1) Dev API (Vite middleware) — full cleanup including auth users
+        try {
+            const { data: sessionData } = await supabase.auth.getSession()
+            const accessToken = sessionData.session?.access_token
+            if (accessToken) {
+                const localRes = await fetch('/api/superadmin-delete-escola', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${accessToken}`,
+                    },
+                    body: JSON.stringify(body),
+                })
+                if (localRes.ok) {
+                    const payload = (await localRes.json()) as DeleteEscolaResult
+                    if (payload?.success) return payload
+                    if (payload && payload.success === false && payload.error) {
+                        return payload
+                    }
+                }
+            }
+        } catch {
+            // Not running behind Vite middleware — continue
+        }
+
+        // 2) Edge Function
+        const { data: fnData, error: fnError } = await supabase.functions.invoke('superadmin-delete-escola', {
+            body,
+        })
+
+        if (!fnError && fnData) {
+            const payload = fnData as DeleteEscolaResult
+            if (payload.success === false) {
+                return {
+                    success: false,
+                    error: payload.error || 'Erro ao eliminar escola',
+                }
+            }
+            if (payload.success) {
+                return {
+                    success: true,
+                    backup_id: payload.backup_id,
+                    message: payload.message,
+                    deleted_auth_users: payload.deleted_auth_users,
+                }
+            }
+        }
+
+        if (fnError) {
+            console.warn('superadmin-delete-escola unavailable, falling back to RPC:', fnError.message)
+        }
+
+        // 3) RPC (includes auth cleanup after migration 20261102)
         const { data, error } = await supabase.rpc('backup_and_delete_escola', {
             p_escola_id: escolaId,
             p_motivo: motivo,
-            p_create_backup: createBackup
+            p_create_backup: createBackup,
         })
 
         if (error) throw error
 
-        return data as { success: boolean; backup_id?: string; message?: string; error?: string }
+        return data as DeleteEscolaResult
     } catch (error) {
         console.error('Error deleting escola:', error)
         throw error

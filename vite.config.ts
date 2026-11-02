@@ -1,11 +1,102 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { superadminDeleteEscola } from './scripts/superadmin-delete-escola-core.mjs'
+
+/**
+ * Dev-only API: eliminates school + responsável auth accounts.
+ * Production should rely on migration 20261102_delete_escola_with_responsavel.sql
+ * and/or the Edge Function superadmin-delete-escola.
+ */
+function superadminDeleteEscolaApi(): Plugin {
+    return {
+        name: 'superadmin-delete-escola-api',
+        configureServer(server) {
+            server.middlewares.use(async (req, res, next) => {
+                if (req.method === 'OPTIONS' && req.url?.startsWith('/api/superadmin-delete-escola')) {
+                    res.statusCode = 204
+                    res.setHeader('Access-Control-Allow-Origin', '*')
+                    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+                    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+                    res.end()
+                    return
+                }
+
+                if (req.method !== 'POST' || req.url?.split('?')[0] !== '/api/superadmin-delete-escola') {
+                    next()
+                    return
+                }
+
+                try {
+                    const env = loadEnv(server.config.mode, server.config.root, '')
+                    const url = env.SUPABASE_URL || env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
+                    const serviceKey =
+                        env.SUPABASE_SECRET_KEY ||
+                        env.SUPABASE_SERVICE_ROLE_KEY ||
+                        process.env.SUPABASE_SECRET_KEY ||
+                        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+                        ''
+                    const anonKey = env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+
+                    const chunks: Uint8Array[] = []
+                    for await (const chunk of req) {
+                        chunks.push(chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(String(chunk)))
+                    }
+                    const total = chunks.reduce((n, c) => n + c.length, 0)
+                    const merged = new Uint8Array(total)
+                    let offset = 0
+                    for (const c of chunks) {
+                        merged.set(c, offset)
+                        offset += c.length
+                    }
+                    const body = JSON.parse(new TextDecoder().decode(merged) || '{}')
+                    const authHeader = String(req.headers.authorization || '')
+                    const accessToken = authHeader.replace(/^Bearer\s+/i, '').trim()
+
+                    if (!url || !serviceKey) {
+                        res.statusCode = 500
+                        res.setHeader('Content-Type', 'application/json')
+                        res.end(JSON.stringify({ success: false, error: 'Server misconfigured (missing Supabase secrets)' }))
+                        return
+                    }
+                    if (!accessToken) {
+                        res.statusCode = 401
+                        res.setHeader('Content-Type', 'application/json')
+                        res.end(JSON.stringify({ success: false, error: 'Não autenticado' }))
+                        return
+                    }
+
+                    const result = await superadminDeleteEscola({
+                        url,
+                        serviceKey,
+                        anonKey,
+                        accessToken,
+                        escolaId: String(body.escola_id || ''),
+                        motivo: String(body.motivo || ''),
+                        createBackup: body.create_backup !== false,
+                    })
+
+                    res.statusCode = result.status || (result.success ? 200 : 500)
+                    res.setHeader('Content-Type', 'application/json')
+                    res.end(JSON.stringify(result))
+                } catch (err) {
+                    res.statusCode = 500
+                    res.setHeader('Content-Type', 'application/json')
+                    res.end(JSON.stringify({
+                        success: false,
+                        error: err instanceof Error ? err.message : String(err),
+                    }))
+                }
+            })
+        },
+    }
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
     plugins: [
         react(),
+        superadminDeleteEscolaApi(),
         VitePWA({
             registerType: 'prompt',
             injectRegister: 'auto',

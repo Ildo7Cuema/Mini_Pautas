@@ -12,7 +12,9 @@
         "test:ui": "vitest --ui",
         "type-check": "tsc --noEmit",
         "seed:test": "node scripts/seed-test-data.mjs",
-        "seed:test:clean": "node scripts/unseed-test-data.mjs"
+        "seed:test:clean": "node scripts/unseed-test-data.mjs",
+        "db:apply-delete-escola": "node scripts/apply-delete-escola-responsavel.mjs",
+        "verify:delete-escola": "node scripts/verify-delete-escola-responsavel.mjs"
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.39.0",
