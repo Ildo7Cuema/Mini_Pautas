@@ -89,6 +89,7 @@ async function createTemplates(supabase, escolaId, school) {
         const componentesRows = []
         for (const trimestre of [1, 2, 3]) {
             for (const c of t.componentes) {
+                const isCalculated = c.is_calculated === true
                 componentesRows.push({
                     disciplina_template_id: disc.id,
                     nome: c.nome,
@@ -99,8 +100,11 @@ async function createTemplates(supabase, escolaId, school) {
                     obrigatorio: true,
                     ordem: c.ordem,
                     trimestre,
-                    is_calculated: false,
-                    tipo_calculo: 'trimestral',
+                    is_calculated: isCalculated,
+                    formula_expression: isCalculated ? (c.formula_expression || null) : null,
+                    // Codes in the formula are resolved at evaluation time; keep depends empty in seed.
+                    depends_on_components: [],
+                    tipo_calculo: c.tipo_calculo || 'trimestral',
                     descricao: `${c.codigo_componente} · ${trimestre}º Trimestre`,
                 })
             }

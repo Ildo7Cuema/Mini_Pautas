@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { Turma, Disciplina, ComponenteAvaliacao, Aluno, Nota } from '../types'
 import { validateGrade } from '../utils/formulaParser'
 import { evaluateFormula } from '../utils/formulaUtils'
+import { isManualGradeEntryComponent } from '../utils/gradeUtils'
 
 interface GradeEntryProps {
     turma: Turma
@@ -44,16 +45,16 @@ export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => 
                 .from('componentes_avaliacao')
                 .select('*')
                 .eq('disciplina_id', disciplina.id)
-                .eq('is_calculated', false) // Only load non-calculated components for manual entry
                 .order('ordem')
 
             if (error) throw error
 
-            console.log('Loaded components for grade entry:', data)
+            const entryComponents = (data || []).filter(isManualGradeEntryComponent)
+            console.log('Loaded components for grade entry:', entryComponents)
 
-            setComponentes(data || [])
-            if (data && data.length > 0) {
-                setSelectedComponente(data[0])
+            setComponentes(entryComponents)
+            if (entryComponents.length > 0) {
+                setSelectedComponente(entryComponents[0])
             }
         } catch (error) {
             console.error('Error loading components:', error)

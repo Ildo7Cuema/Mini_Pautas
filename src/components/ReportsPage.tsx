@@ -17,7 +17,7 @@ import { OrdenarDisciplinasModal } from './OrdenarDisciplinasModal'
 import { TurmaStatistics } from './TurmaStatistics'
 import { generateMiniPautaPDF } from '../utils/pdfGenerator'
 import { generateMiniPautaExcel, generateCSV } from '../utils/excelGenerator'
-import { calculateNotaFinal, calculateStatistics } from '../utils/gradeCalculations'
+import { calculateNotaFinal, calculateStatistics, getClassificacao } from '../utils/gradeCalculations'
 import { evaluateFormula, parseFormula } from '../utils/formulaUtils'
 import { FormulaConfig, loadFormulaConfig } from '../utils/formulaConfigUtils'
 import { ConfiguracaoFormulasModal } from './ConfiguracaoFormulasModal'
@@ -27,7 +27,8 @@ import { ConfiguracaoCoresModal } from './ConfiguracaoCoresModal'
 import { PautaGeralPage } from './PautaGeralPage'
 import { useAuth } from '../contexts/AuthContext'
 import { TermoFrequenciaPreview } from './TermoFrequenciaPreview'
-import { generateTermoFrequenciaPDF, generateBatchTermosFrequenciaZip, generateMapaAproveitamentoPDF } from '../utils/pdfGenerator'
+import { BoletimNotasPreview, BoletimNotasData } from './BoletimNotasPreview'
+import { generateTermoFrequenciaPDF, generateBatchTermosFrequenciaZip, generateMapaAproveitamentoPDF, generateBoletimNotasPDF, generateBatchBoletinsZip } from '../utils/pdfGenerator'
 import { MapaAproveitamentoPreview, MapaAproveitamentoData, MapaAproveitamentoTurmaData } from './MapaAproveitamentoPreview'
 
 interface Turma {
@@ -129,13 +130,18 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
     const [showColorConfigModal, setShowColorConfigModal] = useState(false)
 
     // Tab state
-    const [activeTab, setActiveTab] = useState<'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento'>('mini-pauta')
+    const [activeTab, setActiveTab] = useState<'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas'>('mini-pauta')
 
     // Mapa de Aproveitamento state
     const [mapaData, setMapaData] = useState<MapaAproveitamentoData | null>(null)
     const [mapaLoading, setMapaLoading] = useState(false)
     const [mapaTrimestre, setMapaTrimestre] = useState<1 | 2 | 3 | 'anual'>(1)
     const [mapaSelectedTurmas] = useState<string[]>([])
+
+    // Boletim de Notas state
+    const [boletimTrimestre, setBoletimTrimestre] = useState<1 | 2 | 3>(1)
+    const [boletimData, setBoletimData] = useState<BoletimNotasData | null>(null)
+    const [loadingBoletim, setLoadingBoletim] = useState(false)
 
     // Termo de Frequência state
     const [alunos, setAlunos] = useState<Array<{ id: string, numero_processo: string, nome_completo: string }>>([])
@@ -602,6 +608,250 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
         }
     }, [selectedAluno, selectedTurma, selectedComponents])
 
+    const buildBoletimForAluno = useCallback(async (
+        alunoId: string,
+        turmaId: string,
+        trimestreSel: 1 | 2 | 3
+    ): Promise<BoletimNotasData> => {
+        const { data: alunoData, error: alunoError } = await supabase
+            .from('alunos')
+            .select(`
+                id, numero_processo, nome_completo, data_nascimento, genero,
+                nome_encarregado, telefone_encarregado
+            `)
+            .eq('id', alunoId)
+            .single()
+        if (alunoError) throw alunoError
+
+        const { data: turmaData, error: turmaError } = await supabase
+            .from('turmas')
+            .select('id, nome, ano_lectivo, codigo_turma, nivel_ensino, escola_id')
+            .eq('id', turmaId)
+            .single()
+        if (turmaError) throw turmaError
+
+        const { data: disciplinasData, error: disciplinasError } = await supabase
+            .from('disciplinas')
+            .select('id, nome, codigo_disciplina')
+            .eq('turma_id', turmaId)
+            .order('ordem')
+        if (disciplinasError) throw disciplinasError
+        if (!disciplinasData || disciplinasData.length === 0) {
+            throw new Error('Nenhuma disciplina encontrada para esta turma')
+        }
+
+        const { data: componentesData, error: componentesError } = await supabase
+            .from('componentes_avaliacao')
+            .select('id, codigo_componente, nome, peso_percentual, trimestre, disciplina_id, is_calculated, formula_expression, depends_on_components, tipo_calculo')
+            .eq('turma_id', turmaId)
+            .eq('trimestre', trimestreSel)
+            .in('disciplina_id', disciplinasData.map(d => d.id))
+        if (componentesError) throw componentesError
+
+        const { data: notasData, error: notasError } = await supabase
+            .from('notas')
+            .select('componente_id, valor, trimestre')
+            .eq('aluno_id', alunoId)
+            .eq('turma_id', turmaId)
+            .eq('trimestre', trimestreSel)
+        if (notasError) throw notasError
+
+        const isPrimary = turmaData.nivel_ensino?.toLowerCase().includes('primário') ||
+            turmaData.nivel_ensino?.toLowerCase().includes('primario') ||
+            false
+        const limiar = isPrimary ? 5 : 10
+
+        const disciplinasProcessadas = disciplinasData.map(disciplina => {
+            const componentesDisciplina = (componentesData || []).filter(c => c.disciplina_id === disciplina.id)
+            // Exclude annual-only calculated components from trimestral boletim (MF/MFD etc.)
+            const componentesTrimestre = componentesDisciplina.filter(c =>
+                !(c.is_calculated && c.tipo_calculo === 'anual')
+            )
+
+            const notasMapById: Record<string, number> = {}
+            notasData?.filter(n => componentesTrimestre.some(c => c.id === n.componente_id))
+                .forEach(n => { notasMapById[n.componente_id] = n.valor })
+
+            const notasMapByCode: Record<string, number> = {}
+            componentesTrimestre.forEach(comp => {
+                if (notasMapById[comp.id] !== undefined) {
+                    notasMapByCode[comp.codigo_componente] = notasMapById[comp.id]
+                }
+            })
+
+            // Calculate trimestral formula components (e.g. MT) — same robust resolution as mini-pauta
+            componentesTrimestre.forEach(comp => {
+                if (!(comp.is_calculated && comp.formula_expression)) return
+                if (!(comp.tipo_calculo === 'trimestral' || !comp.tipo_calculo)) return
+
+                const dependencyValues: Record<string, number> = {}
+
+                if (!comp.depends_on_components || comp.depends_on_components.length === 0) {
+                    // Fallback: extract codes from formula (templates often leave depends_on empty)
+                    const formulaCodes = parseFormula(comp.formula_expression)
+                    formulaCodes.forEach(code => {
+                        const depComponent = componentesTrimestre.find(c =>
+                            c.codigo_componente?.trim().toUpperCase() === code.trim().toUpperCase()
+                        )
+                        if (depComponent) {
+                            dependencyValues[code] = notasMapByCode[depComponent.codigo_componente] ?? 0
+                        } else {
+                            dependencyValues[code] = 0
+                        }
+                    })
+                } else {
+                    comp.depends_on_components.forEach((depId: string) => {
+                        // Prefer ID match; fallback to codigo (templates may store either)
+                        let depComponent = componentesTrimestre.find(c => c.id === depId)
+                        if (!depComponent) {
+                            depComponent = componentesTrimestre.find(c =>
+                                c.codigo_componente?.trim().toUpperCase() === String(depId).trim().toUpperCase()
+                            )
+                        }
+                        if (depComponent) {
+                            const code = depComponent.codigo_componente
+                            dependencyValues[code] = notasMapByCode[code] ?? 0
+                        }
+                    })
+                }
+
+                // Only calculate when at least one dependency has a real launched grade
+                const hasAnyLaunchedDependency = Object.entries(dependencyValues).some(([code]) => {
+                    const dep = componentesTrimestre.find(c =>
+                        c.codigo_componente?.trim().toUpperCase() === code.trim().toUpperCase()
+                    )
+                    return dep ? notasMapById[dep.id] !== undefined : notasMapByCode[code] !== undefined
+                })
+
+                if (Object.keys(dependencyValues).length > 0 && hasAnyLaunchedDependency) {
+                    try {
+                        const calculatedValue = evaluateFormula(comp.formula_expression, dependencyValues)
+                        notasMapByCode[comp.codigo_componente] = Math.round(calculatedValue * 100) / 100
+                    } catch (error) {
+                        console.error(`Error calculating boletim component ${comp.codigo_componente}:`, error)
+                    }
+                }
+            })
+
+            const componentes = componentesTrimestre.map(comp => ({
+                codigo: comp.codigo_componente,
+                nome: comp.nome,
+                nota: notasMapByCode[comp.codigo_componente] ?? null,
+                is_calculated: comp.is_calculated || false
+            }))
+
+            // Prefer calculated MT / NF / MF for the trimester as the headline grade
+            const preferCodes = ['MT', 'NF', 'MF', 'MFD', 'MEDIA', 'MÉDIA']
+            let notaTrimestral: number | null = null
+            for (const code of preferCodes) {
+                const found = componentes.find(c => c.codigo.toUpperCase() === code && c.nota !== null)
+                if (found) {
+                    notaTrimestral = found.nota
+                    break
+                }
+            }
+            if (notaTrimestral === null) {
+                // Prefer any calculated component value already resolved
+                const calculatedWithNota = componentes.find(c => c.is_calculated && c.nota !== null)
+                if (calculatedWithNota) {
+                    notaTrimestral = calculatedWithNota.nota
+                } else {
+                    const notasParaCalculo = notasData?.filter(n =>
+                        componentesTrimestre.some(c => c.id === n.componente_id)
+                    ) || []
+                    if (notasParaCalculo.length > 0 && componentesTrimestre.length > 0) {
+                        const resultado = calculateNotaFinal(notasParaCalculo, componentesTrimestre)
+                        notaTrimestral = resultado.nota_final
+                    }
+                }
+            }
+
+            const aprovado = notaTrimestral !== null && notaTrimestral >= limiar
+            let classificacao = 'N/A'
+            if (notaTrimestral !== null) {
+                classificacao = isPrimary
+                    ? (aprovado ? 'Aprovado' : 'Reprovado')
+                    : getClassificacao(notaTrimestral)
+            }
+
+            return {
+                id: disciplina.id,
+                nome: disciplina.nome,
+                codigo_disciplina: disciplina.codigo_disciplina,
+                componentes,
+                nota_trimestral: notaTrimestral,
+                classificacao,
+                aprovado
+            }
+        })
+
+        const notasValidas = disciplinasProcessadas
+            .map(d => d.nota_trimestral)
+            .filter((n): n is number => n !== null)
+        const mediaGeral = notasValidas.length > 0
+            ? notasValidas.reduce((sum, n) => sum + n, 0) / notasValidas.length
+            : 0
+
+        let escolaInfo: BoletimNotasData['escola']
+        const escolaId = turmaData.escola_id
+            || escolaProfile?.id
+            || secretarioProfile?.escola_id
+            || professorProfile?.escola_id
+        if (escolaId) {
+            const { data: escolaData } = await supabase
+                .from('escolas')
+                .select('nome, provincia, municipio')
+                .eq('id', escolaId)
+                .single()
+            if (escolaData) escolaInfo = escolaData
+        }
+
+        return {
+            aluno: {
+                numero_processo: alunoData.numero_processo,
+                nome_completo: alunoData.nome_completo,
+                data_nascimento: alunoData.data_nascimento,
+                genero: alunoData.genero,
+                nome_encarregado: alunoData.nome_encarregado,
+                telefone_encarregado: alunoData.telefone_encarregado,
+            },
+            turma: {
+                nome: turmaData.nome,
+                ano_lectivo: turmaData.ano_lectivo,
+                codigo_turma: turmaData.codigo_turma,
+                nivel_ensino: turmaData.nivel_ensino,
+            },
+            trimestre: trimestreSel,
+            disciplinas: disciplinasProcessadas,
+            estatisticas: {
+                media_geral: mediaGeral,
+                total_disciplinas: disciplinasProcessadas.length,
+                disciplinas_aprovadas: disciplinasProcessadas.filter(d => d.aprovado).length,
+                disciplinas_reprovadas: disciplinasProcessadas.filter(d => d.nota_trimestral !== null && !d.aprovado).length,
+                limiar_aprovacao: limiar,
+                is_primary: isPrimary,
+            },
+            escola: escolaInfo,
+        }
+    }, [escolaProfile, secretarioProfile, professorProfile])
+
+    const loadBoletimNotasData = useCallback(async () => {
+        if (!selectedAluno || !selectedTurma) return
+        try {
+            setLoadingBoletim(true)
+            setError(null)
+            const data = await buildBoletimForAluno(selectedAluno, selectedTurma, boletimTrimestre)
+            setBoletimData(data)
+        } catch (err) {
+            console.error('Error in loadBoletimNotasData:', err)
+            const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar boletim de notas'
+            setError(translateError(errorMessage))
+            setBoletimData(null)
+        } finally {
+            setLoadingBoletim(false)
+        }
+    }, [selectedAluno, selectedTurma, boletimTrimestre, buildBoletimForAluno])
+
     useEffect(() => {
         loadTurmas()
     }, [selectedEscola]) // Re-run when escola changes (for Direção Municipal)
@@ -656,22 +906,31 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
     }, [selectedTurma])
 
     useEffect(() => {
-        if (selectedTurma && activeTab === 'termo-frequencia') {
+        if (selectedTurma && (activeTab === 'termo-frequencia' || activeTab === 'boletim-notas')) {
             loadAlunos()
         } else {
             setAlunos([])
             setSelectedAluno('')
             setTermoFrequenciaData(null)
+            setBoletimData(null)
         }
     }, [selectedTurma, activeTab, loadAlunos])
 
     useEffect(() => {
         if (selectedTurma && selectedAluno && activeTab === 'termo-frequencia') {
             loadTermoFrequenciaData()
-        } else {
+        } else if (activeTab !== 'termo-frequencia') {
             setTermoFrequenciaData(null)
         }
     }, [selectedTurma, selectedAluno, activeTab, loadTermoFrequenciaData])
+
+    useEffect(() => {
+        if (selectedTurma && selectedAluno && activeTab === 'boletim-notas') {
+            loadBoletimNotasData()
+        } else if (activeTab !== 'boletim-notas') {
+            setBoletimData(null)
+        }
+    }, [selectedTurma, selectedAluno, activeTab, boletimTrimestre, loadBoletimNotasData])
 
 
 
@@ -1854,6 +2113,56 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
         }
     }
 
+    const handleGenerateBoletimPDF = async () => {
+        if (!boletimData) {
+            setError('Carregue os dados do boletim primeiro')
+            return
+        }
+        try {
+            await generateBoletimNotasPDF(boletimData, headerConfig, colorConfig)
+            setSuccess('Boletim de Notas gerado com sucesso!')
+            setTimeout(() => setSuccess(null), 3000)
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Erro ao gerar Boletim de Notas'
+            setError(translateError(errorMessage))
+        }
+    }
+
+    const handleGenerateBatchBoletins = async () => {
+        if (!selectedTurma || selectedAlunosIds.length === 0) {
+            setError('Seleccione pelo menos um aluno')
+            return
+        }
+        try {
+            setBatchGenerating(true)
+            setError(null)
+            const boletins: BoletimNotasData[] = []
+            for (let i = 0; i < selectedAlunosIds.length; i++) {
+                const alunoId = selectedAlunosIds[i]
+                const alunoInfo = alunos.find(a => a.id === alunoId)
+                setBatchProgress({
+                    current: i + 1,
+                    total: selectedAlunosIds.length,
+                    currentAluno: alunoInfo?.nome_completo || 'Aluno'
+                })
+                const data = await buildBoletimForAluno(alunoId, selectedTurma, boletimTrimestre)
+                boletins.push(data)
+            }
+            await generateBatchBoletinsZip(boletins, headerConfig, colorConfig, (current, total, alunoNome) => {
+                setBatchProgress({ current, total, currentAluno: alunoNome })
+            })
+            setSuccess(`${boletins.length} boletim(ns) gerado(s) com sucesso!`)
+            setTimeout(() => setSuccess(null), 4000)
+            setSelectedAlunosIds([])
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Erro ao gerar boletins em lote'
+            setError(translateError(errorMessage))
+        } finally {
+            setBatchGenerating(false)
+            setBatchProgress(null)
+        }
+    }
+
     const handleSelectAllAlunos = () => {
         if (selectedAlunosIds.length === alunos.length) {
             // Deselect all
@@ -2437,6 +2746,21 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                                     Termo de Frequência
                                 </button>
                                 <button
+                                    onClick={() => setActiveTab('boletim-notas')}
+                                    className={`
+                                        flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 whitespace-nowrap touch-feedback min-h-touch
+                                        ${activeTab === 'boletim-notas'
+                                            ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-500/25'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-95'
+                                        }
+                                    `}
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Boletim de Notas
+                                </button>
+                                <button
                                     onClick={() => setActiveTab('mapa-aproveitamento')}
                                     className={`
                                         flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 whitespace-nowrap touch-feedback min-h-touch
@@ -2879,6 +3203,274 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                                     </p>
                                     <p className="mt-2 text-xs text-slate-400">
                                         O mapa mostra por disciplina: inscritos, frequência, aprovados, reprovados, desistentes e transferidos — desagregados por género (M/F/T).
+                                    </p>
+                                </div>
+                            </CardBody>
+                        </Card>
+                    )}
+                </div>
+            ) : activeTab === 'boletim-notas' ? (
+                // Boletim de Notas Tab
+                <div className="space-y-4 md:space-y-6">
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+                            <span className="text-sm">{error}</span>
+                        </div>
+                    )}
+                    {success && (
+                        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">
+                            <span className="text-sm">{success}</span>
+                        </div>
+                    )}
+
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-base md:text-lg font-semibold text-slate-900">Boletim de Notas</h3>
+                                    <p className="text-xs text-slate-500">Impressão por trimestre — limiar Primário: 5 · Secundário: 10</p>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardBody className="p-3 md:p-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                                {isDirecaoMunicipal && (
+                                    <div>
+                                        <label className="form-label">Escola</label>
+                                        <select
+                                            value={selectedEscola}
+                                            onChange={(e) => setSelectedEscola(e.target.value)}
+                                            className="form-input min-h-touch"
+                                        >
+                                            <option value="">Seleccione uma escola</option>
+                                            {escolas.map((escola) => (
+                                                <option key={escola.id} value={escola.id}>
+                                                    {escola.nome}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="form-label">Turma</label>
+                                    <select
+                                        value={selectedTurma}
+                                        onChange={(e) => {
+                                            setSelectedTurma(e.target.value)
+                                            setSelectedAluno('')
+                                            setBoletimData(null)
+                                        }}
+                                        className="form-input min-h-touch"
+                                        disabled={isDirecaoMunicipal && !selectedEscola}
+                                    >
+                                        <option value="">{isDirecaoMunicipal && !selectedEscola ? 'Seleccione primeiro uma escola' : 'Seleccione uma turma'}</option>
+                                        {turmas.map((turma) => (
+                                            <option key={turma.id} value={turma.id}>
+                                                {turma.nome} — {turma.ano_lectivo} ({turma.nivel_ensino})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="form-label">Aluno</label>
+                                    <select
+                                        value={selectedAluno}
+                                        onChange={(e) => setSelectedAluno(e.target.value)}
+                                        disabled={!selectedTurma || alunos.length === 0}
+                                        className="form-input min-h-touch"
+                                    >
+                                        <option value="">Seleccione um aluno</option>
+                                        {alunos.map((aluno) => (
+                                            <option key={aluno.id} value={aluno.id}>
+                                                {aluno.nome_completo} ({aluno.numero_processo})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="form-label">Trimestre</label>
+                                    <select
+                                        value={boletimTrimestre}
+                                        onChange={(e) => {
+                                            setBoletimTrimestre(Number(e.target.value) as 1 | 2 | 3)
+                                            setBoletimData(null)
+                                        }}
+                                        className="form-input min-h-touch"
+                                    >
+                                        <option value={1}>1º Trimestre</option>
+                                        <option value={2}>2º Trimestre</option>
+                                        <option value={3}>3º Trimestre</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </CardBody>
+                    </Card>
+
+                    {/* Batch generation for boletim */}
+                    {selectedTurma && alunos.length > 0 && !batchGenerating && (
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
+                                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-base md:text-lg font-semibold text-slate-900">Impressão em Lote</h3>
+                                            <p className="text-xs md:text-sm text-slate-500">
+                                                Gerar boletins do {boletimTrimestre}º trimestre para vários alunos
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {selectedAlunosIds.length > 0 && (
+                                            <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
+                                                {selectedAlunosIds.length} seleccionados
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={() => setIsBatchGenerationExpanded(!isBatchGenerationExpanded)}
+                                            className="p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                                        >
+                                            <svg
+                                                className={`w-5 h-5 text-slate-500 transition-transform duration-200 ${isBatchGenerationExpanded ? 'rotate-180' : ''}`}
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            {isBatchGenerationExpanded && (
+                                <CardBody className="p-3 md:p-4">
+                                    <div className="mb-4 pb-4 border-b border-slate-200">
+                                        <label className="flex items-center gap-3 cursor-pointer hover:bg-slate-100 p-3 rounded-xl transition-all duration-200 touch-feedback min-h-touch">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedAlunosIds.length === alunos.length && alunos.length > 0}
+                                                onChange={handleSelectAllAlunos}
+                                                className="w-5 h-5 text-blue-600 border-2 border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                            />
+                                            <span className="font-semibold text-slate-900">
+                                                {selectedAlunosIds.length === alunos.length && alunos.length > 0 ? 'Desmarcar Todos' : 'Seleccionar Todos'}
+                                            </span>
+                                        </label>
+                                    </div>
+                                    <div className="max-h-72 overflow-y-auto space-y-2 mb-4">
+                                        {alunos.map((aluno, index) => (
+                                            <label
+                                                key={aluno.id}
+                                                className={`flex items-center gap-3 cursor-pointer p-3 rounded-xl transition-all duration-200 touch-feedback min-h-touch ${
+                                                    selectedAlunosIds.includes(aluno.id)
+                                                        ? 'bg-indigo-50 border border-indigo-200'
+                                                        : 'bg-slate-50 hover:bg-slate-100 border border-transparent'
+                                                }`}
+                                            >
+                                                <div className="w-7 h-7 bg-slate-200 rounded-lg flex items-center justify-center text-xs font-bold text-slate-600 flex-shrink-0">
+                                                    {index + 1}
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedAlunosIds.includes(aluno.id)}
+                                                    onChange={() => handleToggleAluno(aluno.id)}
+                                                    className="w-5 h-5 text-indigo-600 border-2 border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 cursor-pointer flex-shrink-0"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-slate-900 truncate">{aluno.nome_completo}</p>
+                                                    <p className="text-xs text-slate-500">Nº {aluno.numero_processo}</p>
+                                                </div>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div className="flex justify-end pt-4 border-t border-slate-200">
+                                        <button
+                                            onClick={handleGenerateBatchBoletins}
+                                            disabled={selectedAlunosIds.length === 0}
+                                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-medium rounded-xl transition-all duration-200 shadow-md shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed min-h-touch touch-feedback"
+                                        >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            Gerar Boletins (ZIP)
+                                        </button>
+                                    </div>
+                                </CardBody>
+                            )}
+                        </Card>
+                    )}
+
+                    {batchGenerating && batchProgress && (
+                        <Card>
+                            <CardBody>
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-lg font-semibold text-slate-900">A gerar boletins...</h3>
+                                        <span className="text-sm text-slate-600">
+                                            {batchProgress.current} de {batchProgress.total}
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                                        <div
+                                            className="bg-indigo-600 h-full transition-all duration-300 ease-out"
+                                            style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                                        />
+                                    </div>
+                                    <p className="text-sm text-slate-600">
+                                        A processar: <span className="font-medium text-slate-900">{batchProgress.currentAluno}</span>
+                                    </p>
+                                </div>
+                            </CardBody>
+                        </Card>
+                    )}
+
+                    {loadingBoletim && (
+                        <Card>
+                            <CardBody>
+                                <div className="flex items-center justify-center py-8">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                                    <span className="ml-3 text-slate-600">A carregar boletim...</span>
+                                </div>
+                            </CardBody>
+                        </Card>
+                    )}
+
+                    {boletimData && !loadingBoletim && (
+                        <>
+                            <div className="flex flex-wrap gap-3 justify-end">
+                                <Button
+                                    onClick={handleGenerateBoletimPDF}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Imprimir Boletim (PDF)
+                                </Button>
+                            </div>
+                            <BoletimNotasPreview data={boletimData} colorConfig={colorConfig} />
+                        </>
+                    )}
+
+                    {!selectedTurma && !loadingBoletim && (
+                        <Card>
+                            <CardBody>
+                                <div className="text-center py-12">
+                                    <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <h3 className="mt-2 text-sm font-medium text-slate-900">Boletim de Notas</h3>
+                                    <p className="mt-1 text-sm text-slate-500">
+                                        Seleccione turma, aluno e trimestre para visualizar e imprimir o boletim.
                                     </p>
                                 </div>
                             </CardBody>

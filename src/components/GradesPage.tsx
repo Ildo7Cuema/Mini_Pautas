@@ -25,6 +25,7 @@ import {
     generateCSVTemplate,
     getGradeColor,
     getGradeBgColor,
+    isManualGradeEntryComponent,
     GradeData
 } from '../utils/gradeUtils'
 import type { Aluno, ComponenteAvaliacao, Disciplina } from '../types'
@@ -356,17 +357,13 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                 trimestre: trimestre
             })
 
-            // Exclude calculated components at DB level (double safety on top of client-side filter).
-            // is_calculated IS NULL is included to handle legacy records created before the column existed.
-            const calcFilter = 'is_calculated.is.null,is_calculated.eq.false'
-
-            // First try with trimestre filter
+            // Load all components for the disciplina/trimestre, then keep only those
+            // eligible for manual lançamento (calculated ones are excluded for every class).
             let { data, error } = await supabase
                 .from('componentes_avaliacao')
                 .select('*')
                 .eq('disciplina_id', selectedDisciplina)
                 .eq('trimestre', trimestre)
-                .or(calcFilter)
                 .order('ordem')
 
             // If no components found with trimestre filter, try without (for legacy data)
@@ -376,7 +373,6 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                     .from('componentes_avaliacao')
                     .select('*')
                     .eq('disciplina_id', selectedDisciplina)
-                    .or(calcFilter)
                     .order('ordem')
 
                 data = result.data
@@ -391,13 +387,10 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
 
             if (error) throw error
 
-            // Filter out calculated components client-side for robustness
-            const nonCalculatedComponents = (data || []).filter(
-                (c: any) => c.is_calculated !== true
-            )
+            const entryComponents = (data || []).filter(isManualGradeEntryComponent)
 
-            console.log('📊 Componentes não-calculados:', nonCalculatedComponents.length)
-            setComponentes(nonCalculatedComponents)
+            console.log('📊 Componentes para lançamento manual:', entryComponents.length)
+            setComponentes(entryComponents)
             setSelectedComponente('')
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar componentes'

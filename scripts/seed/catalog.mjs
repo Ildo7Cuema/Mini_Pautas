@@ -5,9 +5,18 @@
 import { ANO_LECTIVO, SEED_PASSWORD, seedEmail } from './_shared.mjs'
 
 const COMPONENTES_PADRAO = [
-    { nome: 'Média das Avaliações Contínuas', codigo_componente: 'MAC', peso_percentual: 100, ordem: 1 },
-    { nome: 'Nota da Prova Trimestral', codigo_componente: 'NPT', peso_percentual: 100, ordem: 2 },
-    { nome: 'Média Trimestral', codigo_componente: 'MT', peso_percentual: 100, ordem: 3 },
+    { nome: 'Média das Avaliações Contínuas', codigo_componente: 'MAC', peso_percentual: 100, ordem: 1, is_calculated: false },
+    { nome: 'Nota da Prova Trimestral', codigo_componente: 'NPT', peso_percentual: 100, ordem: 2, is_calculated: false },
+    {
+        nome: 'Média Trimestral',
+        codigo_componente: 'MT',
+        peso_percentual: 100,
+        ordem: 3,
+        is_calculated: true,
+        formula_expression: '(MAC + NPT) / 2',
+        depends_on_codes: ['MAC', 'NPT'],
+        tipo_calculo: 'trimestral',
+    },
 ]
 
 function withComponentes(disciplinas) {

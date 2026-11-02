@@ -2686,3 +2686,392 @@ export async function generateMapaAproveitamentoPDF(
     doc.save(filename)
 }
 
+// ── Boletim de Notas do Aluno (por trimestre) ────────────────────────────────
+
+interface BoletimComponenteNotaPdf {
+    codigo: string
+    nome: string
+    nota: number | null
+    is_calculated?: boolean
+}
+
+interface BoletimDisciplinaPdf {
+    id: string
+    nome: string
+    codigo_disciplina: string
+    componentes: BoletimComponenteNotaPdf[]
+    nota_trimestral: number | null
+    classificacao: string
+    aprovado: boolean
+}
+
+export interface BoletimNotasPdfData {
+    aluno: {
+        numero_processo: string
+        nome_completo: string
+        data_nascimento?: string
+        genero?: string
+        nome_encarregado?: string
+        telefone_encarregado?: string
+    }
+    turma: {
+        nome: string
+        ano_lectivo: number
+        codigo_turma: string
+        nivel_ensino: string
+    }
+    trimestre: 1 | 2 | 3
+    disciplinas: BoletimDisciplinaPdf[]
+    estatisticas: {
+        media_geral: number
+        total_disciplinas: number
+        disciplinas_aprovadas: number
+        disciplinas_reprovadas: number
+        limiar_aprovacao: number
+        is_primary: boolean
+    }
+    escola?: {
+        nome: string
+        provincia: string
+        municipio: string
+    }
+}
+
+const BOLETIM_TRIMESTRE_LABELS: Record<1 | 2 | 3, string> = {
+    1: '1º Trimestre',
+    2: '2º Trimestre',
+    3: '3º Trimestre',
+}
+
+async function renderBoletimHeader(
+    doc: jsPDF,
+    data: BoletimNotasPdfData,
+    headerConfig: HeaderConfig | null | undefined,
+    pageWidth: number
+): Promise<number> {
+    let currentY = 10
+
+    if (headerConfig) {
+        if (headerConfig.logo_url) {
+            try {
+                const base64Image = await imageUrlToBase64(headerConfig.logo_url)
+                const imageFormat = getImageFormat(headerConfig.logo_url)
+                const maxLogoSize = 28
+                let logoWidth = (headerConfig.logo_width || 50) * 0.26
+                let logoHeight = (headerConfig.logo_height || 50) * 0.26
+                if (logoWidth > maxLogoSize || logoHeight > maxLogoSize) {
+                    const scale = Math.min(maxLogoSize / logoWidth, maxLogoSize / logoHeight)
+                    logoWidth *= scale
+                    logoHeight *= scale
+                }
+                doc.addImage(base64Image, imageFormat, (pageWidth - logoWidth) / 2, currentY, logoWidth, logoHeight)
+                currentY += logoHeight + 3
+            } catch (err) {
+                console.error('Error adding logo to boletim PDF:', err)
+            }
+        }
+
+        const fontSize = headerConfig.tamanho_fonte_outros || 9
+        doc.setFontSize(fontSize)
+        doc.setFont('helvetica', 'normal')
+
+        if (headerConfig.mostrar_republica && headerConfig.texto_republica) {
+            doc.text(headerConfig.texto_republica, pageWidth / 2, currentY, { align: 'center' })
+            currentY += fontSize * 0.5
+        }
+        if (headerConfig.mostrar_governo_provincial && headerConfig.provincia) {
+            doc.text(`Governo Provincial da ${headerConfig.provincia}`, pageWidth / 2, currentY, { align: 'center' })
+            currentY += fontSize * 0.5
+        }
+        if (headerConfig.mostrar_orgao_educacao && headerConfig.nivel_ensino) {
+            doc.text(
+                getOrgaoEducacao(headerConfig.nivel_ensino, headerConfig.provincia, headerConfig.municipio),
+                pageWidth / 2,
+                currentY,
+                { align: 'center' }
+            )
+            currentY += fontSize * 0.5
+        }
+
+        doc.setFont('helvetica', 'bold')
+        doc.text(headerConfig.nome_escola, pageWidth / 2, currentY, { align: 'center' })
+        currentY += fontSize * 0.7
+    } else if (data.escola) {
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'bold')
+        doc.text(data.escola.nome, pageWidth / 2, currentY, { align: 'center' })
+        currentY += 5
+        doc.setFont('helvetica', 'normal')
+        doc.text(`${data.escola.provincia} — ${data.escola.municipio}`, pageWidth / 2, currentY, { align: 'center' })
+        currentY += 6
+    }
+
+    const titleSize = headerConfig?.tamanho_fonte_mini_pauta || 13
+    doc.setFontSize(titleSize)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(0, 0, 0)
+    doc.text(
+        `BOLETIM DE NOTAS DO ALUNO — ${BOLETIM_TRIMESTRE_LABELS[data.trimestre].toUpperCase()}`,
+        pageWidth / 2,
+        currentY,
+        { align: 'center' }
+    )
+    currentY += titleSize * 0.55
+
+    doc.setFontSize(10)
+    doc.setTextColor(220, 38, 38)
+    doc.text(`Nº Processo: ${data.aluno.numero_processo}`, pageWidth / 2, currentY, { align: 'center' })
+    doc.setTextColor(0, 0, 0)
+    currentY += 6
+
+    return currentY
+}
+
+/**
+ * Generates printable Boletim de Notas PDF for a single trimester.
+ * Adapts pass threshold by education level (Primário: 5, Secundário: 10).
+ */
+export async function generateBoletimNotasPDF(
+    data: BoletimNotasPdfData,
+    headerConfig: HeaderConfig | null | undefined,
+    colorConfig: GradeColorConfig | null
+): Promise<void> {
+    const blob = await generateBoletimNotasPDFBlob(data, headerConfig, colorConfig)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `boletim_notas_${data.aluno.numero_processo}_T${data.trimestre}_${data.turma.ano_lectivo}.pdf`
+    link.click()
+    URL.revokeObjectURL(url)
+}
+
+export async function generateBoletimNotasPDFBlob(
+    data: BoletimNotasPdfData,
+    headerConfig: HeaderConfig | null | undefined,
+    colorConfig: GradeColorConfig | null
+): Promise<Blob> {
+    const componentCount = (() => {
+        const codes = new Set<string>()
+        data.disciplinas.forEach((d) => d.componentes.forEach((c) => codes.add(c.codigo)))
+        return codes.size
+    })()
+
+    const orientation = componentCount > 5 ? 'landscape' : 'portrait'
+    const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+
+    let currentY = await renderBoletimHeader(doc, data, headerConfig, pageWidth)
+
+    // Student info
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.text('DADOS DO ALUNO', 14, currentY)
+    currentY += 4
+
+    const generoLabel = data.aluno.genero === 'M' ? 'Masculino' : data.aluno.genero === 'F' ? 'Feminino' : ''
+    const infoRows = [
+        [
+            `Nome: ${data.aluno.nome_completo}`,
+            `Turma: ${data.turma.nome}`,
+            `Ano Lectivo: ${data.turma.ano_lectivo}`,
+        ],
+        [
+            generoLabel ? `Género: ${generoLabel}` : '',
+            data.aluno.data_nascimento ? `Nascimento: ${data.aluno.data_nascimento}` : '',
+            `Nível: ${data.turma.nivel_ensino}`,
+        ].filter(Boolean),
+    ]
+    if (data.aluno.nome_encarregado) {
+        infoRows.push([
+            `Encarregado: ${data.aluno.nome_encarregado}`,
+            data.aluno.telefone_encarregado ? `Tel.: ${data.aluno.telefone_encarregado}` : '',
+            `Limiar: ${data.estatisticas.limiar_aprovacao} valores`,
+        ].filter(Boolean))
+    }
+
+    autoTable(doc, {
+        startY: currentY,
+        body: infoRows.map((row) => row.map((cell) => ({ content: cell, styles: { fontSize: 8, cellPadding: 1.5 } }))),
+        theme: 'plain',
+        styles: { fontSize: 8, cellPadding: 1.5, lineColor: [230, 230, 230], lineWidth: 0.05 },
+        margin: { left: 14, right: 14 },
+    })
+    currentY = (doc as any).lastAutoTable.finalY + 6
+
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.text('DESEMPENHO ACADÉMICO', pageWidth / 2, currentY, { align: 'center' })
+    currentY += 3
+
+    const componentCodesMap = new Map<string, BoletimComponenteNotaPdf>()
+    data.disciplinas.forEach((disciplina) => {
+        disciplina.componentes.forEach((comp) => {
+            if (!componentCodesMap.has(comp.codigo)) {
+                componentCodesMap.set(comp.codigo, comp)
+            }
+        })
+    })
+    const componentCodes = Array.from(componentCodesMap.values())
+
+    const head = [
+        'Nº',
+        'Disciplina',
+        ...componentCodes.map((c) => c.codigo),
+        'Classificação',
+    ]
+
+    const body = data.disciplinas.map((disciplina, index) => {
+        const row: string[] = [
+            String(index + 1),
+            disciplina.nome,
+        ]
+        componentCodes.forEach((comp) => {
+            const found = disciplina.componentes.find((c) => c.codigo === comp.codigo)
+            row.push(found?.nota !== null && found?.nota !== undefined ? found.nota.toFixed(1) : '—')
+        })
+        row.push(disciplina.classificacao)
+        return row
+    })
+
+    const classeMatch = data.turma.nome.match(/(\d+[ªº]\s*Classe)/i)
+    const classe = classeMatch ? classeMatch[1] : undefined
+    const notaColStart = 2
+    const notaColEnd = 1 + componentCodes.length
+    const classifCol = notaColEnd + 1
+
+    autoTable(doc, {
+        startY: currentY,
+        head: [head],
+        body,
+        theme: 'grid',
+        styles: {
+            fontSize: componentCount > 6 ? 7 : 8,
+            cellPadding: 1.5,
+            overflow: 'linebreak',
+            halign: 'center',
+        },
+        headStyles: {
+            fillColor: [37, 99, 235],
+            textColor: 255,
+            fontStyle: 'bold',
+            halign: 'center',
+        },
+        columnStyles: {
+            0: { cellWidth: 10, halign: 'center' },
+            1: { halign: 'left', cellWidth: orientation === 'landscape' ? 45 : 38 },
+        },
+        margin: { left: 14, right: 14 },
+        didParseCell: (hookData: any) => {
+            if (hookData.section !== 'body') return
+            const col = hookData.column.index
+            const raw = hookData.cell.raw
+            if (col >= notaColStart && col <= notaColEnd && raw && raw !== '—') {
+                const nota = parseFloat(raw)
+                if (!isNaN(nota)) {
+                    const isCalc = componentCodes[col - notaColStart]?.is_calculated === true
+                    hookData.cell.styles.textColor = getGradeColorRGB(
+                        nota,
+                        data.turma.nivel_ensino,
+                        classe,
+                        isCalc,
+                        colorConfig
+                    )
+                    hookData.cell.styles.fontStyle = 'bold'
+                }
+            }
+            if (col === classifCol && typeof raw === 'string') {
+                if (raw === 'Aprovado' || raw === 'Excelente' || raw === 'Bom' || raw === 'Suficiente') {
+                    hookData.cell.styles.textColor = [37, 99, 235]
+                    hookData.cell.styles.fontStyle = 'bold'
+                } else if (raw === 'Reprovado' || raw === 'Insuficiente') {
+                    hookData.cell.styles.textColor = [220, 38, 38]
+                    hookData.cell.styles.fontStyle = 'bold'
+                }
+            }
+        },
+        didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+    })
+
+    const finalY = (doc as any).lastAutoTable.finalY + 8
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text('RESUMO DO TRIMESTRE', 14, finalY)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    const statsLine = `Disciplinas: ${data.estatisticas.total_disciplinas}  |  Aprovadas: ${data.estatisticas.disciplinas_aprovadas}  |  Reprovadas: ${data.estatisticas.disciplinas_reprovadas}  |  Média: ${data.estatisticas.media_geral > 0 ? data.estatisticas.media_geral.toFixed(2) : '—'}  |  Limiar: ${data.estatisticas.limiar_aprovacao}`
+    doc.text(statsLine, 14, finalY + 5)
+
+    const nivelLabel = data.estatisticas.is_primary ? 'Ensino Primário' : 'Ensino Secundário'
+    doc.text(`Escala de aproveitamento conforme ${nivelLabel}.`, 14, finalY + 10)
+
+    // Signatures
+    let signY = finalY + 28
+    if (signY + 20 > pageHeight - 14) {
+        doc.addPage()
+        signY = 30
+        addPDFFooter(doc, pageWidth, pageHeight)
+    }
+
+    const signWidth = (pageWidth - 56) / 3
+    const signXs = [14, 14 + signWidth + 14, 14 + (signWidth + 14) * 2]
+    const signLabels = [
+        'O(A) Encarregado de Educação',
+        'O(A) Director(a) de Turma',
+        'O(A) Director(a) Pedagógico(a)',
+    ]
+
+    doc.setDrawColor(100, 100, 100)
+    doc.setLineWidth(0.3)
+    signXs.forEach((x) => doc.line(x, signY, x + signWidth, signY))
+    doc.setFontSize(8)
+    signLabels.forEach((label, i) => {
+        doc.text(label, signXs[i] + signWidth / 2, signY + 5, { align: 'center' })
+    })
+
+    doc.setFontSize(7)
+    doc.setTextColor(100, 100, 100)
+    doc.text(
+        `Emitido em ${new Date().toLocaleDateString('pt-AO')} — ${BOLETIM_TRIMESTRE_LABELS[data.trimestre]} / ${data.turma.ano_lectivo}`,
+        pageWidth / 2,
+        signY + 14,
+        { align: 'center' }
+    )
+    doc.setTextColor(0, 0, 0)
+
+    return doc.output('blob')
+}
+
+/**
+ * Batch-generate boletins for multiple students as a ZIP archive.
+ */
+export async function generateBatchBoletinsZip(
+    boletins: BoletimNotasPdfData[],
+    headerConfig: HeaderConfig | null | undefined,
+    colorConfig: GradeColorConfig | null,
+    onProgress?: (current: number, total: number, alunoNome: string) => void
+): Promise<void> {
+    const zip = new JSZip()
+    const total = boletins.length
+
+    for (let i = 0; i < boletins.length; i++) {
+        const boletim = boletins[i]
+        onProgress?.(i + 1, total, boletim.aluno.nome_completo)
+        const blob = await generateBoletimNotasPDFBlob(boletim, headerConfig, colorConfig)
+        const safeName = boletim.aluno.nome_completo.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')
+        zip.file(
+            `boletim_T${boletim.trimestre}_${boletim.aluno.numero_processo}_${safeName}.pdf`,
+            blob
+        )
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(zipBlob)
+    const link = document.createElement('a')
+    link.href = url
+    const first = boletins[0]
+    link.download = `boletins_T${first?.trimestre ?? 1}_${first?.turma.ano_lectivo ?? ''}.zip`
+    link.click()
+    URL.revokeObjectURL(url)
+}
+

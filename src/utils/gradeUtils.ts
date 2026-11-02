@@ -4,6 +4,40 @@
 
 import { Aluno } from '../types'
 
+/**
+ * Codes that represent auto-calculated results in the Angolan evaluation model.
+ * Used as a safety net when is_calculated / formula flags were not synced.
+ */
+const AUTO_RESULT_COMPONENT_CODES = new Set([
+    'MT', 'MF', 'CF', 'NF', 'MFD', 'MEC',
+])
+
+/**
+ * Whether a component should appear in the manual grade-entry dropdown.
+ * Calculated components receive their value from a formula, so they must not
+ * be offered for direct lançamento — for every class / turma.
+ */
+export function isManualGradeEntryComponent(component: {
+    is_calculated?: boolean | null
+    formula_expression?: string | null
+    depends_on_components?: string[] | null
+    codigo_componente?: string | null
+}): boolean {
+    if (component.is_calculated === true) return false
+
+    const formula = component.formula_expression?.trim()
+    if (formula) return false
+
+    if (Array.isArray(component.depends_on_components) && component.depends_on_components.length > 0) {
+        return false
+    }
+
+    const code = (component.codigo_componente || '').trim().toUpperCase()
+    if (code && AUTO_RESULT_COMPONENT_CODES.has(code)) return false
+
+    return true
+}
+
 export interface GradeStats {
     total: number
     filled: number
