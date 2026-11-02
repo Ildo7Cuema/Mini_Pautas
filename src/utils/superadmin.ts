@@ -167,18 +167,41 @@ export async function fetchSystemVisits(filters?: {
 /**
  * Fetch system-wide statistics for SUPERADMIN dashboard
  */
+function summarizeEntityRows(
+    rows: Array<{ ativo?: boolean | null; bloqueado?: boolean | null }> | null | undefined
+) {
+    const list = rows || []
+    return {
+        total: list.length,
+        ativas: list.filter(e => e.ativo && !e.bloqueado).length,
+        inativas: list.filter(e => !e.ativo && !e.bloqueado).length,
+        bloqueadas: list.filter(e => Boolean(e.bloqueado)).length,
+    }
+}
+
 export async function fetchSuperAdminStats(): Promise<SuperAdminStats> {
     try {
-        // Fetch all escolas
-        const { data: escolas, error: escolasError } = await supabase
-            .from('escolas')
-            .select('id, provincia, municipio, ativo, bloqueado, created_at')
+        const [
+            { data: escolas, error: escolasError },
+            { data: direcoesMunicipais, error: dmError },
+            { data: direcoesProvinciais, error: dpError },
+            { data: licencas, error: licError },
+        ] = await Promise.all([
+            supabase.from('escolas').select('id, provincia, municipio, ativo, bloqueado, created_at'),
+            supabase.from('direcoes_municipais').select('id, ativo, bloqueado, created_at'),
+            supabase.from('direcoes_provinciais').select('id, ativo, bloqueado, created_at'),
+            supabase.from('licencas').select('id, estado'),
+        ])
 
         if (escolasError) throw escolasError
+        // Direções / licenças: não derrubar o dashboard se RLS ou tabela falhar
+        if (dmError) console.warn('Stats direções municipais:', dmError.message)
+        if (dpError) console.warn('Stats direções provinciais:', dpError.message)
+        if (licError) console.warn('Stats licenças:', licError.message)
 
         const total_escolas = escolas?.length || 0
         const escolas_ativas = escolas?.filter(e => e.ativo && !e.bloqueado).length || 0
-        const escolas_inativas = escolas?.filter(e => !e.ativo).length || 0
+        const escolas_inativas = escolas?.filter(e => !e.ativo && !e.bloqueado).length || 0
         const escolas_bloqueadas = escolas?.filter(e => e.bloqueado).length || 0
 
         // Calculate statistics by province
@@ -195,20 +218,25 @@ export async function fetchSuperAdminStats(): Promise<SuperAdminStats> {
             estatisticas_por_municipio[municipio] = (estatisticas_por_municipio[municipio] || 0) + 1
         })
 
-        // Calculate monthly growth (last 12 months)
+        // Calculate monthly growth (last 12 months) — escolas + direções
         const crescimento_mensal: Array<{ mes: string; ano: number; total: number }> = []
         const now = new Date()
+        const allEntities = [
+            ...(escolas || []),
+            ...(direcoesMunicipais || []),
+            ...(direcoesProvinciais || []),
+        ]
 
         for (let i = 11; i >= 0; i--) {
             const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
             const mes = date.toLocaleString('pt-AO', { month: 'short' })
             const ano = date.getFullYear()
 
-            const total = escolas?.filter(e => {
+            const total = allEntities.filter(e => {
                 const createdDate = new Date(e.created_at)
                 return createdDate.getFullYear() === ano &&
                     createdDate.getMonth() === date.getMonth()
-            }).length || 0
+            }).length
 
             crescimento_mensal.push({ mes, ano, total })
         }
@@ -220,7 +248,15 @@ export async function fetchSuperAdminStats(): Promise<SuperAdminStats> {
             escolas_bloqueadas,
             estatisticas_por_provincia,
             estatisticas_por_municipio,
-            crescimento_mensal
+            crescimento_mensal,
+            direcoes_municipais: summarizeEntityRows(direcoesMunicipais),
+            direcoes_provinciais: summarizeEntityRows(direcoesProvinciais),
+            licencas: {
+                total: licencas?.length || 0,
+                ativas: licencas?.filter(l => l.estado === 'ativa').length || 0,
+                expiradas: licencas?.filter(l => l.estado === 'expirada').length || 0,
+                suspensas: licencas?.filter(l => l.estado === 'suspensa').length || 0,
+            },
         }
     } catch (error) {
         console.error('Error fetching SUPERADMIN stats:', error)
@@ -409,33 +445,61 @@ export async function logSuperAdminAction(
     details: Record<string, any>
 ): Promise<void> {
     try {
-        const { error } = await supabase.rpc('log_superadmin_action', {
+        const { data, error } = await supabase.rpc('log_superadmin_action', {
             p_action_type: actionType,
             p_target_escola_id: escolaId,
             p_action_details: details
         })
 
         if (error) {
-            console.error('Error logging SUPERADMIN action:', error)
+            console.error('Error logging SUPERADMIN action:', actionType, error)
             // Don't throw - logging failure shouldn't break the main operation
+            return
+        }
+        if (!data) {
+            console.warn('log_superadmin_action returned empty id for', actionType)
         }
     } catch (error) {
-        console.error('Error logging SUPERADMIN action:', error)
+        console.error('Error logging SUPERADMIN action:', actionType, error)
         // Don't throw - logging failure shouldn't break the main operation
     }
 }
 
 /**
  * Fetch SUPERADMIN audit log with filters
+ * Prefers SECURITY DEFINER RPC to avoid empty lists from RLS/role_cache issues.
  */
 export async function fetchSuperAdminAuditLog(filters?: {
     actionType?: string
+    actionTypePrefix?: string
     escolaId?: string
     startDate?: string
     endDate?: string
     limit?: number
 }): Promise<SuperAdminAction[]> {
     try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('listar_superadmin_actions', {
+            p_action_type: filters?.actionType || null,
+            p_action_type_prefix: filters?.actionTypePrefix || null,
+            p_escola_id: filters?.escolaId || null,
+            p_limit: filters?.limit ?? 100,
+        })
+
+        if (!rpcError && Array.isArray(rpcData)) {
+            let rows = rpcData as SuperAdminAction[]
+            if (filters?.startDate) {
+                rows = rows.filter(r => r.created_at >= filters.startDate!)
+            }
+            if (filters?.endDate) {
+                rows = rows.filter(r => r.created_at <= filters.endDate!)
+            }
+            return rows
+        }
+
+        if (rpcError) {
+            console.warn('listar_superadmin_actions unavailable, falling back to direct query:', rpcError.message)
+        }
+
         let query = supabase
             .from('superadmin_actions')
             .select('*')
@@ -443,6 +507,8 @@ export async function fetchSuperAdminAuditLog(filters?: {
 
         if (filters?.actionType) {
             query = query.eq('action_type', filters.actionType)
+        } else if (filters?.actionTypePrefix) {
+            query = query.ilike('action_type', `%${filters.actionTypePrefix}%`)
         }
 
         if (filters?.escolaId) {

@@ -17,11 +17,13 @@ import {
     requestManualSubscription,
     generateWhatsAppLink,
     getTransactionStatusLabel,
+    resolvePricesForInstitution,
+    PLANO_ASSINATURA_LABELS,
     type SuperAdminContact,
     type DadosBancarios
 } from '../utils/license'
 import { PriceEditModal } from './PriceEditModal'
-import type { LicenseStatus, TransacaoPagamento, PrecoLicenca, PlanoLicenca } from '../types'
+import type { LicenseStatus, TransacaoPagamento, PrecoLicenca, PlanoLicenca, PlanoAssinaturaResolvido } from '../types'
 
 export const SubscriptionPage: React.FC = () => {
     const { escolaProfile, profile } = useAuth()
@@ -29,6 +31,7 @@ export const SubscriptionPage: React.FC = () => {
     const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null)
     const [transactions, setTransactions] = useState<TransacaoPagamento[]>([])
     const [prices, setPrices] = useState<PrecoLicenca[]>([])
+    const [resolvedPrices, setResolvedPrices] = useState<PlanoAssinaturaResolvido[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -101,17 +104,26 @@ export const SubscriptionPage: React.FC = () => {
             setLoading(true)
             setError(null)
 
-            const [statusData, transData, pricesData, contactData, bankData] = await Promise.all([
+            const [statusData, transData, pricesData, contactData, bankData, resolvedData] = await Promise.all([
                 escolaId ? checkLicenseStatus(escolaId) : Promise.resolve(null),
                 escolaId ? fetchTransactions(escolaId) : Promise.resolve([]),
                 fetchPrices(),
                 getSuperAdminContact(),
-                getDadosBancarios()
+                getDadosBancarios(),
+                escolaId ? resolvePricesForInstitution('ESCOLA', escolaId) : Promise.resolve([]),
             ])
 
             if (statusData) setLicenseStatus(statusData)
             setTransactions(transData)
             setPrices(pricesData)
+            setResolvedPrices(resolvedData.length > 0 ? resolvedData : pricesData.map(p => ({
+                plano: p.plano,
+                valor: p.valor,
+                desconto_percentual: p.desconto_percentual,
+                descricao: p.descricao,
+                origem: 'global' as const,
+                global_price_id: p.id,
+            })))
             setSuperAdminContact(contactData)
             setDadosBancarios(bankData)
         } catch (err) {
@@ -178,8 +190,11 @@ export const SubscriptionPage: React.FC = () => {
     }
 
     const getSelectedPrice = () => {
-        return prices.find(p => p.plano === selectedPlano)
+        return resolvedPrices.find(p => p.plano === selectedPlano)
+            || prices.find(p => p.plano === selectedPlano)
     }
+
+    const plansForDisplay = resolvedPrices.length > 0 ? resolvedPrices : prices
 
     const getDaysProgress = () => {
         if (!licenseStatus?.licenca) return 0
@@ -531,9 +546,9 @@ export const SubscriptionPage: React.FC = () => {
                         )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {prices.map((price, index) => (
+                        {plansForDisplay.map((price, index) => (
                             <div
-                                key={price.id}
+                                key={price.plano}
                                 onClick={() => setSelectedPlano(price.plano)}
                                 className={`relative rounded-2xl p-5 cursor-pointer transition-all duration-300 touch-feedback ${selectedPlano === price.plano
                                     ? 'bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-400 shadow-lg scale-[1.02]'
@@ -550,16 +565,19 @@ export const SubscriptionPage: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* SUPERADMIN Edit Button */}
+                                {/* SUPERADMIN Edit Button (preço global) */}
                                 {isSuperAdmin && (
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation()
-                                            setEditingPrice(price)
-                                            setShowEditModal(true)
+                                            const global = prices.find(p => p.plano === price.plano)
+                                            if (global) {
+                                                setEditingPrice(global)
+                                                setShowEditModal(true)
+                                            }
                                         }}
                                         className="absolute top-3 right-3 p-2 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                                        title="Editar preço"
+                                        title="Editar preço global"
                                     >
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -568,7 +586,7 @@ export const SubscriptionPage: React.FC = () => {
                                 )}
 
                                 {/* Selected Indicator */}
-                                {selectedPlano === price.plano && (
+                                {selectedPlano === price.plano && !isSuperAdmin && (
                                     <div className="absolute top-3 right-3">
                                         <div className="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center">
                                             <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -578,10 +596,18 @@ export const SubscriptionPage: React.FC = () => {
                                     </div>
                                 )}
 
-                                <h3 className="text-lg font-bold text-neutral-800 capitalize mt-2">{price.plano}</h3>
+                                <h3 className="text-lg font-bold text-neutral-800 mt-2">
+                                    {PLANO_ASSINATURA_LABELS[price.plano] || price.plano}
+                                </h3>
                                 <p className="text-3xl font-extrabold text-primary-600 mt-2">
                                     {formatCurrency(price.valor)}
                                 </p>
+
+                                {'origem' in price && price.origem === 'instituicao' && (
+                                    <span className="inline-block mt-2 px-2 py-0.5 bg-violet-100 text-violet-700 text-[10px] font-bold rounded-full uppercase">
+                                        Preço da escola
+                                    </span>
+                                )}
 
                                 {price.desconto_percentual > 0 && (
                                     <span className="inline-block mt-2 px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
@@ -704,9 +730,9 @@ export const SubscriptionPage: React.FC = () => {
                                         onChange={(e) => setSelectedPlano(e.target.value as PlanoLicenca)}
                                         className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
                                     >
-                                        {prices.map((price) => (
-                                            <option key={price.id} value={price.plano}>
-                                                {price.plano.charAt(0).toUpperCase() + price.plano.slice(1)} - {formatCurrency(price.valor)}
+                                        {plansForDisplay.map((price) => (
+                                            <option key={price.plano} value={price.plano}>
+                                                {PLANO_ASSINATURA_LABELS[price.plano] || price.plano} - {formatCurrency(price.valor)}
                                             </option>
                                         ))}
                                     </select>

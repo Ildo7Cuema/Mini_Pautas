@@ -47,6 +47,13 @@ export const DirecoesProvinciaisManagement: React.FC<DirecoesProvinciaisManageme
     }
 
     useEffect(() => {
+        if (initialFilter && initialFilter !== filterStatus) {
+            setFilterStatus(initialFilter)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialFilter])
+
+    useEffect(() => {
         loadDirecoes()
     }, [filterStatus])
 

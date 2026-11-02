@@ -795,6 +795,13 @@ export interface ViewDesempenhoAluno {
 // SUPERADMIN TYPES
 // ============================================
 
+export interface SuperAdminEntityStats {
+    total: number;
+    ativas: number;
+    inativas: number;
+    bloqueadas: number;
+}
+
 export interface SuperAdminStats {
     total_escolas: number;
     escolas_ativas: number;
@@ -803,6 +810,17 @@ export interface SuperAdminStats {
     estatisticas_por_provincia: Record<string, number>;
     estatisticas_por_municipio: Record<string, number>;
     crescimento_mensal: Array<{ mes: string; ano: number; total: number }>;
+    /** Direções Municipais (gestão + atenção) */
+    direcoes_municipais: SuperAdminEntityStats;
+    /** Direções Provinciais (gestão + atenção) */
+    direcoes_provinciais: SuperAdminEntityStats;
+    /** Resumo de licenças (hoje aplicadas a escolas) */
+    licencas: {
+        total: number;
+        ativas: number;
+        expiradas: number;
+        suspensas: number;
+    };
 }
 
 export interface SuperAdminAction {
@@ -939,6 +957,33 @@ export interface PrecoLicenca {
     ativo: boolean;
     created_at: string;
     updated_at: string;
+}
+
+/** Tipo de instituição para preços de assinatura personalizados */
+export type TipoInstituicaoAssinatura = 'ESCOLA' | 'DIRECAO_MUNICIPAL' | 'DIRECAO_PROVINCIAL';
+
+export interface PrecoLicencaInstituicao {
+    id: string;
+    tipo_instituicao: TipoInstituicaoAssinatura;
+    instituicao_id: string;
+    plano: PlanoLicenca;
+    valor: number;
+    desconto_percentual: number;
+    descricao?: string;
+    ativo: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+/** Plano efectivo após merge global + override da instituição */
+export interface PlanoAssinaturaResolvido {
+    plano: PlanoLicenca;
+    valor: number;
+    desconto_percentual: number;
+    descricao?: string;
+    origem: 'global' | 'instituicao';
+    global_price_id?: string;
+    instituicao_price_id?: string;
 }
 
 export interface LicenseStatus {

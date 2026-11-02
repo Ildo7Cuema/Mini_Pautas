@@ -1,14 +1,32 @@
 import { supabase } from '../lib/supabaseClient'
+import { logSuperAdminAction } from './superadmin'
 import type {
     Licenca,
     TransacaoPagamento,
     PrecoLicenca,
+    PrecoLicencaInstituicao,
+    PlanoAssinaturaResolvido,
+    TipoInstituicaoAssinatura,
     LicenseStatus,
     LicenseStats,
     PlanoLicenca,
     CreatePaymentRequest,
     CreatePaymentResponse
 } from '../types'
+
+export const PLANOS_ASSINATURA: PlanoLicenca[] = ['trimestral', 'semestral', 'anual']
+
+export const PLANO_ASSINATURA_LABELS: Record<PlanoLicenca, string> = {
+    trimestral: 'Trimestral',
+    semestral: 'Semestral',
+    anual: 'Anual',
+}
+
+export const TIPO_INSTITUICAO_LABELS: Record<TipoInstituicaoAssinatura, string> = {
+    ESCOLA: 'Escola',
+    DIRECAO_MUNICIPAL: 'Direção Municipal',
+    DIRECAO_PROVINCIAL: 'Direção Provincial',
+}
 
 /**
  * License Management Utility Functions
@@ -170,6 +188,12 @@ export async function createManualLicense(
         })
 
         if (error) throw error
+        await logSuperAdminAction('CREATE_LICENSE', escolaId, {
+            action: 'Licença criada manualmente',
+            plano,
+            valor: valor ?? null,
+            motivo: motivo || 'Licença criada manualmente pelo SUPERADMIN',
+        })
         return data as Licenca
     } catch (error) {
         console.error('Error creating manual license:', error)
@@ -191,6 +215,12 @@ export async function suspendLicense(
         })
 
         if (error) throw error
+        const escolaId = (data as Licenca)?.escola_id || null
+        await logSuperAdminAction('SUSPEND_LICENSE', escolaId, {
+            action: 'Licença suspensa',
+            licenca_id: licencaId,
+            motivo: motivo || 'Suspensa pelo SUPERADMIN',
+        })
         return data as Licenca
     } catch (error) {
         console.error('Error suspending license:', error)
@@ -221,6 +251,10 @@ export async function reactivateLicense(licencaId: string): Promise<void> {
             .single()
 
         if (licenca) {
+            await logSuperAdminAction('REACTIVATE_LICENSE', licenca.escola_id, {
+                action: 'Licença reactivada',
+                licenca_id: licencaId,
+            })
             await supabase
                 .from('escolas')
                 .update({
@@ -289,7 +323,7 @@ export async function fetchTransactions(escolaId?: string): Promise<TransacaoPag
 // ============================================
 
 /**
- * Fetch license prices
+ * Fetch global license prices (catalog Trimestral / Semestral / Anual)
  */
 export async function fetchPrices(): Promise<PrecoLicenca[]> {
     try {
@@ -300,7 +334,11 @@ export async function fetchPrices(): Promise<PrecoLicenca[]> {
             .order('valor', { ascending: true })
 
         if (error) throw error
-        return data || []
+
+        const prices = data || []
+        // Ordenação estável: trimestral → semestral → anual
+        const order: Record<string, number> = { trimestral: 0, semestral: 1, anual: 2 }
+        return [...prices].sort((a, b) => (order[a.plano] ?? 99) - (order[b.plano] ?? 99))
     } catch (error) {
         console.error('Error fetching prices:', error)
         throw error
@@ -308,7 +346,7 @@ export async function fetchPrices(): Promise<PrecoLicenca[]> {
 }
 
 /**
- * Update a license price (SUPERADMIN only)
+ * Update a global license price (SUPERADMIN only)
  */
 export async function updatePrice(
     priceId: string,
@@ -335,6 +373,155 @@ export async function updatePrice(
     } catch (error) {
         console.error('Error updating price:', error)
         throw error
+    }
+}
+
+/**
+ * Fetch institution-specific price overrides
+ */
+export async function fetchInstitutionPrices(
+    tipo: TipoInstituicaoAssinatura,
+    instituicaoId: string
+): Promise<PrecoLicencaInstituicao[]> {
+    try {
+        const { data, error } = await supabase
+            .from('precos_licenca_instituicao')
+            .select('*')
+            .eq('tipo_instituicao', tipo)
+            .eq('instituicao_id', instituicaoId)
+            .order('plano')
+
+        if (error) throw error
+        return (data || []) as PrecoLicencaInstituicao[]
+    } catch (error) {
+        console.error('Error fetching institution prices:', error)
+        throw error
+    }
+}
+
+/**
+ * Resolve effective plans for an institution (override > global)
+ */
+export async function resolvePricesForInstitution(
+    tipo: TipoInstituicaoAssinatura,
+    instituicaoId: string
+): Promise<PlanoAssinaturaResolvido[]> {
+    const [globals, overrides] = await Promise.all([
+        fetchPrices(),
+        fetchInstitutionPrices(tipo, instituicaoId),
+    ])
+
+    const byPlano = new Map(overrides.filter(o => o.ativo).map(o => [o.plano, o]))
+
+    return PLANOS_ASSINATURA.map(plano => {
+        const global = globals.find(g => g.plano === plano)
+        const custom = byPlano.get(plano)
+        if (custom) {
+            return {
+                plano,
+                valor: custom.valor,
+                desconto_percentual: custom.desconto_percentual,
+                descricao: custom.descricao || global?.descricao,
+                origem: 'instituicao' as const,
+                global_price_id: global?.id,
+                instituicao_price_id: custom.id,
+            }
+        }
+        return {
+            plano,
+            valor: global?.valor ?? 0,
+            desconto_percentual: global?.desconto_percentual ?? 0,
+            descricao: global?.descricao,
+            origem: 'global' as const,
+            global_price_id: global?.id,
+        }
+    }).filter(p => p.valor > 0)
+}
+
+/**
+ * Create or update institution-specific plan price (SUPERADMIN)
+ */
+export async function upsertInstitutionPrice(input: {
+    tipo_instituicao: TipoInstituicaoAssinatura
+    instituicao_id: string
+    plano: PlanoLicenca
+    valor: number
+    desconto_percentual?: number
+    descricao?: string
+    ativo?: boolean
+}): Promise<PrecoLicencaInstituicao> {
+    try {
+        const { data, error } = await supabase
+            .from('precos_licenca_instituicao')
+            .upsert(
+                {
+                    tipo_instituicao: input.tipo_instituicao,
+                    instituicao_id: input.instituicao_id,
+                    plano: input.plano,
+                    valor: input.valor,
+                    desconto_percentual: input.desconto_percentual ?? 0,
+                    descricao: input.descricao || null,
+                    ativo: input.ativo ?? true,
+                    updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'tipo_instituicao,instituicao_id,plano' }
+            )
+            .select()
+            .single()
+
+        if (error) throw error
+        return data as PrecoLicencaInstituicao
+    } catch (error) {
+        console.error('Error upserting institution price:', error)
+        throw error
+    }
+}
+
+/**
+ * Remove institution override (reverts to global price)
+ */
+export async function clearInstitutionPrice(
+    tipo: TipoInstituicaoAssinatura,
+    instituicaoId: string,
+    plano: PlanoLicenca
+): Promise<void> {
+    try {
+        const { error } = await supabase
+            .from('precos_licenca_instituicao')
+            .delete()
+            .eq('tipo_instituicao', tipo)
+            .eq('instituicao_id', instituicaoId)
+            .eq('plano', plano)
+
+        if (error) throw error
+    } catch (error) {
+        console.error('Error clearing institution price:', error)
+        throw error
+    }
+}
+
+/**
+ * Resolve a single plan value via RPC (fallback to client merge)
+ */
+export async function resolvePlanValor(
+    tipo: TipoInstituicaoAssinatura,
+    instituicaoId: string,
+    plano: PlanoLicenca
+): Promise<number | null> {
+    try {
+        const { data, error } = await supabase.rpc('resolver_preco_licenca', {
+            p_tipo_instituicao: tipo,
+            p_instituicao_id: instituicaoId,
+            p_plano: plano,
+        })
+        if (!error && data != null) return Number(data)
+
+        const plans = await resolvePricesForInstitution(tipo, instituicaoId)
+        return plans.find(p => p.plano === plano)?.valor ?? null
+    } catch (error) {
+        console.error('Error resolving plan valor:', error)
+        const plans = await resolvePricesForInstitution(tipo, instituicaoId)
+        return plans.find(p => p.plano === plano)?.valor ?? null
     }
 }
 
@@ -591,16 +778,10 @@ export async function requestManualSubscription(
             }
         }
 
-        // Get price for the plan
-        const { data: priceData, error: priceError } = await supabase
-            .from('precos_licenca')
-            .select('valor')
-            .eq('plano', plano)
-            .eq('ativo', true)
-            .single()
-
-        if (priceError || !priceData) {
-            throw new Error('Plano não encontrado')
+        // Preço efectivo: override da escola ou catálogo global
+        const valorResolvido = await resolvePlanValor('ESCOLA', escolaId, plano)
+        if (valorResolvido == null || valorResolvido <= 0) {
+            throw new Error('Plano não encontrado ou sem preço configurado')
         }
 
         const reference = generateReferenceCode(escolaCodigo)
@@ -611,7 +792,7 @@ export async function requestManualSubscription(
             .insert({
                 escola_id: escolaId,
                 provider: 'manual',
-                valor: priceData.valor,
+                valor: valorResolvido,
                 estado: 'pendente',
                 metodo_pagamento: 'transferencia',
                 descricao: `Solicitação de assinatura ${plano} - Aguardando comprovativo`,
@@ -619,7 +800,8 @@ export async function requestManualSubscription(
                     plano,
                     reference,
                     solicitado_em: new Date().toISOString(),
-                    tipo: 'manual_subscription_request'
+                    tipo: 'manual_subscription_request',
+                    preco_origem: 'resolver_preco_licenca'
                 }
             })
             .select()
@@ -713,9 +895,18 @@ export async function approveManualSubscription(
             throw new Error(data?.error || 'Erro ao aprovar assinatura')
         }
 
+        const licenca = data.licenca as Licenca | undefined
+        await logSuperAdminAction('APPROVE_SUBSCRIPTION', licenca?.escola_id || null, {
+            action: 'Assinatura manual aprovada',
+            transacao_id: transactionId,
+            plano,
+            motivo: motivo || null,
+            licenca_id: licenca?.id || null,
+        })
+
         return {
             success: true,
-            licenca: data.licenca as Licenca
+            licenca
         }
     } catch (error) {
         console.error('Error approving manual subscription:', error)
@@ -743,6 +934,11 @@ export async function rejectManualSubscription(
         if (!data?.success) {
             throw new Error(data?.error || 'Erro ao rejeitar solicitação')
         }
+        await logSuperAdminAction('REJECT_SUBSCRIPTION', null, {
+            action: 'Assinatura manual rejeitada',
+            transacao_id: transactionId,
+            motivo,
+        })
     } catch (error) {
         console.error('Error rejecting manual subscription:', error)
         throw error

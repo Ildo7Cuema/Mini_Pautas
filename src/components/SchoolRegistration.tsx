@@ -15,6 +15,13 @@ import { CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { notifyAdminNewRegistration, buildRegistrationMessage } from '../utils/registrationNotifications'
+import {
+    clearPendingAdminNotify,
+    getPendingAdminNotify,
+    markPendingAdminNotifyOpened,
+    savePendingAdminNotify,
+    updatePendingAdminNotify,
+} from '../utils/pendingAdminNotify'
 import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
 import { generateUniqueSchoolCode } from '../utils/schoolCodeGenerator'
 import { AuthShell } from './auth/AuthShell'
@@ -96,6 +103,18 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
     // O redirecionamento só começa depois de o utilizador usar o botão de WhatsApp
     const holdRedirect = !waOpened
 
+    // Restaura o ecrã de sucesso se o utilizador ainda não notificou (sobrevive a refresh/reinício)
+    useEffect(() => {
+        const pending = getPendingAdminNotify()
+        if (!pending || pending.type !== 'ESCOLA') return
+        setFormData(prev => ({ ...prev, nome_escola: pending.displayName || prev.nome_escola }))
+        setAdminMessage(pending.message)
+        setAdminAlert(pending.adminAlert)
+        setWaOpened(pending.waOpened)
+        setSuccess(true)
+        if (pending.waOpened) setCountdown(10)
+    }, [])
+
     // Efeito para contagem regressiva e redirecionamento automático
     useEffect(() => {
         if (!success || holdRedirect) return
@@ -116,12 +135,18 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
 
     // Função para redirecionar para login
     const handleGoToLogin = () => {
+        clearPendingAdminNotify()
         if (onSuccess) {
             onSuccess()
         } else {
             // Fallback: redirecionar para a página de login via navegação
             window.location.href = '/'
         }
+    }
+
+    const handleNotifyOpen = () => {
+        setWaOpened(true)
+        markPendingAdminNotifyOpened()
     }
 
     const handleChange = async (field: keyof SchoolRegistrationForm, value: string) => {
@@ -174,6 +199,10 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
         }
         if (!formData.municipio.trim()) {
             setError('Município é obrigatório')
+            return false
+        }
+        if (!formData.telefone.trim()) {
+            setError('Telefone é obrigatório')
             return false
         }
         return true
@@ -254,7 +283,7 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
             }
 
             // Alerta o administrador (WhatsApp) - não bloqueia o registo
-            setAdminMessage(buildRegistrationMessage('ESCOLA', {
+            const message = buildRegistrationMessage('ESCOLA', {
                 nome: formData.nome_escola,
                 codigo: formData.codigo_escola,
                 provincia: formData.provincia,
@@ -262,13 +291,23 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                 responsavel: formData.nome_responsavel,
                 telefone: formData.telefone,
                 email: formData.email_escola || formData.email_responsavel,
-            }))
-            notifyAdminNewRegistration('ESCOLA', authData.user.id).then(r => setAdminAlert(r))
+            })
+            setAdminMessage(message)
+            savePendingAdminNotify({
+                type: 'ESCOLA',
+                displayName: formData.nome_escola,
+                message,
+                adminAlert: 'pending',
+            })
+            notifyAdminNewRegistration('ESCOLA', authData.user.id).then(r => {
+                setAdminAlert(r)
+                updatePendingAdminNotify({ adminAlert: r })
+            })
 
             // 3. Sign out the user so they can log in properly
             await supabase.auth.signOut()
 
-            // 4. Show success message
+            // 4. Show success message — fica bloqueado até notificar o administrador
             setSuccess(true)
             // A contagem regressiva é gerenciada pelo useEffect
 
@@ -299,8 +338,13 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                         <AdminWhatsAppAlert
                             status={adminAlert}
                             message={adminMessage}
-                            onOpen={() => setWaOpened(true)}
+                            onOpen={handleNotifyOpen}
                         />
+                        {holdRedirect && (
+                            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">
+                                Clique em <strong>Notificar administrador no WhatsApp</strong> para poder continuar para o login.
+                            </p>
+                        )}
                         {!holdRedirect && (
                             <div className="flex flex-col items-center gap-3">
                                 <div className="flex items-center justify-center w-12 h-12 bg-primary-100 rounded-full">
@@ -520,6 +564,7 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                                                 placeholder="923 000 000"
                                                 icon={<Icons.Phone />}
                                                 inputSize="md"
+                                                required
                                             />
                                         </div>
 

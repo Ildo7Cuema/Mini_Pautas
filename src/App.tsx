@@ -7,6 +7,7 @@ import { isSuperAdmin } from './utils/permissions'
 import { PWAInstallPrompt } from './components/PWAInstallPrompt'
 import { SystemUpdateAlert } from './components/SystemUpdateAlert'
 import { EscolaProfileSetupModal } from './components/EscolaProfileSetupModal'
+import { getPendingAdminNotify, isAdminNotifyLocked, pathForPendingType } from './utils/pendingAdminNotify'
 
 // Lazy load all page components for code splitting
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
@@ -89,6 +90,32 @@ function App() {
                 <PageSkeleton variant="dashboard" />
             </div>
         )
+    }
+
+    // Após cadastro: enquanto não notificar o administrador, permanece no ecrã de sucesso
+    // (persiste em localStorage — sobrevive a refresh / reinício do navegador)
+    if (isAdminNotifyLocked()) {
+        const pending = getPendingAdminNotify()
+        const targetPath = pending ? pathForPendingType(pending.type) : '/'
+        if (window.location.pathname !== targetPath) {
+            window.history.replaceState(null, '', targetPath)
+        }
+
+        if (pending?.type === 'DIRECAO_MUNICIPAL') {
+            return (
+                <Suspense fallback={<PageSkeleton />}>
+                    <DirecaoMunicipalRegistration />
+                </Suspense>
+            )
+        }
+        if (pending?.type === 'DIRECAO_PROVINCIAL') {
+            return (
+                <Suspense fallback={<PageSkeleton />}>
+                    <DirecaoProvincialRegistration />
+                </Suspense>
+            )
+        }
+        return <LoginScreen />
     }
 
     // Public routes - accessible without authentication
@@ -195,9 +222,9 @@ function App() {
                 case 'superadmin-tutoriais':
                     return <TutoriaisManagementPage />
                 case 'superadmin-direcoes-municipais':
-                    return <DirecoesMunicipaisManagement onNavigate={handleNavigate} />
+                    return <DirecoesMunicipaisManagement onNavigate={handleNavigate} initialFilter={navigationParams.filter as any} />
                 case 'superadmin-direcoes-provinciais':
-                    return <DirecoesProvinciaisManagement onNavigate={handleNavigate} />
+                    return <DirecoesProvinciaisManagement onNavigate={handleNavigate} initialFilter={navigationParams.filter as any} />
                 case 'superadmin-acessos':
                     return <SystemAccessLog />
                 case 'settings':

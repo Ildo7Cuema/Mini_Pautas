@@ -47,6 +47,13 @@ export const DirecoesMunicipaisManagement: React.FC<DirecoesMunicipaisManagement
     }
 
     useEffect(() => {
+        if (initialFilter && initialFilter !== filterStatus) {
+            setFilterStatus(initialFilter)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialFilter])
+
+    useEffect(() => {
         loadDirecoes()
     }, [filterStatus])
 

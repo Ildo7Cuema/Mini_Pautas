@@ -17,10 +17,13 @@ import {
     updatePrice,
     fetchPendingApprovals,
     approveManualSubscription,
-    rejectManualSubscription
+    rejectManualSubscription,
+    PLANO_ASSINATURA_LABELS,
+    resolvePricesForInstitution,
 } from '../utils/license'
 import { fetchAllEscolas } from '../utils/superadmin'
 import { PriceEditModal } from './PriceEditModal'
+import { InstitutionSubscriptionPlans } from './InstitutionSubscriptionPlans'
 import type { Licenca, LicenseStats, PlanoLicenca, Escola, PrecoLicenca, TransacaoPagamento } from '../types'
 
 export const LicenseManagement: React.FC = () => {
@@ -101,9 +104,28 @@ export const LicenseManagement: React.FC = () => {
         try {
             const escolasData = await fetchAllEscolas()
             setEscolas(escolasData)
+            setSelectedEscola('')
+            setSelectedPlano('anual')
+            setCustomValor('')
+            setCreateMotivo('')
             setShowCreateModal(true)
         } catch (err) {
             alert('Erro ao carregar escolas')
+        }
+    }
+
+    const applyResolvedValorForCreate = async (escolaId: string, plano: PlanoLicenca) => {
+        if (!escolaId) {
+            setCustomValor('')
+            return
+        }
+        try {
+            const resolved = await resolvePricesForInstitution('ESCOLA', escolaId)
+            const plan = resolved.find(p => p.plano === plano)
+            setCustomValor(plan ? String(plan.valor) : '')
+        } catch {
+            const global = prices.find(p => p.plano === plano)
+            setCustomValor(global ? String(global.valor) : '')
         }
     }
 
@@ -382,12 +404,15 @@ export const LicenseManagement: React.FC = () => {
                     </div>
                 )}
 
-                {/* Pricing Configuration - Improved Cards */}
+                {/* Pricing Configuration - Global catalog */}
                 <div className="animate-slide-up" style={{ animationDelay: '100ms' }}>
-                    <h2 className="text-base md:text-lg font-bold text-neutral-800 mb-3 flex items-center gap-2">
+                    <h2 className="text-base md:text-lg font-bold text-neutral-800 mb-1 flex items-center gap-2">
                         <span>💳</span>
-                        Planos de Preços
+                        Planos Globais
                     </h2>
+                    <p className="text-sm text-neutral-500 mb-3">
+                        Catálogo base: Trimestral, Semestral e Anual (usado quando a instituição não tem preço próprio).
+                    </p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {prices.map((price, index) => (
                             <div
@@ -407,7 +432,9 @@ export const LicenseManagement: React.FC = () => {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                     </svg>
                                 </button>
-                                <h3 className="text-base font-bold text-neutral-800 capitalize">{price.plano}</h3>
+                                <h3 className="text-base font-bold text-neutral-800">
+                                    {PLANO_ASSINATURA_LABELS[price.plano] || price.plano}
+                                </h3>
                                 <p className="text-xl md:text-2xl font-extrabold text-emerald-600 mt-1 truncate">{formatCurrency(price.valor)}</p>
                                 {price.desconto_percentual > 0 && (
                                     <span className="inline-block mt-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">
@@ -419,6 +446,8 @@ export const LicenseManagement: React.FC = () => {
                         ))}
                     </div>
                 </div>
+
+                <InstitutionSubscriptionPlans formatCurrency={formatCurrency} />
 
                 {/* Filters - Improved Mobile */}
                 <div className="bg-white rounded-2xl p-3 shadow-sm border border-neutral-100 animate-slide-up" style={{ animationDelay: '150ms' }}>
@@ -630,7 +659,11 @@ export const LicenseManagement: React.FC = () => {
                                 <label className="block text-sm font-medium text-neutral-700 mb-2">Escola *</label>
                                 <select
                                     value={selectedEscola}
-                                    onChange={(e) => setSelectedEscola(e.target.value)}
+                                    onChange={(e) => {
+                                        const id = e.target.value
+                                        setSelectedEscola(id)
+                                        void applyResolvedValorForCreate(id, selectedPlano)
+                                    }}
                                     className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
                                 >
                                     <option value="">Seleccione uma escola</option>
@@ -646,13 +679,17 @@ export const LicenseManagement: React.FC = () => {
                                 <label className="block text-sm font-medium text-neutral-700 mb-2">Plano *</label>
                                 <select
                                     value={selectedPlano}
-                                    onChange={(e) => setSelectedPlano(e.target.value as PlanoLicenca)}
+                                    onChange={(e) => {
+                                        const plano = e.target.value as PlanoLicenca
+                                        setSelectedPlano(plano)
+                                        void applyResolvedValorForCreate(selectedEscola, plano)
+                                    }}
                                     className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
                                 >
                                     {prices.length > 0 ? (
                                         prices.map(price => (
                                             <option key={price.id} value={price.plano}>
-                                                {price.plano.charAt(0).toUpperCase() + price.plano.slice(1)} ({formatCurrency(price.valor)})
+                                                {PLANO_ASSINATURA_LABELS[price.plano] || price.plano} ({formatCurrency(price.valor)})
                                             </option>
                                         ))
                                     ) : (

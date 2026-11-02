@@ -19,6 +19,7 @@ import { BlockedSchoolMessage } from './BlockedSchoolMessage'
 import { logSystemVisit } from '../utils/superadmin'
 import { sendSuggestionToSuperAdmin } from '../utils/notificationApi'
 import { AuthBackdrop } from './auth/AuthShell'
+import { getPendingAdminNotify, isAdminNotifyLocked, pathForPendingType } from '../utils/pendingAdminNotify'
 
 type AuthMode = 'login' | 'signup' | 'school-registration' | 'direcao-municipal' | 'direcao-provincial'
 
@@ -105,13 +106,27 @@ function AuthOptionCard({ title, subtitle, tone, icon, onClick, onPrefetch }: Au
     )
 }
 
+function resolveInitialAuthMode(): AuthMode {
+    const pending = getPendingAdminNotify()
+    if (pending?.type === 'ESCOLA') return 'school-registration'
+    if (pending?.type === 'DIRECAO_MUNICIPAL') return 'direcao-municipal'
+    if (pending?.type === 'DIRECAO_PROVINCIAL') return 'direcao-provincial'
+    const p = window.location.pathname
+    if (p === '/register-direcao-municipal') return 'direcao-municipal'
+    if (p === '/register-direcao-provincial') return 'direcao-provincial'
+    return 'login'
+}
+
 export const LoginScreen: React.FC = () => {
-    const [mode, setModeState] = useState<AuthMode>('login')
+    const [mode, setModeState] = useState<AuthMode>(resolveInitialAuthMode)
     const [leaving, setLeaving] = useState(false)
     const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     /** Troca de página com saída suave (fade) e entrada animada; actualiza o URL sem recarregar. */
     const goTo = useCallback((next: AuthMode) => {
+        // Enquanto o admin não for notificado, não deixa sair do ecrã de sucesso do cadastro
+        if (isAdminNotifyLocked() && next === 'login') return
+
         if (leaveTimer.current) clearTimeout(leaveTimer.current)
         setLeaving(true)
         leaveTimer.current = setTimeout(() => {
@@ -128,6 +143,19 @@ export const LoginScreen: React.FC = () => {
     // Botão "voltar" do browser dentro das páginas de registo
     useEffect(() => {
         const onPop = () => {
+            if (isAdminNotifyLocked()) {
+                const pending = getPendingAdminNotify()
+                const lockedMode: AuthMode =
+                    pending?.type === 'DIRECAO_MUNICIPAL'
+                        ? 'direcao-municipal'
+                        : pending?.type === 'DIRECAO_PROVINCIAL'
+                          ? 'direcao-provincial'
+                          : 'school-registration'
+                const target = pending ? pathForPendingType(pending.type) : '/'
+                window.history.pushState({ authMode: lockedMode }, '', target)
+                setModeState(lockedMode)
+                return
+            }
             const p = window.location.pathname
             setModeState(
                 p === '/register-direcao-municipal' ? 'direcao-municipal' : p === '/register-direcao-provincial' ? 'direcao-provincial' : 'login'

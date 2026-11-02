@@ -15,6 +15,13 @@ import { Card, CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { notifyAdminNewRegistration, buildRegistrationMessage } from '../utils/registrationNotifications'
+import {
+    clearPendingAdminNotify,
+    getPendingAdminNotify,
+    markPendingAdminNotifyOpened,
+    savePendingAdminNotify,
+    updatePendingAdminNotify,
+} from '../utils/pendingAdminNotify'
 import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
 import { AuthShell } from './auth/AuthShell'
 
@@ -61,6 +68,18 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
         confirmar_senha: ''
     })
 
+    // Restaura o ecrã de sucesso se o utilizador ainda não notificou (sobrevive a refresh/reinício)
+    useEffect(() => {
+        const pending = getPendingAdminNotify()
+        if (!pending || pending.type !== 'DIRECAO_PROVINCIAL') return
+        setFormData(prev => ({ ...prev, nome: pending.displayName || prev.nome }))
+        setAdminMessage(pending.message)
+        setAdminAlert(pending.adminAlert)
+        setWaOpened(pending.waOpened)
+        setSuccess(true)
+        if (pending.waOpened) setCountdown(10)
+    }, [])
+
     // Countdown para redirecionar após sucesso
     useEffect(() => {
         if (holdRedirect) return
@@ -73,11 +92,17 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
     }, [success, countdown, holdRedirect])
 
     const handleGoToLogin = () => {
+        clearPendingAdminNotify()
         if (onSuccess) {
             onSuccess()
         } else {
             window.location.href = '/'
         }
+    }
+
+    const handleNotifyOpen = () => {
+        setWaOpened(true)
+        markPendingAdminNotifyOpened()
     }
 
     const handleChange = (field: keyof DirecaoProvincialRegistrationForm, value: string) => {
@@ -92,6 +117,10 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
         }
         if (!formData.provincia) {
             setError('Por favor, seleccione a província')
+            return false
+        }
+        if (!formData.telefone.trim()) {
+            setError('Por favor, informe o telefone')
             return false
         }
         return true
@@ -187,21 +216,31 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
             }
 
             // Alerta o administrador (WhatsApp) - não bloqueia o registo
-            setAdminMessage(buildRegistrationMessage('DIRECAO_PROVINCIAL', {
+            const message = buildRegistrationMessage('DIRECAO_PROVINCIAL', {
                 nome: formData.nome,
                 provincia: formData.provincia,
                 cargo: formData.cargo,
                 telefone: formData.telefone,
                 email: formData.email,
-            }))
-            notifyAdminNewRegistration('DIRECAO_PROVINCIAL', authData.user.id).then(r => setAdminAlert(r))
+            })
+            setAdminMessage(message)
+            savePendingAdminNotify({
+                type: 'DIRECAO_PROVINCIAL',
+                displayName: formData.nome,
+                message,
+                adminAlert: 'pending',
+            })
+            notifyAdminNewRegistration('DIRECAO_PROVINCIAL', authData.user.id).then(r => {
+                setAdminAlert(r)
+                updatePendingAdminNotify({ adminAlert: r })
+            })
 
             console.log('✅ Registration: Success! Signing out...')
             // 3. Fazer logout (conta pendente de aprovação)
             await supabase.auth.signOut()
 
             clearTimeout(safetyTimer)
-            // 4. Mostrar sucesso
+            // 4. Mostrar sucesso — fica bloqueado até notificar o administrador
             setSuccess(true)
 
         } catch (err) {
@@ -240,8 +279,13 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                         <AdminWhatsAppAlert
                             status={adminAlert}
                             message={adminMessage}
-                            onOpen={() => setWaOpened(true)}
+                            onOpen={handleNotifyOpen}
                         />
+                        {holdRedirect && (
+                            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
+                                Clique em <strong>Notificar administrador no WhatsApp</strong> para poder continuar para o login.
+                            </p>
+                        )}
                         {!holdRedirect && (
                             <p className="text-slate-500 text-sm mb-4">
                                 Redirecionando em <span className="font-bold text-primary-600">{countdown}</span> segundos...
@@ -352,12 +396,13 @@ export function DirecaoProvincialRegistration({ onSuccess, onCancel }: DirecaoPr
                                     />
 
                                     <Input
-                                        label="Telefone (opcional)"
+                                        label="Telefone"
                                         type="tel"
                                         value={formData.telefone}
                                         onChange={(e) => handleChange('telefone', e.target.value)}
                                         placeholder="Ex: 923 456 789"
                                         icon={<Icons.Phone />}
+                                        required
                                     />
 
                                     <div className="flex gap-3 pt-4">

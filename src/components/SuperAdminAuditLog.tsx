@@ -27,7 +27,9 @@ export const SuperAdminAuditLog: React.FC = () => {
             setError(null)
 
             const filters: any = { limit: 100 }
-            if (filterType !== 'all') {
+            if (filterType.startsWith('group:')) {
+                filters.actionTypePrefix = filterType.replace('group:', '')
+            } else if (filterType !== 'all') {
                 filters.actionType = filterType
             }
 
@@ -35,7 +37,12 @@ export const SuperAdminAuditLog: React.FC = () => {
             setActions(data)
         } catch (err) {
             console.error('Error loading audit log:', err)
-            setError('Erro ao carregar histórico de auditoria')
+            const message = err instanceof Error ? err.message : 'Erro ao carregar histórico de auditoria'
+            setError(
+                message.includes('listar_superadmin_actions') || message.includes('schema cache')
+                    ? 'Auditoria indisponível: aplique a migration 20261102_fix_superadmin_audit_actions no Supabase.'
+                    : message || 'Erro ao carregar histórico de auditoria'
+            )
         } finally {
             setLoading(false)
         }
@@ -84,6 +91,20 @@ export const SuperAdminAuditLog: React.FC = () => {
             'EXPORT_DATA': { icon: '📥', label: 'Exportar Dados', color: 'text-teal-700', bgColor: 'bg-teal-100' },
             'CREATE_LICENSE': { icon: '📋', label: 'Criar Licença', color: 'text-green-700', bgColor: 'bg-green-100' },
             'SUSPEND_LICENSE': { icon: '⏸️', label: 'Suspender Licença', color: 'text-orange-700', bgColor: 'bg-orange-100' },
+            'REACTIVATE_LICENSE': { icon: '🔄', label: 'Reactivar Licença', color: 'text-emerald-700', bgColor: 'bg-emerald-100' },
+            'APPROVE_SUBSCRIPTION': { icon: '✅', label: 'Aprovar Assinatura', color: 'text-green-700', bgColor: 'bg-green-100' },
+            'REJECT_SUBSCRIPTION': { icon: '✗', label: 'Rejeitar Assinatura', color: 'text-red-700', bgColor: 'bg-red-100' },
+            'UPDATE_PRICE': { icon: '💳', label: 'Actualizar Preço Global', color: 'text-blue-700', bgColor: 'bg-blue-100' },
+            'UPDATE_INSTITUTION_PRICE': { icon: '🏛️', label: 'Preço por Instituição', color: 'text-violet-700', bgColor: 'bg-violet-100' },
+            'RESTORE_ESCOLA': { icon: '♻️', label: 'Restaurar Escola', color: 'text-teal-700', bgColor: 'bg-teal-100' },
+            'ACTIVATE_DIRECAO_MUNICIPAL': { icon: '✅', label: 'Activar Dir. Municipal', color: 'text-emerald-700', bgColor: 'bg-emerald-100' },
+            'DEACTIVATE_DIRECAO_MUNICIPAL': { icon: '⏸️', label: 'Desactivar Dir. Municipal', color: 'text-amber-700', bgColor: 'bg-amber-100' },
+            'BLOCK_DIRECAO_MUNICIPAL': { icon: '🚫', label: 'Bloquear Dir. Municipal', color: 'text-red-700', bgColor: 'bg-red-100' },
+            'UNBLOCK_DIRECAO_MUNICIPAL': { icon: '🔓', label: 'Desbloquear Dir. Municipal', color: 'text-emerald-700', bgColor: 'bg-emerald-100' },
+            'ACTIVATE_DIRECAO_PROVINCIAL': { icon: '✅', label: 'Activar Dir. Provincial', color: 'text-emerald-700', bgColor: 'bg-emerald-100' },
+            'DEACTIVATE_DIRECAO_PROVINCIAL': { icon: '⏸️', label: 'Desactivar Dir. Provincial', color: 'text-amber-700', bgColor: 'bg-amber-100' },
+            'BLOCK_DIRECAO_PROVINCIAL': { icon: '🚫', label: 'Bloquear Dir. Provincial', color: 'text-red-700', bgColor: 'bg-red-100' },
+            'UNBLOCK_DIRECAO_PROVINCIAL': { icon: '🔓', label: 'Desbloquear Dir. Provincial', color: 'text-emerald-700', bgColor: 'bg-emerald-100' },
             'OTHER': { icon: '📝', label: 'Outra Acção', color: 'text-neutral-700', bgColor: 'bg-neutral-100' }
         }
         return configs[actionType] || configs['OTHER']
@@ -91,11 +112,11 @@ export const SuperAdminAuditLog: React.FC = () => {
 
     const filterOptions = [
         { value: 'all', label: 'Todas', icon: '📋' },
-        { value: 'ACTIVATE_ESCOLA', label: 'Activar', icon: '✅' },
-        { value: 'DEACTIVATE_ESCOLA', label: 'Desactivar', icon: '⏸️' },
-        { value: 'BLOCK_ESCOLA', label: 'Bloquear', icon: '🚫' },
-        { value: 'UNBLOCK_ESCOLA', label: 'Desbloquear', icon: '🔓' },
-        { value: 'CREATE_LICENSE', label: 'Licenças', icon: '📋' },
+        { value: 'group:ESCOLA', label: 'Escolas', icon: '🏫' },
+        { value: 'group:DIRECAO_MUNICIPAL', label: 'Municipais', icon: '🏛️' },
+        { value: 'group:DIRECAO_PROVINCIAL', label: 'Provinciais', icon: '🗺️' },
+        { value: 'group:LICENSE', label: 'Licenças', icon: '📋' },
+        { value: 'group:SUBSCRIPTION', label: 'Assinaturas', icon: '💳' },
     ]
 
     return (
@@ -114,7 +135,7 @@ export const SuperAdminAuditLog: React.FC = () => {
                             Auditoria do Sistema
                         </h1>
                         <p className="text-purple-200 mt-1 text-sm md:text-base">
-                            Histórico de acções do SUPERADMIN
+                            Histórico de escolas, direções e licenças
                         </p>
                     </div>
                     <button
@@ -288,7 +309,10 @@ export const SuperAdminAuditLog: React.FC = () => {
                                     <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 rounded-full flex items-center justify-center">
                                         <span className="text-3xl">📋</span>
                                     </div>
-                                    <p className="text-neutral-500">Nenhuma acção registada</p>
+                                    <p className="text-neutral-700 font-medium">Nenhuma acção registada</p>
+                                    <p className="text-neutral-500 text-sm mt-2 max-w-md mx-auto px-4">
+                                        As acções do Super Admin (activar/bloquear escolas e direções, licenças, etc.) passam a aparecer aqui após aplicar a migration de auditoria e executar novas operações.
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -299,7 +323,10 @@ export const SuperAdminAuditLog: React.FC = () => {
                                 <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 rounded-full flex items-center justify-center">
                                     <span className="text-3xl">📋</span>
                                 </div>
-                                <p className="text-neutral-500">Nenhuma acção registada</p>
+                                <p className="text-neutral-700 font-medium">Nenhuma acção registada</p>
+                                <p className="text-neutral-500 text-sm mt-2 px-6">
+                                    Execute uma acção de gestão e actualize esta página.
+                                </p>
                             </div>
                         )}
                     </>

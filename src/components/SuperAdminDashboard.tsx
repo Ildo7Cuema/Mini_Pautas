@@ -16,6 +16,11 @@ export const SuperAdminDashboard: React.FC = () => {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [activeChartTab, setActiveChartTab] = useState<'status' | 'growth'>('status')
+    const [entityFocus, setEntityFocus] = useState<'escolas' | 'municipais' | 'provinciais'>('escolas')
+
+    const navigateTo = (page: string, filter?: string) => {
+        window.dispatchEvent(new CustomEvent('navigate', { detail: { page, filter } }))
+    }
 
     useEffect(() => {
         loadStats()
@@ -95,11 +100,44 @@ export const SuperAdminDashboard: React.FC = () => {
         )
     }
 
-    // Prepare data for charts
+    const dm = stats.direcoes_municipais || { total: 0, ativas: 0, inativas: 0, bloqueadas: 0 }
+    const dp = stats.direcoes_provinciais || { total: 0, ativas: 0, inativas: 0, bloqueadas: 0 }
+    const lic = stats.licencas || { total: 0, ativas: 0, expiradas: 0, suspensas: 0 }
+
+    const entityStatus = {
+        escolas: {
+            label: 'Escolas',
+            total: stats.total_escolas,
+            ativas: stats.escolas_ativas,
+            inativas: stats.escolas_inativas,
+            bloqueadas: stats.escolas_bloqueadas,
+            page: 'superadmin-escolas',
+        },
+        municipais: {
+            label: 'Dir. Municipais',
+            total: dm.total,
+            ativas: dm.ativas,
+            inativas: dm.inativas,
+            bloqueadas: dm.bloqueadas,
+            page: 'superadmin-direcoes-municipais',
+        },
+        provinciais: {
+            label: 'Dir. Provinciais',
+            total: dp.total,
+            ativas: dp.ativas,
+            inativas: dp.inativas,
+            bloqueadas: dp.bloqueadas,
+            page: 'superadmin-direcoes-provinciais',
+        },
+    } as const
+
+    const focused = entityStatus[entityFocus]
+
+    // Prepare data for charts (respeita o foco da entidade)
     const statusData = [
-        { name: 'Activas', value: stats.escolas_ativas, color: '#10b981', bgColor: 'rgba(16,185,129,0.15)' },
-        { name: 'Inactivas', value: stats.escolas_inativas, color: '#f59e0b', bgColor: 'rgba(245,158,11,0.15)' },
-        { name: 'Bloqueadas', value: stats.escolas_bloqueadas, color: '#ef4444', bgColor: 'rgba(239,68,68,0.15)' }
+        { name: 'Activas', value: focused.ativas, color: '#10b981', bgColor: 'rgba(16,185,129,0.15)' },
+        { name: 'Inactivas', value: focused.inativas, color: '#f59e0b', bgColor: 'rgba(245,158,11,0.15)' },
+        { name: 'Bloqueadas', value: focused.bloqueadas, color: '#ef4444', bgColor: 'rgba(239,68,68,0.15)' }
     ]
 
     const provinciaData = Object.entries(stats.estatisticas_por_provincia).map(([name, value]) => ({
@@ -108,10 +146,14 @@ export const SuperAdminDashboard: React.FC = () => {
         total: value
     })).sort((a, b) => b.total - a.total).slice(0, 8)
 
-    // Calculate alert count
-    const alertCount = stats.escolas_bloqueadas + stats.escolas_inativas
-    const totalEscolas = stats.total_escolas || 1
-    const percentAtivas = Math.round((stats.escolas_ativas / totalEscolas) * 100)
+    // Attention across escolas + direções
+    const alertEscolas = stats.escolas_bloqueadas + stats.escolas_inativas
+    const alertMunicipais = dm.inativas + dm.bloqueadas
+    const alertProvinciais = dp.inativas + dp.bloqueadas
+    const alertLicencas = lic.expiradas + lic.suspensas
+    const alertCount = alertEscolas + alertMunicipais + alertProvinciais
+    const totalFocused = focused.total || 1
+    const percentAtivas = Math.round((focused.ativas / totalFocused) * 100)
 
     return (
         <div className="min-h-screen pb-28 md:pb-8" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' }}>
@@ -129,7 +171,7 @@ export const SuperAdminDashboard: React.FC = () => {
                             </div>
                             <div>
                                 <h1 className="text-xl font-bold text-white">SUPERADMIN</h1>
-                                <p className="text-slate-400 text-xs">Painel de Controlo</p>
+                                <p className="text-slate-400 text-xs">Escolas · Direções · Licenças · Auditoria</p>
                             </div>
                         </div>
                     </div>
@@ -144,75 +186,161 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
 
             <div className="px-4 md:px-8 space-y-5">
-                {/* Premium Stats Cards - 2x2 Grid */}
+                {/* Overview — Escolas / Municipais / Provinciais / Licenças */}
                 <div className="grid grid-cols-2 gap-3">
                     <NativeStatCard
                         icon="🏫"
-                        title="Total"
+                        title="Escolas"
                         value={stats.total_escolas}
-                        subtitle="escolas"
+                        subtitle={`${stats.escolas_ativas} activas`}
                         gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)"
                         glowColor="rgba(59,130,246,0.3)"
                         delay={0}
+                        onClick={() => { setEntityFocus('escolas'); navigateTo('superadmin-escolas') }}
                     />
                     <NativeStatCard
-                        icon="✅"
-                        title="Activas"
-                        value={stats.escolas_ativas}
-                        subtitle={`${percentAtivas}% do total`}
+                        icon="🏛️"
+                        title="Municipais"
+                        value={dm.total}
+                        subtitle={`${dm.ativas} activas`}
+                        gradient="linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)"
+                        glowColor="rgba(139,92,246,0.3)"
+                        delay={50}
+                        onClick={() => { setEntityFocus('municipais'); navigateTo('superadmin-direcoes-municipais') }}
+                    />
+                    <NativeStatCard
+                        icon="🗺️"
+                        title="Provinciais"
+                        value={dp.total}
+                        subtitle={`${dp.ativas} activas`}
+                        gradient="linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)"
+                        glowColor="rgba(6,182,212,0.3)"
+                        delay={100}
+                        onClick={() => { setEntityFocus('provinciais'); navigateTo('superadmin-direcoes-provinciais') }}
+                    />
+                    <NativeStatCard
+                        icon="📋"
+                        title="Licenças"
+                        value={lic.ativas}
+                        subtitle={`${lic.expiradas + lic.suspensas} a rever`}
                         gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
                         glowColor="rgba(16,185,129,0.3)"
-                        delay={50}
-                    />
-                    <NativeStatCard
-                        icon="⏸️"
-                        title="Inactivas"
-                        value={stats.escolas_inativas}
-                        subtitle="aguardando"
-                        gradient="linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
-                        glowColor="rgba(245,158,11,0.3)"
-                        delay={100}
-                    />
-                    <NativeStatCard
-                        icon="🚫"
-                        title="Bloqueadas"
-                        value={stats.escolas_bloqueadas}
-                        subtitle="requer ação"
-                        gradient="linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                        glowColor="rgba(239,68,68,0.3)"
                         delay={150}
+                        onClick={() => navigateTo('superadmin-licencas')}
                     />
                 </div>
 
-                {/* Alert Banner - Native Style */}
-                {alertCount > 0 && (
-                    <button
-                        onClick={() => {
-                            const event = new CustomEvent('navigate', { detail: { page: 'superadmin-escolas', filter: 'attention' } })
-                            window.dispatchEvent(event)
-                        }}
-                        className="w-full rounded-2xl p-4 animate-slide-up flex items-center gap-3 text-left transition-all active:scale-[0.98] hover:ring-2 hover:ring-amber-400/50"
-                        style={{
-                            animationDelay: '200ms',
-                            background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(239,68,68,0.15) 100%)',
-                            border: '1px solid rgba(245,158,11,0.3)'
-                        }}
-                    >
-                        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)' }}>
-                            <span className="text-lg">⚠️</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-amber-200 text-sm">Atenção Necessária</h3>
-                            <p className="text-xs text-amber-300/70 mt-0.5 truncate">
-                                {alertCount} escola{alertCount > 1 ? 's' : ''} requer{alertCount > 1 ? 'em' : ''} acção
-                            </p>
-                        </div>
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.1)' }}>
-                            <span className="text-amber-200 text-sm">→</span>
-                        </div>
-                    </button>
+                {(alertCount > 0 || alertLicencas > 0) && (
+                    <div className="space-y-2 animate-slide-up" style={{ animationDelay: '200ms' }}>
+                        {alertCount > 0 && (
+                            <div
+                                className="w-full rounded-2xl p-4 flex flex-col gap-3"
+                                style={{
+                                    background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(239,68,68,0.15) 100%)',
+                                    border: '1px solid rgba(245,158,11,0.3)'
+                                }}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)' }}>
+                                        <span className="text-lg">⚠️</span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-semibold text-amber-200 text-sm">Atenção Necessária</h3>
+                                        <p className="text-xs text-amber-300/70 mt-0.5">
+                                            {alertCount} entidade{alertCount > 1 ? 's' : ''} inactiva{alertCount > 1 ? 's' : ''} ou bloqueada{alertCount > 1 ? 's' : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {alertEscolas > 0 && (
+                                        <button
+                                            onClick={() => navigateTo('superadmin-escolas', 'attention')}
+                                            className="rounded-xl px-2 py-2 text-xs font-medium text-amber-100 transition-all active:scale-[0.98]"
+                                            style={{ background: 'rgba(255,255,255,0.08)' }}
+                                        >
+                                            🏫 {alertEscolas} escolas
+                                        </button>
+                                    )}
+                                    {alertMunicipais > 0 && (
+                                        <button
+                                            onClick={() => navigateTo('superadmin-direcoes-municipais', 'attention')}
+                                            className="rounded-xl px-2 py-2 text-xs font-medium text-amber-100 transition-all active:scale-[0.98]"
+                                            style={{ background: 'rgba(255,255,255,0.08)' }}
+                                        >
+                                            🏛️ {alertMunicipais} munic.
+                                        </button>
+                                    )}
+                                    {alertProvinciais > 0 && (
+                                        <button
+                                            onClick={() => navigateTo('superadmin-direcoes-provinciais', 'attention')}
+                                            className="rounded-xl px-2 py-2 text-xs font-medium text-amber-100 transition-all active:scale-[0.98]"
+                                            style={{ background: 'rgba(255,255,255,0.08)' }}
+                                        >
+                                            🗺️ {alertProvinciais} prov.
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        {alertLicencas > 0 && (
+                            <button
+                                onClick={() => navigateTo('superadmin-licencas')}
+                                className="w-full rounded-2xl p-3 flex items-center gap-3 text-left transition-all active:scale-[0.98]"
+                                style={{
+                                    background: 'rgba(16,185,129,0.12)',
+                                    border: '1px solid rgba(16,185,129,0.3)'
+                                }}
+                            >
+                                <span className="text-lg">📋</span>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-emerald-200">Licenças a rever</p>
+                                    <p className="text-xs text-emerald-300/70">
+                                        {lic.expiradas} expirada{lic.expiradas === 1 ? '' : 's'} · {lic.suspensas} suspensa{lic.suspensas === 1 ? '' : 's'}
+                                    </p>
+                                </div>
+                                <span className="text-emerald-200 text-sm">→</span>
+                            </button>
+                        )}
+                    </div>
                 )}
 
+                <div
+                    className="p-1 rounded-2xl flex gap-1 animate-slide-up"
+                    style={{ background: 'rgba(255,255,255,0.08)', animationDelay: '220ms' }}
+                >
+                    {([
+                        { key: 'escolas', label: 'Escolas' },
+                        { key: 'municipais', label: 'Municipais' },
+                        { key: 'provinciais', label: 'Provinciais' },
+                    ] as const).map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setEntityFocus(tab.key)}
+                            className="flex-1 py-2.5 px-2 rounded-xl font-medium text-xs sm:text-sm transition-all"
+                            style={{
+                                background: entityFocus === tab.key ? 'rgba(255,255,255,0.12)' : 'transparent',
+                                color: entityFocus === tab.key ? '#fff' : 'rgba(255,255,255,0.5)'
+                            }}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 animate-slide-up" style={{ animationDelay: '230ms' }}>
+                    <div className="rounded-2xl p-3 text-center" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <p className="text-lg font-bold text-emerald-300">{focused.ativas}</p>
+                        <p className="text-[10px] text-emerald-200/70">Activas · {percentAtivas}%</p>
+                    </div>
+                    <div className="rounded-2xl p-3 text-center" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                        <p className="text-lg font-bold text-amber-300">{focused.inativas}</p>
+                        <p className="text-[10px] text-amber-200/70">Inactivas</p>
+                    </div>
+                    <div className="rounded-2xl p-3 text-center" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        <p className="text-lg font-bold text-red-300">{focused.bloqueadas}</p>
+                        <p className="text-[10px] text-red-200/70">Bloqueadas</p>
+                    </div>
+                </div>
 
                 {/* Chart Tabs - iOS Style Segmented Control */}
                 <div className="animate-slide-up" style={{ animationDelay: '250ms' }}>
@@ -260,7 +388,7 @@ export const SuperAdminDashboard: React.FC = () => {
                         {activeChartTab === 'status' ? (
                             <>
                                 <h2 className="text-base font-bold text-white mb-5 flex items-center gap-2">
-                                    Distribuição por Estado
+                                    Distribuição por Estado · {focused.label}
                                 </h2>
 
                                 {/* Donut Chart with Center Label */}
@@ -300,14 +428,14 @@ export const SuperAdminDashboard: React.FC = () => {
                                                     padding: '12px 16px',
                                                     color: '#fff'
                                                 }}
-                                                formatter={(value: number) => [value, 'Escolas']}
+                                                formatter={(value: number) => [value, focused.label]}
                                             />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     {/* Center Label */}
                                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                         <div className="text-center">
-                                            <p className="text-3xl font-bold text-white">{totalEscolas}</p>
+                                            <p className="text-3xl font-bold text-white">{focused.total}</p>
                                             <p className="text-xs text-slate-400">Total</p>
                                         </div>
                                     </div>
@@ -331,7 +459,7 @@ export const SuperAdminDashboard: React.FC = () => {
                         ) : (
                             <>
                                 <h2 className="text-base font-bold text-white mb-5 flex items-center gap-2">
-                                    Crescimento Mensal
+                                    Crescimento Mensal · entidades
                                 </h2>
                                 <ResponsiveContainer width="100%" height={260}>
                                     <AreaChart data={stats.crescimento_mensal}>
@@ -370,7 +498,7 @@ export const SuperAdminDashboard: React.FC = () => {
                                             stroke="#3b82f6"
                                             strokeWidth={3}
                                             fill="url(#colorGrowth)"
-                                            name="Novas Escolas"
+                                            name="Novos registos"
                                             dot={{ fill: '#3b82f6', strokeWidth: 0, r: 4 }}
                                             activeDot={{ r: 6, fill: '#60a5fa', stroke: '#3b82f6', strokeWidth: 2 }}
                                         />
@@ -442,32 +570,37 @@ export const SuperAdminDashboard: React.FC = () => {
                         <NativeActionCard
                             icon="🏫"
                             title="Gerir Escolas"
-                            subtitle="Ver e gerir todas as escolas"
+                            subtitle="Activar, bloquear e acompanhar escolas"
                             gradient="linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)"
-                            onClick={() => {
-                                const event = new CustomEvent('navigate', { detail: { page: 'superadmin-escolas' } })
-                                window.dispatchEvent(event)
-                            }}
+                            onClick={() => navigateTo('superadmin-escolas')}
+                        />
+                        <NativeActionCard
+                            icon="🏛️"
+                            title="Direções Municipais"
+                            subtitle="Aprovar, activar e bloquear municípios"
+                            gradient="linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%)"
+                            onClick={() => navigateTo('superadmin-direcoes-municipais')}
+                        />
+                        <NativeActionCard
+                            icon="🗺️"
+                            title="Direções Provinciais"
+                            subtitle="Aprovar, activar e bloquear províncias"
+                            gradient="linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)"
+                            onClick={() => navigateTo('superadmin-direcoes-provinciais')}
                         />
                         <NativeActionCard
                             icon="📋"
                             title="Licenças"
-                            subtitle="Gerir licenças e subscrições"
+                            subtitle="Gerir licenças e subscrições das escolas"
                             gradient="linear-gradient(135deg, #10b981 0%, #14b8a6 100%)"
-                            onClick={() => {
-                                const event = new CustomEvent('navigate', { detail: { page: 'superadmin-licencas' } })
-                                window.dispatchEvent(event)
-                            }}
+                            onClick={() => navigateTo('superadmin-licencas')}
                         />
                         <NativeActionCard
                             icon="📊"
                             title="Auditoria"
-                            subtitle="Ver histórico de acções"
-                            gradient="linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%)"
-                            onClick={() => {
-                                const event = new CustomEvent('navigate', { detail: { page: 'superadmin-audit' } })
-                                window.dispatchEvent(event)
-                            }}
+                            subtitle="Histórico de escolas, direções e licenças"
+                            gradient="linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                            onClick={() => navigateTo('superadmin-audit')}
                         />
                     </div>
                 </div>
@@ -485,12 +618,16 @@ interface NativeStatCardProps {
     gradient: string
     glowColor: string
     delay: number
+    onClick?: () => void
 }
 
-const NativeStatCard: React.FC<NativeStatCardProps> = ({ icon, title, value, subtitle, gradient, glowColor, delay }) => {
+const NativeStatCard: React.FC<NativeStatCardProps> = ({ icon, title, value, subtitle, gradient, glowColor, delay, onClick }) => {
+    const Comp: any = onClick ? 'button' : 'div'
     return (
-        <div
-            className="rounded-3xl p-4 animate-slide-up transition-all duration-300 active:scale-[0.98]"
+        <Comp
+            type={onClick ? 'button' : undefined}
+            onClick={onClick}
+            className={`rounded-3xl p-4 animate-slide-up transition-all duration-300 active:scale-[0.98] text-left w-full ${onClick ? 'cursor-pointer' : ''}`}
             style={{
                 animationDelay: `${delay}ms`,
                 background: 'rgba(255,255,255,0.06)',
@@ -505,11 +642,12 @@ const NativeStatCard: React.FC<NativeStatCardProps> = ({ icon, title, value, sub
             >
                 <span className="text-xl">{icon}</span>
             </div>
+            <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-0.5">{title}</p>
             <p className="text-2xl font-bold text-white mb-0.5">
                 {value.toLocaleString('pt-AO')}
             </p>
             <p className="text-xs text-slate-400">{subtitle}</p>
-        </div>
+        </Comp>
     )
 }
 
