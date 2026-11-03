@@ -19,9 +19,9 @@ const COLORS = {
 }
 
 /**
- * Official school header for the receipt
+ * Official school header for tuition PDFs (receipts, reports)
  */
-async function renderReceiptHeader(
+export async function renderOfficialSchoolHeader(
     doc: jsPDF,
     headerConfig: HeaderConfig | null | undefined,
     escola: { nome: string; provincia: string; municipio: string } | undefined,
@@ -149,7 +149,7 @@ export async function generateReceiptPDF(
         }
         : undefined
 
-    let currentY = await renderReceiptHeader(doc, headerConfig, escolaData, pageWidth, margin)
+    let currentY = await renderOfficialSchoolHeader(doc, headerConfig, escolaData, pageWidth, margin)
 
     // Watermark for annulled receipts
     if (pagamento.estado === 'anulado') {
@@ -428,7 +428,7 @@ export async function generateReceiptPDF(
     }
 
     // Signatures: ALWAYS below content (never pulled upward over tables)
-    const footerReserve = 36
+    const footerReserve = 44
     const signatureBlockHeight = 40
     const footerTop = pageHeight - footerReserve
     const minGapAfterContent = 8
@@ -489,7 +489,7 @@ export async function generateReceiptPDF(
     doc.setFontSize(6)
     const hashLines: string[] = doc.splitTextToSize(`Hash: ${hashText}`, contentWidth - 36)
     const hashBlockH = Math.max(hashLines.length, 1) * 2.9
-    const footerY = footerTop + 5
+    const footerY = footerTop + 4.5
 
     doc.setDrawColor(...COLORS.line)
     doc.setLineWidth(0.35)
@@ -505,16 +505,25 @@ export async function generateReceiptPDF(
         doc.text(`Ctrl: ${pagamento.hash_control}`, pageWidth - margin, footerY, { align: 'right' })
     }
 
+    // Certification — always visible in the footer (AGT)
+    const certText =
+        (pagamento.sistema_certificado && pagamento.sistema_certificado.trim()) ||
+        'Processado por programa válido n31.1/AGT20'
+    const certY = footerY + hashBlockH + 3.5
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...COLORS.ink)
+    const certLines = doc.splitTextToSize(certText, contentWidth - 10)
+    doc.text(certLines, pageWidth / 2, certY, { align: 'center' })
+
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(6.5)
     doc.setTextColor(...COLORS.muted)
-    const certText = pagamento.sistema_certificado || 'Processado por programa válido n31.1/AGT20'
-    const certY = footerY + hashBlockH + 2.5
-    doc.text(certText, pageWidth / 2, certY, { align: 'center' })
     doc.text(
         `Emitido em ${new Date().toLocaleString('pt-AO')} · Original · ${escolaNome}`,
         pageWidth / 2,
-        certY + 4,
+        certY + certLines.length * 3.6 + 2,
         { align: 'center' }
     )
 

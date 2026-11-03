@@ -33,6 +33,10 @@ import {
     MESES_LECTIVOS_JAN_NOV
 } from '../utils/tuitionPayments'
 import { generateReceiptPDF } from '../utils/receiptGenerator'
+import {
+    generateTuitionPaymentsReportPDF,
+    mapAlunosToReportRows
+} from '../utils/tuitionReportGenerator'
 import type {
     PropinasConfig,
     PagamentoPropina,
@@ -857,59 +861,40 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
     const handlePrintExport = async () => {
         setExportLoading(true)
         try {
-            const doc = new jsPDF()
-
-            // Header
-            doc.setFontSize(18)
-            doc.text('Relatório de Pagamento de Propinas', 14, 20)
-
-            doc.setFontSize(12)
-            doc.text(`Mês Referência: ${getNomeMes(exportMes)}`, 14, 30)
-            doc.text(`Ano: ${currentYear}`, 14, 36)
-
-            if (escolaProfile) {
-                doc.setFontSize(10)
-                doc.text(escolaProfile.nome, 200, 20, { align: 'right' })
-            }
-
-            // Prepare Table Data
             let exportAlunos = alunos
             if (exportTurma) {
                 exportAlunos = alunos.filter(a => a.turma_id === exportTurma)
             }
 
-            const tableData = exportAlunos.map(student => {
-                const paymentsForMonth = pagamentos.filter(p =>
-                    p.aluno_id === student.id &&
-                    p.mes_referencia === exportMes &&
-                    p.ano_referencia === currentYear &&
-                    p.estado === 'valido'
-                )
+            if (exportAlunos.length === 0) {
+                throw new Error('Não existem alunos para exportar com o filtro seleccionado.')
+            }
 
-                const totalPaid = paymentsForMonth.reduce((sum, p) => sum + p.valor, 0)
+            const valorMensalidade =
+                config?.valor_mensalidade ||
+                paymentForm.valor ||
+                0
 
-                return [
-                    student.numero_processo,
-                    student.nome_completo,
-                    paymentsForMonth.length > 0 ? `${formatarValor(totalPaid)}` : '0,00 Kz',
-                    paymentsForMonth.length > 0 ? (totalPaid >= (paymentForm.valor_mensalidade || 0) ? 'Pago' : 'Parcial') : 'Pendente'
-                ]
+            const turmaFiltroNome = exportTurma
+                ? turmas.find(t => t.id === exportTurma)?.nome
+                : undefined
+
+            await generateTuitionPaymentsReportPDF({
+                alunos: mapAlunosToReportRows(exportAlunos, turmas),
+                pagamentos,
+                mes: exportMes,
+                ano: currentYear,
+                valorMensalidade,
+                headerConfig,
+                escola: escolaProfile || null,
+                turmaFiltroNome,
             })
 
-            autoTable(doc, {
-                startY: 45,
-                head: [['Nº Proc', 'Nome Completo', 'Valor Pago', 'Estado']],
-                body: tableData,
-                styles: { fontSize: 9 },
-                headStyles: { fillColor: [41, 128, 185] }
-            })
-
-            doc.save(`Relatorio_Propinas_${getNomeMes(exportMes)}_${currentYear}.pdf`)
-            showNotification('Lista exportada com sucesso.', 'success')
+            showNotification('Relatório de propinas exportado com sucesso.', 'success')
             setShowExportModal(false)
         } catch (error: any) {
             console.error('Error printing export:', error)
-            showNotification('Erro ao exportar lista PDF.', 'error')
+            showNotification(error?.message || 'Erro ao exportar relatório PDF.', 'error')
         } finally {
             setExportLoading(false)
         }
@@ -2105,7 +2090,7 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                                         </svg>
                                     )}
-                                    Imprimir Lista (PDF)
+                                    Relatório de Propinas (PDF)
                                 </button>
 
                                 <button
