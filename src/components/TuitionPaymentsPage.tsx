@@ -594,9 +594,22 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
                 observacao: paymentForm.observacao
             })
 
+            // Ensure turma appears on the receipt even if join is incomplete
+            const turmaFromAluno = (selectedAluno as any).turma || (selectedAluno as any).turmas
+            const pagamentoComTurma = {
+                ...pagamento,
+                aluno: {
+                    ...(pagamento.aluno || selectedAluno),
+                    nome_completo: pagamento.aluno?.nome_completo || selectedAluno.nome_completo,
+                    numero_processo: pagamento.aluno?.numero_processo || selectedAluno.numero_processo,
+                    turma: (pagamento.aluno as any)?.turma || (pagamento.aluno as any)?.turmas || turmaFromAluno,
+                    turmas: (pagamento.aluno as any)?.turmas || (pagamento.aluno as any)?.turma || turmaFromAluno
+                }
+            }
+
             setSuccess('Pagamento registado com sucesso!')
             setShowPaymentModal(false)
-            setSelectedPagamento(pagamento)
+            setSelectedPagamento(pagamentoComTurma as any)
             setShowReceiptModal(true)
             loadData()
         } catch (err: any) {
@@ -607,13 +620,34 @@ export const TuitionPaymentsPage: React.FC<TuitionPaymentsPageProps> = ({ search
     }
 
     const handleViewReceipt = (pagamento: PagamentoPropina) => {
-        setSelectedPagamento(pagamento)
+        // Enrich with turma from the loaded students list when missing on the payment join
+        const alunoLista = alunos.find(a => a.id === pagamento.aluno_id)
+        const turmaFromList = (alunoLista as any)?.turma || (alunoLista as any)?.turmas
+        const hasTurma = !!(pagamento.aluno as any)?.turma || !!(pagamento.aluno as any)?.turmas
+        setSelectedPagamento(
+            hasTurma || !turmaFromList
+                ? pagamento
+                : {
+                    ...pagamento,
+                    aluno: {
+                        ...(pagamento.aluno || {}),
+                        nome_completo: pagamento.aluno?.nome_completo || alunoLista?.nome_completo,
+                        numero_processo: pagamento.aluno?.numero_processo || alunoLista?.numero_processo,
+                        turma: turmaFromList,
+                        turmas: turmaFromList
+                    } as any
+                }
+        )
         setShowReceiptModal(true)
     }
 
     const handlePrintReceipt = async () => {
-        if (selectedPagamento) {
+        if (!selectedPagamento) return
+        try {
             await generateReceiptPDF(selectedPagamento, headerConfig, escolaProfile || undefined)
+        } catch (err: any) {
+            console.error('Error generating receipt PDF:', err)
+            showNotification(err?.message || 'Erro ao gerar o recibo em PDF', 'error')
         }
     }
 

@@ -313,11 +313,20 @@ export async function fetchPagamentosPropinas(
 
         if (error) throw error
 
-        // Map alunos to aluno field
-        return (data || []).map(item => ({
-            ...item,
-            aluno: item.alunos
-        }))
+        // Map alunos to aluno field (keep turmas + turma for receipt/UI)
+        return (data || []).map(item => {
+            const alunoRaw = item.alunos
+            return {
+                ...item,
+                aluno: alunoRaw
+                    ? {
+                        ...alunoRaw,
+                        turma: alunoRaw.turmas || alunoRaw.turma,
+                        turmas: alunoRaw.turmas || alunoRaw.turma
+                    }
+                    : undefined
+            }
+        })
     } catch (error) {
         console.error('Error fetching pagamentos:', error)
         throw error
@@ -444,7 +453,10 @@ export async function registarPagamento(
             })
             .select(`
                 *,
-                alunos(id, nome_completo, numero_processo, turma_id)
+                alunos(
+                    id, nome_completo, numero_processo, turma_id,
+                    turmas(id, nome, codigo_turma)
+                )
             `)
             .single()
 
@@ -452,9 +464,16 @@ export async function registarPagamento(
             throw error
         }
 
+        const alunoRaw = data.alunos
         return {
             ...data,
-            aluno: data.alunos
+            aluno: alunoRaw
+                ? {
+                    ...alunoRaw,
+                    turma: alunoRaw.turmas || null,
+                    turmas: alunoRaw.turmas || null
+                }
+                : undefined
         } as PagamentoPropina
     } catch (error) {
         console.error('Error registering payment:', error)
