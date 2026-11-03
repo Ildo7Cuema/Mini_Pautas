@@ -8,10 +8,10 @@ component-meta:
 */
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardBody, CardHeader } from './ui/Card'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { Icons } from './ui/Icons'
+import { FormModal } from './ui/FormModal'
 import { supabase } from '../lib/supabaseClient'
 
 export interface StudentFormData {
@@ -615,60 +615,50 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     }
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center md:p-4 z-50 animate-fade-in">
-            <Card className="w-full md:max-w-2xl md:rounded-lg rounded-t-2xl rounded-b-none md:rounded-b-lg animate-slide-up max-h-[95vh] overflow-hidden flex flex-col">
-                <CardHeader className="flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-                        <button
-                            onClick={handleClose}
-                            className="text-slate-400 hover:text-slate-600 min-h-touch min-w-touch flex items-center justify-center -mr-2"
-                        >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                    </div>
+        <FormModal
+            isOpen
+            onClose={handleClose}
+            title={title}
+            subtitle="Dados do aluno por secções"
+            icon={<Icons.UserPlus />}
+            accent="blue"
+            size="xl"
+            busy={isSubmitting}
+        >
+            <div className="flex gap-1.5 px-4 pt-3 overflow-x-auto border-b border-slate-100">
+                <TabButton tab="pessoal" label="Pessoal" icon={<Icons.User />} />
+                <TabButton tab="encarregado" label="Encarregado" icon={<Icons.Users />} />
+                <TabButton tab="endereco" label="Endereço" icon={<Icons.Home />} />
+                <TabButton tab="academico" label="Académico" icon={<Icons.ClipboardList />} />
+                <TabButton tab="acesso" label="Acesso" icon={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                } />
+            </div>
+            <form onSubmit={handleSubmit} className="p-5 space-y-3.5">
+                {renderTabContent()}
 
-                    {/* Tabs */}
-                    <div className="flex gap-2 mt-4 overflow-x-auto pb-1">
-                        <TabButton tab="pessoal" label="Pessoal" icon={<Icons.User />} />
-                        <TabButton tab="encarregado" label="Encarregado" icon={<Icons.Users />} />
-                        <TabButton tab="endereco" label="Endereço" icon={<Icons.Home />} />
-                        <TabButton tab="academico" label="Académico" icon={<Icons.ClipboardList />} />
-                        <TabButton tab="acesso" label="Acesso" icon={
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                            </svg>
-                        } />
-                    </div>
-                </CardHeader>
-                <CardBody className="flex-1 overflow-y-auto pb-24 md:pb-0">
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        {renderTabContent()}
-
-                        <div className="flex gap-3 pt-4 border-t border-slate-200 mt-6">
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={handleClose}
-                                className="flex-1 min-h-touch"
-                                disabled={isSubmitting}
-                            >
-                                Cancelar
-                            </Button>
-                            <Button
-                                type="submit"
-                                variant="primary"
-                                className="flex-1 min-h-touch"
-                                disabled={isSubmitting || generatingNumero}
-                            >
-                                {generatingNumero ? 'Gerando nº...' : isSubmitting ? 'Salvando...' : submitLabel}
-                            </Button>
-                        </div>
-                    </form>
-                </CardBody>
-            </Card>
-        </div>
+                <div className="flex gap-2.5 pt-3 border-t border-slate-100 mt-2">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={handleClose}
+                        className="flex-1 min-h-touch"
+                        disabled={isSubmitting}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        type="submit"
+                        variant="primary"
+                        className="flex-1 min-h-touch"
+                        disabled={isSubmitting || generatingNumero}
+                    >
+                        {generatingNumero ? 'Gerando nº...' : isSubmitting ? 'Salvando...' : submitLabel}
+                    </Button>
+                </div>
+            </form>
+        </FormModal>
     )
 }

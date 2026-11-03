@@ -62,11 +62,14 @@ export const canEditSystemConfig = (profile: UserProfile | null): boolean => {
 }
 
 /**
- * Check if user can create teachers
+ * Check if user can create teachers (ESCOLA; Director Administrativo via UI/RLS)
  */
 export const canCreateTeacher = (profile: UserProfile | null): boolean => {
     if (isSuperAdmin(profile)) return true
-    return profile?.tipo_perfil === 'ESCOLA' && profile.ativo
+    if (profile?.tipo_perfil === 'ESCOLA' && profile.ativo) return true
+    // Director Administrativo uses SECRETARIO login; page + RLS enforce cargo
+    if (isSecretario(profile)) return true
+    return false
 }
 
 /**

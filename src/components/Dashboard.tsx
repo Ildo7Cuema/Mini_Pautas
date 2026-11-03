@@ -321,6 +321,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
             case 'reports':
                 onNavigate('reports')
                 break
+            case 'propinas':
+                onNavigate('propinas')
+                break
         }
     }
 
@@ -331,7 +334,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
         } else if (isProfessor && professorProfile) {
             return professorProfile.nome_completo?.split(' ')[0] || 'Professor'
         } else if (isSecretario && secretarioProfile) {
-            return secretarioProfile.nome_completo?.split(' ')[0] || 'Secretário'
+            return secretarioProfile.nome_completo?.split(' ')[0] || 'Funcionário'
         }
         return user?.email?.split('@')[0] || 'Usuário'
     }
@@ -642,7 +645,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                     </div>
 
                     <div className="grid grid-cols-2 lg:grid-cols-1 gap-4">
-                        {/* Ocultar Lançar Notas para secretários */}
+                        {/* Lançar Notas: escola/professor — não staff login */}
                         {!isSecretario && (
                             <button
                                 onClick={() => handleQuickAction('grades')}
@@ -661,8 +664,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                             </button>
                         )}
 
-                        {/* Ocultar Relatórios para secretários */}
-                        {!isSecretario && (
+                        {/* Relatórios: escola/professor ou Director Pedagógico */}
+                        {(!isSecretario || secretarioProfile?.cargo === 'DIRECTOR_PEDAGOGICO') && (
                             <button
                                 onClick={() => handleQuickAction('reports')}
                                 className="group p-4 bg-white border-0 shadow-sm hover:shadow-xl hover:shadow-purple-500/10 rounded-2xl text-left transition-all duration-300 hover:-translate-y-1 relative overflow-hidden"
@@ -676,6 +679,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                                     </div>
                                     <h4 className="font-bold text-slate-900 text-sm group-hover:text-purple-700 transition-colors">Relatórios</h4>
                                     <p className="text-xs text-slate-500 mt-1">Gere pautas e estatísticas</p>
+                                </div>
+                            </button>
+                        )}
+
+                        {/* Pagamentos: Técnico / Director Administrativo */}
+                        {isSecretario && secretarioProfile?.cargo !== 'DIRECTOR_PEDAGOGICO' && (
+                            <button
+                                onClick={() => handleQuickAction('propinas')}
+                                className="group p-4 bg-white border-0 shadow-sm hover:shadow-xl hover:shadow-amber-500/10 rounded-2xl text-left transition-all duration-300 hover:-translate-y-1 relative overflow-hidden"
+                            >
+                                <div className="absolute inset-0 bg-gradient-to-r from-amber-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="relative z-10">
+                                    <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center text-white mb-3 shadow-lg shadow-amber-500/30 group-hover:scale-110 transition-transform">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                        </svg>
+                                    </div>
+                                    <h4 className="font-bold text-slate-900 text-sm group-hover:text-amber-700 transition-colors">Pagamentos</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Propinas e recebimentos</p>
                                 </div>
                             </button>
                         )}

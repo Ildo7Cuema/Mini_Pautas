@@ -9,11 +9,12 @@ component-meta:
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { Card, CardBody, CardHeader } from './ui/Card'
+import { Card, CardBody } from './ui/Card'
 import { Input } from './ui/Input'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { ConfirmModal } from './ui/ConfirmModal'
+import { FormModal } from './ui/FormModal'
 import { useAuth } from '../contexts/AuthContext'
 import { Professor } from '../types'
 
@@ -24,7 +25,8 @@ interface TeachersPageProps {
 }
 export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavigate, searchQuery = '' }) => {
 
-    const { escolaProfile } = useAuth()
+    const { escolaProfile, secretarioProfile } = useAuth()
+    const escolaId = escolaProfile?.id || secretarioProfile?.escola_id || ''
     const [professores, setProfessores] = useState<Professor[]>([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
@@ -79,10 +81,10 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
     const [submitting, setSubmitting] = useState(false)
 
     useEffect(() => {
-        if (escolaProfile) {
+        if (escolaId) {
             loadProfessores()
         }
-    }, [escolaProfile])
+    }, [escolaId])
 
     const optionalTextOrNull = (value: string) => {
         const trimmed = value.trim()
@@ -102,7 +104,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
     }
 
     const loadProfessores = async () => {
-        if (!escolaProfile) return
+        if (!escolaId) return
 
         try {
             setLoading(true)
@@ -111,7 +113,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
             const { data, error } = await supabase
                 .from('professores')
                 .select('*')
-                .eq('escola_id', escolaProfile.id)
+                .eq('escola_id', escolaId)
                 .order('nome_completo', { ascending: true })
 
             if (error) throw error
@@ -127,7 +129,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!escolaProfile) return
+        if (!escolaId) return
 
         setError(null)
         setSuccess(null)
@@ -170,10 +172,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                     formData.interprete_lingua_gestual === 'sim' ? true
                         : formData.interprete_lingua_gestual === 'nao' ? false
                             : null,
-                participou_dpc_12_meses:
-                    formData.participou_dpc_12_meses === 'sim' ? true
-                        : formData.participou_dpc_12_meses === 'nao' ? false
-                            : null,
+                // participou_dpc_12_meses omitted until column exists in remote schema
                 area_formacao: optionalTextOrNull(formData.area_formacao),
                 especialidade: optionalTextOrNull(formData.especialidade),
                 data_inicio_funcoes: optionalTextOrNull(formData.data_inicio_funcoes),
@@ -203,7 +202,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                 const { error: insertError } = await supabase
                     .from('professores')
                     .insert({
-                        escola_id: escolaProfile.id,
+                        escola_id: escolaId,
                         ativo: true,
                         funcoes: ['Docente'],
                         ...professorData
@@ -543,60 +542,44 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                 </div>
             )}
 
-            {/* Create/Edit Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center md:p-4 z-50 animate-fade-in">
-                    <Card className="w-full md:max-w-md md:rounded-2xl rounded-t-2xl rounded-b-none md:rounded-b-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
-                        {/* Drag Handle - Mobile Only */}
-                        <div className="md:hidden flex justify-center pt-3 pb-1">
-                            <div className="w-10 h-1 bg-slate-300 rounded-full" />
-                        </div>
-                        <CardHeader className="border-b border-slate-100">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-                                        {editMode ? (
-                                            <Icons.Edit className="w-5 h-5 text-white" />
-                                        ) : (
-                                            <Icons.UserPlus className="w-5 h-5 text-white" />
-                                        )}
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-slate-900">{editMode ? 'Editar Professor' : 'Novo Professor'}</h3>
-                                </div>
+            <FormModal
+                isOpen={showModal}
+                onClose={() => {
+                    setShowModal(false)
+                    resetForm()
+                }}
+                title={editMode ? 'Editar Professor' : 'Novo Professor'}
+                subtitle={editMode ? 'Actualize os dados do docente' : 'Preencha os dados para cadastrar'}
+                icon={editMode ? <Icons.Edit /> : <Icons.UserPlus />}
+                accent="blue"
+                size="lg"
+                busy={submitting}
+            >
+                            <div className="flex border-b border-slate-100 px-1">
                                 <button
-                                    onClick={() => {
-                                        setShowModal(false)
-                                        resetForm()
-                                    }}
-                                    className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors touch-feedback"
-                                >
-                                    <Icons.X className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </CardHeader>
-                        <CardBody className="p-0">
-                            <div className="flex border-b border-slate-100">
-                                <button
-                                    className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'pessoal' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                    type="button"
+                                    className={`flex-1 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'pessoal' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                                     onClick={() => setActiveTab('pessoal')}
                                 >
                                     Pessoal
                                 </button>
                                 <button
-                                    className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'profissional' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                    type="button"
+                                    className={`flex-1 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'profissional' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                                     onClick={() => setActiveTab('profissional')}
                                 >
                                     Profissional
                                 </button>
                                 <button
-                                    className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'endereco' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                    type="button"
+                                    className={`flex-1 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'endereco' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                                     onClick={() => setActiveTab('endereco')}
                                 >
-                                    Endereço & Banco
+                                    Endereço
                                 </button>
                             </div>
 
-                            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+                            <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3.5">
                                 {activeTab === 'pessoal' && (
                                     <div className="space-y-4 animate-fade-in">
                                         <Input
@@ -930,21 +913,21 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                                     </div>
                                 )}
 
-                                <div className="flex gap-3 pt-4 border-t border-slate-100 mt-4">
+                                <div className="flex gap-2.5 pt-4 border-t border-slate-100 mt-2">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setShowModal(false)
                                             resetForm()
                                         }}
-                                        className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all duration-200 touch-feedback min-h-touch"
+                                        className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all duration-200 touch-feedback min-h-touch"
                                     >
                                         Cancelar
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={submitting}
-                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-xl transition-all duration-200 shadow-md shadow-blue-500/25 disabled:opacity-50 touch-feedback min-h-touch"
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-xl transition-all duration-200 shadow-md shadow-blue-500/25 disabled:opacity-50 touch-feedback min-h-touch"
                                     >
                                         {submitting ? (
                                             <>
@@ -960,10 +943,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                                     </button>
                                 </div>
                             </form>
-                        </CardBody>
-                    </Card>
-                </div>
-            )}
+            </FormModal>
 
             {/* Confirm Delete Modal */}
             <ConfirmModal

@@ -1,7 +1,7 @@
 /*
 component-meta:
   name: SecretaryRegistration
-  description: Premium secretary invite acceptance page
+  description: Premium staff invite acceptance page (Director / Técnico de Secretaria)
   tokens: [--color-primary, --fs-md, min-h-touch]
   responsive: true
 */
@@ -14,22 +14,94 @@ import { CardBody } from './ui/Card'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { AuthShell } from './auth/AuthShell'
+import {
+    getStaffAreaLabel,
+    getStaffAreaModules,
+    getStaffCargoLabel,
+    resolveStaffCargoFromInvite,
+    type StaffLoginCargo,
+} from '../utils/staffAccess'
 
 export const SecretaryRegistration: React.FC = () => {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [loading, setLoading] = useState(false)
+    const [resolvingCargo, setResolvingCargo] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
+    const [cargo, setCargo] = useState<StaffLoginCargo>('TECNICO_SECRETARIA')
+
+    const perfilLabel = getStaffCargoLabel(cargo)
+    const areaLabel = getStaffAreaLabel(cargo)
+    const areaModules = getStaffAreaModules(cargo)
 
     useEffect(() => {
-        // Get email from URL
         const params = new URLSearchParams(window.location.search)
         const emailParam = params.get('email')
-        if (emailParam) {
-            setEmail(emailParam)
+        const cargoParam = params.get('cargo')
+
+        // Prefer cargo from invite link (reliable without authenticated RLS)
+        const fromUrl = resolveStaffCargoFromInvite(cargoParam)
+        if (cargoParam) {
+            setCargo(fromUrl)
         }
+
+        if (!emailParam) {
+            setResolvingCargo(false)
+            return
+        }
+
+        setEmail(emailParam)
+
+        ;(async () => {
+            try {
+                // If URL already carries a director cargo, keep it; still try DB to refine
+                const { data: func } = await supabase
+                    .from('funcionarios_escola')
+                    .select('subcategoria, cargo')
+                    .ilike('email', emailParam)
+                    .maybeSingle()
+
+                let resolved = resolveStaffCargoFromInvite(
+                    cargoParam,
+                    func?.subcategoria,
+                    func?.cargo,
+                )
+
+                if (
+                    !cargoParam &&
+                    (!func?.subcategoria ||
+                        !['DIRECTOR_PEDAGOGICO', 'DIRECTOR_ADMINISTRATIVO', 'TECNICO_SECRETARIA', 'SECRETARIO'].includes(
+                            String(func.subcategoria).toUpperCase(),
+                        ))
+                ) {
+                    const { data: sec } = await supabase
+                        .from('secretarios')
+                        .select('cargo')
+                        .ilike('email', emailParam)
+                        .maybeSingle()
+                    resolved = resolveStaffCargoFromInvite(cargoParam, null, sec?.cargo)
+                }
+
+                // Public RPC fallback for anonymous invite (migration optional)
+                if (!cargoParam && resolved === 'TECNICO_SECRETARIA') {
+                    const { data: rpcCargo } = await supabase.rpc('lookup_staff_invite_cargo', {
+                        p_email: emailParam,
+                    })
+                    if (typeof rpcCargo === 'string' && rpcCargo) {
+                        resolved = resolveStaffCargoFromInvite(rpcCargo)
+                    }
+                }
+
+                setCargo(resolved)
+            } catch (err) {
+                console.warn('Não foi possível resolver o perfil do convite; a usar o parâmetro da URL.', err)
+                if (cargoParam) setCargo(fromUrl)
+            } finally {
+                setResolvingCargo(false)
+            }
+        })()
     }, [])
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -50,7 +122,6 @@ export const SecretaryRegistration: React.FC = () => {
         }
 
         try {
-            // 1. Create the auth user
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                 email,
                 password,
@@ -58,15 +129,13 @@ export const SecretaryRegistration: React.FC = () => {
 
             if (signUpError) throw signUpError
 
-            // 2. If signup successful, use RPC function to register secretario
-            // This function has SECURITY DEFINER and bypasses RLS
             if (signUpData.user) {
                 const { data: rpcResult, error: rpcError } = await supabase.rpc(
                     'register_secretario_account',
                     {
                         p_email: email,
-                        p_user_id: signUpData.user.id
-                    }
+                        p_user_id: signUpData.user.id,
+                    },
                 )
 
                 if (rpcError) {
@@ -74,7 +143,7 @@ export const SecretaryRegistration: React.FC = () => {
                 } else if (rpcResult && !rpcResult.success) {
                     console.error('Erro RPC:', rpcResult.error)
                 } else {
-                    console.log('✅ Secretário registado com sucesso:', rpcResult)
+                    console.log('✅ Conta de staff registada com sucesso:', rpcResult)
                 }
             }
 
@@ -99,12 +168,13 @@ export const SecretaryRegistration: React.FC = () => {
                         </div>
                         <h2 className="text-xl font-bold text-slate-900 mb-2 tracking-tight">Cadastro Realizado!</h2>
                         <p className="text-slate-600 mb-5 text-sm leading-relaxed">
-                            Sua conta foi criada com sucesso. Verifique seu email para confirmar o cadastro ou faça login.
+                            Conta de <strong>{perfilLabel}</strong> criada. Após o login acede à{' '}
+                            <strong>{areaLabel}</strong> ({areaModules.join(', ')}).
                         </p>
                         <Button
                             variant="primary"
                             className="btn-premium"
-                            onClick={() => window.location.href = '/'}
+                            onClick={() => { window.location.href = '/' }}
                             fullWidth
                         >
                             Ir para Login
@@ -121,12 +191,35 @@ export const SecretaryRegistration: React.FC = () => {
                     <div className="logo-container inline-flex items-center justify-center w-12 h-12 bg-white/95 rounded-xl shadow-md mb-3 ring-1 ring-slate-200/60">
                         <Icons.UserPlus className="w-6 h-6 text-emerald-600" />
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-800 mb-1 tracking-tight">Bem-vindo Secretário</h1>
-                    <p className="text-slate-500 text-sm font-medium">Finalize seu cadastro para acessar o EduGest</p>
+                    <h1 className="text-2xl font-bold text-slate-800 mb-1 tracking-tight">
+                        {resolvingCargo ? 'A preparar o convite…' : `Bem-vindo, ${perfilLabel}`}
+                    </h1>
+                    <p className="text-slate-500 text-sm font-medium">
+                        {resolvingCargo
+                            ? 'A identificar o perfil de acesso'
+                            : <>Finalize o cadastro para aceder à <span className="font-semibold text-slate-700">{areaLabel}</span></>}
+                    </p>
                 </div>
 
                 <div className="auth-card rounded-xl animate-slide-up">
                     <CardBody className="p-5 sm:p-6">
+                        {!resolvingCargo && (
+                            <div className="mb-5 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-3">
+                                <p className="text-xs font-semibold text-emerald-800 mb-1.5">
+                                    Módulos da {areaLabel}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {areaModules.map((mod) => (
+                                        <span
+                                            key={mod}
+                                            className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white text-emerald-700 ring-1 ring-emerald-100"
+                                        >
+                                            {mod}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         {error && (
                             <div className="flex items-start gap-3 p-4 mb-6 bg-red-50 border border-red-100 rounded-xl animate-slide-down form-error-shake" role="alert">
                                 <div className="flex-shrink-0 w-5 h-5 mt-0.5 text-red-500">
@@ -147,7 +240,7 @@ export const SecretaryRegistration: React.FC = () => {
                                     onChange={(e) => setEmail(e.target.value)}
                                     placeholder="seu.email@exemplo.com"
                                     required
-                                    disabled={true} // Email should be fixed from invite
+                                    disabled={true}
                                     icon={<Icons.Email />}
                                     className="bg-slate-50 text-slate-500"
                                     inputSize="md"
@@ -184,7 +277,8 @@ export const SecretaryRegistration: React.FC = () => {
                             <Button
                                 type="submit"
                                 variant="primary"
-                                loading={loading}
+                                loading={loading || resolvingCargo}
+                                disabled={resolvingCargo || !email}
                                 fullWidth
                                 className="btn-premium mt-4"
                                 icon={<Icons.Login />}
@@ -195,7 +289,6 @@ export const SecretaryRegistration: React.FC = () => {
                     </CardBody>
                 </div>
 
-                {/* Footer */}
                 <div className="mt-5 text-center">
                     <p className="text-slate-500 text-xs">
                         © 2026 EduGest Angola

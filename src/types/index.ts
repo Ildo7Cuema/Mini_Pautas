@@ -493,7 +493,13 @@ export interface ProfessorProfile extends Professor {
     escola?: Escola;
 }
 
-// SECRETARIO - School secretary with limited access
+/** Login cargo for school staff (secretarios table); maps to area permissions */
+export type SecretarioCargo =
+    | 'TECNICO_SECRETARIA'
+    | 'DIRECTOR_PEDAGOGICO'
+    | 'DIRECTOR_ADMINISTRATIVO';
+
+// SECRETARIO - School staff with system access (técnico / directors)
 export interface Secretario {
     id: string;
     escola_id: string;
@@ -502,6 +508,8 @@ export interface Secretario {
     email: string;
     telefone?: string;
     numero_funcionario?: string;
+    /** Access profile within SECRETARIO login role */
+    cargo?: SecretarioCargo | string;
     ativo: boolean;
     created_at: string;
     updated_at: string;

@@ -1117,9 +1117,34 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 return
             }
 
+            // Resolve staff cargo (Director Pedagógico / Administrativo / Técnico)
+            // Prefer secretarios.cargo; fallback to funcionarios_escola.subcategoria by email
+            let resolvedCargo = (secretario as Secretario).cargo
+            if (!resolvedCargo && secretario.email) {
+                const { data: funcRow } = await supabase
+                    .from('funcionarios_escola')
+                    .select('subcategoria')
+                    .eq('escola_id', secretario.escola_id)
+                    .eq('email', secretario.email)
+                    .maybeSingle()
+                const sub = funcRow?.subcategoria
+                if (
+                    sub === 'DIRECTOR_PEDAGOGICO' ||
+                    sub === 'DIRECTOR_ADMINISTRATIVO' ||
+                    sub === 'TECNICO_SECRETARIA' ||
+                    sub === 'SECRETARIO'
+                ) {
+                    resolvedCargo = sub === 'SECRETARIO' ? 'TECNICO_SECRETARIA' : sub
+                }
+            }
+            if (!resolvedCargo) {
+                resolvedCargo = 'TECNICO_SECRETARIA'
+            }
+
             // Build secretario profile
             const secretarioProfileData: SecretarioProfile = {
                 ...secretario,
+                cargo: resolvedCargo,
                 user_profile: profile,
                 escola: secretario.escola
             }
@@ -1131,7 +1156,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 profile,
                 secretario: secretarioProfileData
             })
-            console.log('✅ AuthContext: Secretario profile set successfully')
+            console.log('✅ AuthContext: Secretario profile set successfully', { cargo: resolvedCargo })
 
         } catch (error) {
             console.error('❌ AuthContext: Unexpected error in loadSecretarioProfile:', error)

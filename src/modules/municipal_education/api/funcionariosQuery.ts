@@ -113,18 +113,18 @@ export async function fetchFuncionariosMunicipio(
             funcionarios.push({
                 id: sec.id,
                 tipo: 'ADMINISTRATIVO',
-                subtipo: 'SECRETARIO',
+                subtipo: 'TECNICO_SECRETARIA',
                 nome_completo: sec.nome_completo,
                 email: sec.email,
                 telefone: sec.telefone,
                 escola_id: sec.escola_id,
                 escola_nome: escolaMap.get(sec.escola_id) || '',
-                cargo: 'Secretário(a)',
+                cargo: 'Técnico de Secretaria',
                 ativo: sec.ativo,
                 created_at: sec.created_at,
                 numero_funcionario: sec.numero_funcionario,
                 categoria: 'ADMINISTRATIVO',
-                subcategoria: 'SECRETARIO'
+                subcategoria: 'TECNICO_SECRETARIA'
             });
         }
     }

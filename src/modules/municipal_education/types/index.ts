@@ -230,6 +230,7 @@ export type SubcategoriaCoordenacao =
 
 export type SubcategoriaAdministrativo =
     | 'SECRETARIO'
+    | 'TECNICO_SECRETARIA'
     | 'AUXILIAR_ADMINISTRATIVO'
     | 'RECEPCIONISTA'
     | 'TESOUREIRO';

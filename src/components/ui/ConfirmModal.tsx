@@ -105,25 +105,22 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
     return (
         <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center md:p-4 z-50 animate-fade-in"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 animate-fade-in"
             onClick={handleBackdropClick}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-modal-title"
         >
-            <div className="bg-white w-full md:max-w-md md:rounded-2xl rounded-t-2xl rounded-b-none md:rounded-b-2xl shadow-2xl animate-slide-up overflow-hidden">
-                {/* Drag Handle - Mobile Only */}
-                <div className="md:hidden flex justify-center pt-3 pb-1">
-                    <div className="w-10 h-1 bg-slate-300 rounded-full" />
-                </div>
-
-                {/* Icon Section */}
-                <div className="px-6 pt-4 md:pt-6 pb-4 flex justify-center">
-                    <div className={`bg-gradient-to-br ${styles.iconBgGradient} rounded-2xl p-4 shadow-lg ${styles.shadowColor}`}>
-                        {styles.icon}
+            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" aria-hidden="true" />
+            <div className="relative bg-white w-full max-w-sm rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden animate-modal-in">
+                <div className="px-5 pt-5 pb-3 flex justify-center">
+                    <div className={`bg-gradient-to-br ${styles.iconBgGradient} rounded-xl p-3 shadow-lg ${styles.shadowColor}`}>
+                        <span className="[&_svg]:w-6 [&_svg]:h-6 block">{styles.icon}</span>
                     </div>
                 </div>
 
-                {/* Content Section */}
-                <div className="px-6 py-3 text-center">
-                    <h3 className="text-xl font-bold text-slate-900 mb-2">
+                <div className="px-5 py-2 text-center">
+                    <h3 id="confirm-modal-title" className="text-lg font-semibold text-slate-900 mb-1.5 tracking-tight">
                         {title}
                     </h3>
                     <p className="text-sm text-slate-600 leading-relaxed">
@@ -131,13 +128,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     </p>
                 </div>
 
-                {/* Actions Section */}
-                <div className="px-4 md:px-6 pb-6 pt-4 flex flex-col-reverse sm:flex-row gap-3">
+                <div className="px-5 pb-5 pt-4 flex flex-col-reverse sm:flex-row gap-2.5">
                     <button
                         type="button"
                         onClick={onClose}
                         disabled={loading}
-                        className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all duration-200 touch-feedback min-h-touch disabled:opacity-50"
+                        className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all duration-200 touch-feedback min-h-touch disabled:opacity-50"
                         autoFocus
                     >
                         {cancelText}
@@ -146,7 +142,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                         type="button"
                         onClick={handleConfirm}
                         disabled={loading}
-                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r ${styles.buttonGradient} text-white font-medium rounded-xl transition-all duration-200 shadow-md ${styles.shadowColor} touch-feedback min-h-touch disabled:opacity-50`}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r ${styles.buttonGradient} text-white font-medium rounded-xl transition-all duration-200 shadow-md ${styles.shadowColor} touch-feedback min-h-touch disabled:opacity-50`}
                     >
                         {loading ? (
                             <>

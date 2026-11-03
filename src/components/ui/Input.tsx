@@ -18,9 +18,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         const inputType = isPassword && showPassword ? 'text' : type
 
         const sizeClasses = {
-            sm: 'min-h-[40px] text-sm py-2',
-            md: 'min-h-[48px] text-base py-3',
-            lg: 'min-h-[56px] text-lg py-4',
+            sm: 'min-h-[40px] text-sm py-2 leading-normal',
+            md: 'min-h-[48px] text-sm py-3 leading-normal',
+            lg: 'min-h-[52px] text-base py-3.5 leading-normal',
         }
 
         return (
@@ -50,7 +50,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                             props.onBlur?.(e)
                         }}
                         className={`
-                            w-full px-4 border rounded-xl
+                            w-full px-3.5 border rounded-sm text-slate-900
                             ${sizeClasses[inputSize]}
                             ${error
                                 ? 'border-error ring-2 ring-error/20'
@@ -59,11 +59,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                                     : 'border-neutral-300'
                             }
                             focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20
-                            transition-all duration-200 ease-out
+                            transition-colors duration-150 ease-out
                             disabled:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60
                             placeholder:text-neutral-400
-                            ${icon && iconPosition === 'left' ? 'pl-12' : ''}
-                            ${isPassword ? 'pr-12' : icon && iconPosition === 'right' ? 'pr-12' : ''}
+                            ${icon && iconPosition === 'left' ? 'pl-11' : ''}
+                            ${isPassword ? 'pr-11' : icon && iconPosition === 'right' ? 'pr-11' : ''}
                             ${className}
                         `}
                         aria-invalid={error ? 'true' : 'false'}

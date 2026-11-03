@@ -149,10 +149,32 @@
   }
 
   .form-input {
-    @apply w-full px-3 py-2 border border-neutral-300 rounded-md text-sm;
+    @apply w-full px-3.5 py-3 border border-neutral-300 rounded-sm text-sm text-slate-900 leading-normal;
     @apply focus:ring-2 focus:ring-primary-500 focus:border-transparent;
-    @apply transition-all duration-200;
+    @apply transition-colors duration-150;
     @apply disabled:bg-neutral-100 disabled:cursor-not-allowed;
+    @apply min-h-[48px];
+  }
+
+  /* Registration modals: sharper fields + room for typed text
+     (theme rounded-md = 12px, max-w-lg = 1024px — avoid those here) */
+  .form-modal-panel .form-input,
+  .form-modal-panel input:not([type='checkbox']):not([type='radio']),
+  .form-modal-panel select,
+  .form-modal-panel textarea {
+    border-radius: 0.25rem; /* 4px = rounded-sm in this theme */
+    min-height: 48px;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    padding-left: 0.875rem;
+    padding-right: 0.875rem;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    color: #0f172a;
+  }
+
+  .form-modal-panel select.form-input {
+    padding-right: 2.25rem;
   }
 
   .form-input-error {
@@ -522,6 +544,10 @@
 
   .animate-scale-in {
     animation: scaleIn var(--duration-fast) var(--ease-out-back);
+  }
+
+  .animate-modal-in {
+    animation: modalSlideUp 220ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .animate-scale-out {

@@ -9,12 +9,14 @@ component-meta:
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { Card, CardBody, CardHeader } from './ui/Card'
+import { Card, CardBody } from './ui/Card'
 import { Input } from './ui/Input'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
 import { ConfirmModal } from './ui/ConfirmModal'
+import { FormModal } from './ui/FormModal'
 import { useAuth } from '../contexts/AuthContext'
+import { buildStaffInviteLink } from '../utils/staffAccess'
 
 interface Secretario {
     id: string
@@ -23,6 +25,7 @@ interface Secretario {
     email: string
     telefone: string
     numero_funcionario: string
+    cargo?: string | null
     ativo: boolean
 }
 
@@ -60,8 +63,7 @@ export const SecretariesPage: React.FC<SecretariesPageProps> = ({ onNavigate: _o
     }, [escolaProfile])
 
     const handleCopyInvite = (secretario: Secretario) => {
-        const origin = window.location.origin
-        const inviteLink = `${origin}/register-secretary?email=${encodeURIComponent(secretario.email)}`
+        const inviteLink = buildStaffInviteLink(window.location.origin, secretario.email, secretario.cargo)
 
         navigator.clipboard.writeText(inviteLink).then(() => {
             setSuccess('Link de convite copiado para a área de transferência!')
@@ -386,39 +388,20 @@ export const SecretariesPage: React.FC<SecretariesPageProps> = ({ onNavigate: _o
                 </div>
             )}
 
-            {/* Create/Edit Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center md:p-4 z-50 animate-fade-in">
-                    <Card className="w-full md:max-w-md md:rounded-2xl rounded-t-2xl rounded-b-none md:rounded-b-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
-                        {/* Drag Handle - Mobile Only */}
-                        <div className="md:hidden flex justify-center pt-3 pb-1">
-                            <div className="w-10 h-1 bg-slate-300 rounded-full" />
-                        </div>
-                        <CardHeader className="border-b border-slate-100">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                                        {editMode ? (
-                                            <Icons.Edit className="w-5 h-5 text-white" />
-                                        ) : (
-                                            <Icons.UserPlus className="w-5 h-5 text-white" />
-                                        )}
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-slate-900">{editMode ? 'Editar Secretário' : 'Novo Secretário'}</h3>
-                                </div>
-                                <button
-                                    onClick={() => {
-                                        setShowModal(false)
-                                        resetForm()
-                                    }}
-                                    className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors touch-feedback"
-                                >
-                                    <Icons.X className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </CardHeader>
-                        <CardBody className="p-4">
-                            <form onSubmit={handleSubmit} className="space-y-4">
+            <FormModal
+                isOpen={showModal}
+                onClose={() => {
+                    setShowModal(false)
+                    resetForm()
+                }}
+                title={editMode ? 'Editar Secretário' : 'Novo Secretário'}
+                subtitle={editMode ? 'Actualize os dados do secretário' : 'Preencha os dados para cadastrar'}
+                icon={editMode ? <Icons.Edit /> : <Icons.UserPlus />}
+                accent="emerald"
+                size="md"
+                busy={submitting}
+            >
+                            <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3.5">
                                 <Input
                                     label="Nome Completo"
                                     type="text"
@@ -453,21 +436,21 @@ export const SecretariesPage: React.FC<SecretariesPageProps> = ({ onNavigate: _o
                                     placeholder="Número de identificação"
                                 />
 
-                                <div className="flex gap-3 pt-4">
+                                <div className="flex gap-2.5 pt-3 border-t border-slate-100">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setShowModal(false)
                                             resetForm()
                                         }}
-                                        className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all duration-200 touch-feedback min-h-touch"
+                                        className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all duration-200 touch-feedback min-h-touch"
                                     >
                                         Cancelar
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={submitting}
-                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-medium rounded-xl transition-all duration-200 shadow-md shadow-emerald-500/25 disabled:opacity-50 touch-feedback min-h-touch"
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-medium rounded-xl transition-all duration-200 shadow-md shadow-emerald-500/25 disabled:opacity-50 touch-feedback min-h-touch"
                                     >
                                         {submitting ? (
                                             <>
@@ -478,15 +461,12 @@ export const SecretariesPage: React.FC<SecretariesPageProps> = ({ onNavigate: _o
                                                 A guardar...
                                             </>
                                         ) : (
-                                            editMode ? 'Salvar Alterações' : 'Cadastrar Secretário'
+                                            editMode ? 'Salvar' : 'Cadastrar'
                                         )}
                                     </button>
                                 </div>
                             </form>
-                        </CardBody>
-                    </Card>
-                </div>
-            )}
+            </FormModal>
 
             {/* Confirm Delete Modal */}
             <ConfirmModal

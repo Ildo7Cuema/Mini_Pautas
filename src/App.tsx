@@ -34,7 +34,6 @@ const EncarregadoNotasPage = lazy(() => import('./components/EncarregadoNotasPag
 const SubscriptionPage = lazy(() => import('./components/SubscriptionPage').then(m => ({ default: m.SubscriptionPage })))
 const PublicPaymentPage = lazy(() => import('./components/PublicPaymentPage').then(m => ({ default: m.PublicPaymentPage })))
 const TuitionPaymentsPage = lazy(() => import('./components/TuitionPaymentsPage').then(m => ({ default: m.TuitionPaymentsPage })))
-const SecretariesPage = lazy(() => import('./components/SecretariesPage').then(m => ({ default: m.SecretariesPage })))
 const SecretaryRegistration = lazy(() => import('./components/SecretaryRegistration').then(m => ({ default: m.SecretaryRegistration })))
 const TutoriaisPublicosPage = lazy(() => import('./components/TutoriaisPublicosPage').then(m => ({ default: m.TutoriaisPublicosPage })))
 const TutoriaisManagementPage = lazy(() => import('./components/TutoriaisManagementPage').then(m => ({ default: m.TutoriaisManagementPage })))
@@ -66,7 +65,7 @@ const ConfiguracaoDocumentos = lazy(() => import('./components/ConfiguracaoDocum
 const TemplatesManagement = lazy(() => import('./components/TemplatesManagement').then(m => ({ default: m.TemplatesManagement })))
 
 function App() {
-    const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, escolaProfile, profile } = useAuth()
+    const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, escolaProfile, profile, secretarioProfile } = useAuth()
     const [currentPage, setCurrentPage] = useState('dashboard')
     const [navigationParams, setNavigationParams] = useState<{ turmaId?: string; filter?: string }>({})
     const [searchQuery, setSearchQuery] = useState('')
@@ -306,16 +305,46 @@ function App() {
             }
         }
 
-        // SECRETARIO routes - payments + settings (document header)
+        // Staff login routes (SECRETARIO) — menus by cargo / área
         if (isSecretario) {
+            const cargo = secretarioProfile?.cargo
+            const isDirPed = cargo === 'DIRECTOR_PEDAGOGICO'
+            const isDirAdm = cargo === 'DIRECTOR_ADMINISTRATIVO'
+
             switch (currentPage) {
                 case 'dashboard':
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
-                case 'propinas':
-                case 'tuition':
-                    return <TuitionPaymentsPage searchQuery={searchQuery} />
                 case 'settings':
                     return <SettingsPage />
+                case 'propinas':
+                case 'tuition':
+                    if (isDirPed) return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                    return <TuitionPaymentsPage searchQuery={searchQuery} />
+                case 'teachers':
+                    if (isDirAdm) {
+                        return <TeachersPage onNavigate={handleNavigate} searchQuery={searchQuery} />
+                    }
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                case 'classes':
+                    if (isDirPed || isDirAdm) {
+                        return <ClassesPage onNavigate={handleNavigate} searchQuery={searchQuery} />
+                    }
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                case 'class-details':
+                    if ((isDirPed || isDirAdm) && navigationParams.turmaId) {
+                        return <ClassDetailsPage turmaId={navigationParams.turmaId} onNavigate={handleNavigate} />
+                    }
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                case 'reports':
+                    if (isDirPed) return <ReportsPage searchQuery={searchQuery} />
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                case 'matriculas':
+                    if (isDirPed || isDirAdm) return <MatriculasPage />
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                case 'grades':
+                    // Supervisão pedagógica: consulta via Relatórios; lançamento permanece com professores/escola
+                    if (isDirPed) return <ReportsPage searchQuery={searchQuery} />
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
                 default:
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
             }
@@ -352,7 +381,8 @@ function App() {
             case 'tuition':
                 return <TuitionPaymentsPage searchQuery={searchQuery} />
             case 'secretaries':
-                return <SecretariesPage searchQuery={searchQuery} />
+                // Legacy route: secretários passam a ser geridos em Funcionários
+                return <StaffPage onNavigate={handleNavigate} searchQuery={searchQuery} />
             case 'matriculas':
                 return <MatriculasPage />
             case 'censo-escolar':
