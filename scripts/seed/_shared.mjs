@@ -143,6 +143,26 @@ export async function listSeedEscolas(supabase) {
     return data || []
 }
 
+export async function listSeedDirecoesMunicipais(supabase) {
+    const { data, error } = await supabase
+        .from('direcoes_municipais')
+        .select('id, nome, municipio, provincia, email, user_id, numero_funcionario, ativo, bloqueado')
+        .or(`numero_funcionario.like.${SEED_CODIGO_PREFIX}%,email.ilike.%@${SEED_EMAIL_DOMAIN}`)
+
+    if (error) throw new Error(`listSeedDirecoesMunicipais: ${error.message}`)
+    return data || []
+}
+
+export async function listSeedDirecoesProvinciais(supabase) {
+    const { data, error } = await supabase
+        .from('direcoes_provinciais')
+        .select('id, nome, provincia, email, user_id, numero_funcionario, ativo, bloqueado')
+        .or(`numero_funcionario.like.${SEED_CODIGO_PREFIX}%,email.ilike.%@${SEED_EMAIL_DOMAIN}`)
+
+    if (error) throw new Error(`listSeedDirecoesProvinciais: ${error.message}`)
+    return data || []
+}
+
 export async function generateProcesso(supabase, turmaId) {
     const { data, error } = await supabase.rpc('generate_numero_processo', {
         turma_uuid: turmaId,

@@ -137,13 +137,65 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 
 ---
 
+## 4. Direções Provinciais
+
+Password comum: `SeedTest@2026!`
+
+| Email | Província | Estado | Para testar |
+|--------|-----------|--------|-------------|
+| `dp.luanda@seed.edugest.test` | Luanda | Activa | Dashboard provincial, DMs Belas/Cacuaco/Viana, escola SEED-PRI |
+| `dp.benguela@seed.edugest.test` | Benguela | Activa | DMs Benguela/Lobito, escola SEED-SEC |
+| `dp.huambo@seed.edugest.test` | Huambo | Activa | DMs Huambo/Caála (bloqueada), escola SEED-CMP |
+| `dp.cabinda.pendente@seed.edugest.test` | Cabinda | Pendente | Fluxo de aprovação SUPERADMIN |
+
+### Dados provinciais gerados
+
+- **4 circulares** por província activa (circular, aviso urgente, rascunho, despacho)  
+- Leituras parciais por Direção Municipal  
+- Histórico administrativo (ex.: bloqueio da DM Caála)  
+
+---
+
+## 5. Direções Municipais
+
+| Email | Município / Província | Estado | Escola seed ligada |
+|--------|----------------------|--------|---------------------|
+| `dm.belas@seed.edugest.test` | Belas / Luanda | Activa | `SEED-PRI-2026` |
+| `dm.cacuaco@seed.edugest.test` | Cacuaco / Luanda | Activa | *(sem escolas — estado vazio)* |
+| `dm.viana.pendente@seed.edugest.test` | Viana / Luanda | Pendente | — |
+| `dm.benguela@seed.edugest.test` | Benguela / Benguela | Activa | `SEED-SEC-2026` |
+| `dm.lobito@seed.edugest.test` | Lobito / Benguela | Activa | *(sem escolas)* |
+| `dm.huambo@seed.edugest.test` | Huambo / Huambo | Activa | `SEED-CMP-2026` |
+| `dm.caala.bloqueada@seed.edugest.test` | Caála / Huambo | Bloqueada | — |
+
+### Dados municipais gerados
+
+- **3 circulares** por DM activa não bloqueada (publicada, urgente, rascunho)  
+- **6 solicitações de documentos** com estados variados: `pendente`, `em_analise`, `aprovado`, `rejeitado`, `concluido`, `pendente_info`  
+- Histórico administrativo das escolas seed  
+
+---
+
 ## Sugestão rápida de testes
 
 1. Login como `admin.primaria@seed.edugest.test` → ver Dashboard, Turmas, Templates, Professores, Alunos.  
 2. Login como `prof.secundaria.1@seed.edugest.test` → **Notas** → lançar MAC/PP/PT.  
 3. Login como `admin.complexo@seed.edugest.test` → confirmar turmas de primário e secundário.  
 4. Em **Relatórios**, gerar Mini-Pauta / Pauta Geral.  
-5. Quando terminar: `npm run seed:test:clean`.
+5. Login como `dm.belas@seed.edugest.test` → escolas do município, circulares, solicitações, supervisão pedagógica.  
+6. Login como `dm.cacuaco@seed.edugest.test` → estado vazio (sem escolas).  
+7. Login como `dp.luanda@seed.edugest.test` → DMs da província, circulares provinciais, visão agregada.  
+8. Login como `dp.huambo@seed.edugest.test` → ver DM Caála bloqueada + histórico.  
+9. Como SUPERADMIN → aprovar `dm.viana.pendente` / `dp.cabinda.pendente`.  
+10. Quando terminar: `npm run seed:test:clean`.
+
+Só direções (se as escolas seed já existirem):
+
+```bash
+node scripts/seed-test-data.mjs --direcoes-only
+# ou com limpeza prévia das direções/escolas:
+npm run seed:test -- --force
+```
 
 ---
 
@@ -153,6 +205,9 @@ A seed só apaga dados marcados:
 
 - `escolas.codigo_escola` a começar por `SEED-`  
 - `escolas.configuracoes.seed_marker = edugest-test-seed`  
+- `direcoes_municipais` / `direcoes_provinciais` com `numero_funcionario` `SEED-*` ou email `@seed.edugest.test`  
+- circulares com `numero_circular` `SEED-*`  
+- solicitações com assunto `Seed —…` ou `seed_marker`  
 - emails `*@seed.edugest.test`  
 
-Não remove escolas ou utilizadores reais fora destes marcadores.
+Não remove escolas, direções ou utilizadores reais fora destes marcadores.

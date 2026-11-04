@@ -98,6 +98,8 @@ BEGIN
         IF OLD.estado = 'valido' THEN
              RAISE EXCEPTION 'AGT Security: Não é permitido apagar recibos válidos. Use a função de anulação.';
         END IF;
+        -- Anulados podem ser removidos (ex.: limpeza de seed / CASCADE). RETURN OLD, não NEW.
+        RETURN OLD;
     -- Prevent UPDATE of critical fields
     ELSIF (TG_OP = 'UPDATE') THEN
         -- If it was annulled, it's dead. No changes allowed.

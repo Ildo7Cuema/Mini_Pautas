@@ -3,12 +3,14 @@
  * Seed de testes EduGest Angola
  *
  * Cria 3 escolas (primária, secundária, complexo) com administradores,
- * professores autenticáveis, templates, turmas, disciplinas e ≥20 alunos cada.
+ * professores autenticáveis, templates, turmas, disciplinas e ≥20 alunos cada,
+ * mais Direções Municipais e Provinciais com circulares, histórico e solicitações.
  *
  * Uso:
  *   npm run seed:test
  *   node scripts/seed-test-data.mjs
  *   node scripts/seed-test-data.mjs --force   # apaga seed anterior e recria
+ *   node scripts/seed-test-data.mjs --direcoes-only  # só direções (escolas seed já existentes)
  */
 import {
     ANO_LECTIVO,
@@ -17,6 +19,8 @@ import {
     createAuthUser,
     createServiceClient,
     generateProcesso,
+    listSeedDirecoesMunicipais,
+    listSeedDirecoesProvinciais,
     listSeedEscolas,
     log,
     sleep,
@@ -28,16 +32,40 @@ import {
     buildTeacherPlan,
     templatesForSchool,
 } from './seed/catalog.mjs'
+import { seedDirecoes } from './seed/seed-direcoes.mjs'
 
 const force = process.argv.includes('--force')
+const direcoesOnly = process.argv.includes('--direcoes-only')
 const STUDENTS_PER_SCHOOL = 20
 
 async function assertNoExistingSeed(supabase) {
     const existing = await listSeedEscolas(supabase)
-    if (existing.length === 0) return
+    const dms = await listSeedDirecoesMunicipais(supabase)
+    const dps = await listSeedDirecoesProvinciais(supabase)
+
+    if (direcoesOnly) {
+        if (dms.length === 0 && dps.length === 0) return
+        if (!force) {
+            console.error('\nJá existem direções seed:')
+            for (const d of dps) console.error(`  - DP ${d.provincia} · ${d.email}`)
+            for (const d of dms) console.error(`  - DM ${d.municipio} · ${d.email}`)
+            console.error('\nExecute: node scripts/seed-test-data.mjs --direcoes-only --force\n')
+            process.exit(1)
+        }
+        log('force', 'A limpar apenas direções seed (escolas preservadas)...')
+        const { unseedDirecoesOnly } = await import('./unseed-test-data.mjs')
+        await unseedDirecoesOnly({ silent: false })
+        return
+    }
+
+    const hasAny = existing.length > 0 || dms.length > 0 || dps.length > 0
+    if (!hasAny) return
+
     if (!force) {
         console.error('\nJá existe seed de teste:')
-        for (const e of existing) console.error(`  - ${e.codigo_escola} · ${e.nome}`)
+        for (const e of existing) console.error(`  - escola ${e.codigo_escola} · ${e.nome}`)
+        for (const d of dps) console.error(`  - DP ${d.provincia} · ${d.email}`)
+        for (const d of dms) console.error(`  - DM ${d.municipio} · ${d.email}`)
         console.error('\nExecute: npm run seed:test:clean')
         console.error('Ou:      npm run seed:test -- --force\n')
         process.exit(1)
@@ -187,8 +215,8 @@ async function seedSchool(supabase, school) {
                 tipo_escola_seed: school.kind,
             },
         })
-        .select('id, codigo_escola, nome')
-        .single()
+            .select('id, codigo_escola, nome, user_id')
+            .single()
 
     if (eErr) throw new Error(`escolas insert: ${eErr.message}`)
     log(school.key, `Escola criada: ${escola.codigo_escola}`)
@@ -334,10 +362,25 @@ async function main() {
     await assertNoExistingSeed(supabase)
 
     const summary = []
-    for (const school of SCHOOLS) {
-        summary.push(await seedSchool(supabase, school))
-        await sleep(200)
+    if (!direcoesOnly) {
+        for (const school of SCHOOLS) {
+            summary.push(await seedSchool(supabase, school))
+            await sleep(200)
+        }
+    } else {
+        log('mode', '--direcoes-only: a reutilizar escolas seed existentes')
     }
+
+    const escolasForDirecoes =
+        summary.length > 0
+            ? summary.map((s) => ({
+                  id: s.escola.id,
+                  codigo_escola: s.escola.codigo_escola,
+                  user_id: s.escola.user_id || null,
+              }))
+            : undefined
+
+    const direcoesSummary = await seedDirecoes(supabase, { escolas: escolasForDirecoes })
 
     console.log('\n✅ Seed concluída\n')
     console.log(`Palavra-passe comum: ${SEED_PASSWORD}`)
@@ -348,7 +391,21 @@ async function main() {
         console.log(`  Admin: ${s.admin.email}`)
         console.log(`  Professores: ${s.teachers.length} · Turmas: ${s.turmas.length} · Alunos: ${s.alunos} · Templates: ${s.templates}`)
     }
-    console.log('')
+
+    console.log('\n• Direções Provinciais')
+    for (const p of direcoesSummary.provincials) {
+        console.log(`  ${p.provincia}: ${p.email}${p.ativo ? '' : ' (pendente)'}`)
+    }
+    console.log('• Direções Municipais')
+    for (const m of direcoesSummary.municipals) {
+        const flags = [m.ativo ? null : 'pendente', m.bloqueado ? 'bloqueada' : null].filter(Boolean)
+        console.log(`  ${m.municipio}/${m.provincia}: ${m.email}${flags.length ? ` (${flags.join(', ')})` : ''}`)
+    }
+    console.log(
+        `\n  Dados extra: ${direcoesSummary.counts.circularesProvinciais} circ. prov. · ` +
+            `${direcoesSummary.counts.circularesMunicipais} circ. mun. · ` +
+            `${direcoesSummary.counts.solicitacoes} solicitações\n`
+    )
 }
 
 const isDirectRun = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('seed-test-data.mjs')

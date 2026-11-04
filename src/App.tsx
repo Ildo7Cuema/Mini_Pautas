@@ -63,6 +63,9 @@ const RelatoriosProvinciaisPage = lazy(() => import('./modules/provincial_educat
 const DirecaoProvincialRegistration = lazy(() => import('./components/DirecaoProvincialRegistration').then(m => ({ default: m.DirecaoProvincialRegistration })))
 const ConfiguracaoDocumentos = lazy(() => import('./components/ConfiguracaoDocumentos').then(m => ({ default: m.ConfiguracaoDocumentos })))
 const TemplatesManagement = lazy(() => import('./components/TemplatesManagement').then(m => ({ default: m.TemplatesManagement })))
+const ConcursosProvinciaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosProvinciaisPage').then(m => ({ default: m.ConcursosProvinciaisPage })))
+const ConcursosMunicipaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosMunicipaisPage').then(m => ({ default: m.ConcursosMunicipaisPage })))
+const InscricaoConcursoPublicaPage = lazy(() => import('./modules/concursos_publicos/components/InscricaoConcursoPublicaPage').then(m => ({ default: m.InscricaoConcursoPublicaPage })))
 
 function App() {
     const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, escolaProfile, profile, secretarioProfile } = useAuth()
@@ -191,6 +194,15 @@ function App() {
         )
     }
 
+    // Public contest enrollment — only usable when municipal opening is active
+    if (window.location.pathname.startsWith('/concurso/')) {
+        return (
+            <Suspense fallback={<PageSkeleton />}>
+                <InscricaoConcursoPublicaPage />
+            </Suspense>
+        )
+    }
+
     if (!user) {
         return <LoginScreen />
     }
@@ -250,6 +262,8 @@ function App() {
                     return <RelatoriosMunicipaisPage onNavigate={handleNavigate} />
                 case 'solicitacoes':
                     return <SolicitacoesPage onNavigate={handleNavigate} />
+                case 'concursos-publicos':
+                    return <ConcursosMunicipaisPage />
                 case 'config-documentos':
                     return <ConfiguracaoDocumentos />
                 case 'reports':
@@ -274,6 +288,8 @@ function App() {
                     return <SupervisaoPedagogicaProvincial />
                 case 'provincial-circulares':
                     return <CircularesProvinciaisPage />
+                case 'provincial-concursos':
+                    return <ConcursosProvinciaisPage />
                 case 'provincial-relatorios':
                     return <RelatoriosProvinciaisPage />
                 case 'settings':
