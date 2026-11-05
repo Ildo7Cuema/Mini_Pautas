@@ -12,6 +12,24 @@ import type {
     TipoRequisito,
 } from '../types'
 import { CORES_ESTADO_CONCURSO, LABELS_ESTADO_CONCURSO } from '../types'
+import {
+    DpPage,
+    DpContent,
+    DpHeader,
+    DpSearch,
+    DpPanel,
+    DpButton,
+    DpEmpty,
+    DpLoading,
+    DpAlert,
+    DpModal,
+    DpModalFooter,
+    DpConfirmModal,
+    DpFormSection,
+    DpBadge,
+    DpInput,
+    DpTextarea,
+} from '../../provincial_education/components/ProvincialChrome'
 
 type CatDraft = CreateConcursoRequest['categorias'][number]
 type ReqDraft = CreateConcursoRequest['requisitos'][number]
@@ -40,6 +58,8 @@ export function ConcursosProvinciaisPage() {
     const [editing, setEditing] = useState<ConcursoPublico | null>(null)
     const [saving, setSaving] = useState(false)
     const [formError, setFormError] = useState<string | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<ConcursoPublico | null>(null)
+    const [deleting, setDeleting] = useState(false)
 
     const [titulo, setTitulo] = useState('')
     const [descricao, setDescricao] = useState('')
@@ -182,214 +202,217 @@ export function ConcursosProvinciaisPage() {
     }
 
     if (loading && concursos.length === 0) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-            </div>
-        )
+        return <DpLoading label="A carregar concursos..." />
     }
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }} />
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                        <h1
-                            className="text-2xl md:text-3xl font-bold tracking-tight text-white"
-                            style={{ textShadow: '0 2px 4px rgba(0,0,0,0.35)' }}
-                        >
-                            Concursos Públicos
-                        </h1>
-                        <p
-                            className="text-white mt-1.5 text-sm md:text-base font-medium leading-relaxed"
-                            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
-                        >
-                            Defina requisitos e documentos para as Direções Municipais abrirem inscrições
-                        </p>
-                    </div>
-                    <button
-                        onClick={openCreate}
-                        className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white text-slate-900 rounded-xl font-semibold hover:bg-slate-100 min-h-[48px] shadow-sm"
-                    >
-                        <Icons.Plus className="w-5 h-5" />
-                        Novo concurso
-                    </button>
-                </div>
-            </div>
+        <DpPage className="pb-24 md:pb-0">
+            <DpHeader
+                title="Concursos Públicos"
+                subtitle="Defina requisitos e documentos para as Direções Municipais abrirem inscrições"
+                icon={<Icons.ClipboardList />}
+                accent="violet"
+                actions={
+                    <DpButton onClick={openCreate} icon={<Icons.Plus className="w-5 h-5" />}>
+                        Novo
+                    </DpButton>
+                }
+            />
 
-            {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm font-medium">
-                    {error}
-                </div>
-            )}
+            <DpContent>
+                {error && <DpAlert>{error}</DpAlert>}
 
-            <div className="flex gap-3">
-                <input
+                <DpSearch
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={setSearch}
                     placeholder="Pesquisar concurso..."
-                    className="flex-1 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-            </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-                {filtered.map((c) => {
-                    const cor = CORES_ESTADO_CONCURSO[c.estado]
-                    return (
-                        <div key={c.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="p-4 md:p-5 space-y-3">
-                                <div className="flex items-start justify-between gap-3">
-                                    <h3 className="text-base md:text-lg font-bold text-slate-900 leading-snug">{c.titulo}</h3>
-                                    <span className={`shrink-0 px-2.5 py-1 text-xs font-semibold rounded-full border border-black/5 ${cor.bg} ${cor.text}`}>
-                                        {LABELS_ESTADO_CONCURSO[c.estado]}
-                                    </span>
-                                </div>
-                                {c.descricao && (
-                                    <p className="text-sm text-slate-700 leading-relaxed line-clamp-3">{c.descricao}</p>
-                                )}
-                                <div className="flex flex-wrap gap-2 pt-1">
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-xs font-semibold">
-                                        {c.aberturas_count || 0} aberturas
-                                    </span>
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-xs font-semibold">
-                                        {c.inscricoes_count || 0} inscrições
-                                    </span>
-                                    {c.data_inicio && (
-                                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-xs font-medium">
-                                            Início: {new Date(c.data_inicio).toLocaleDateString('pt-AO')}
+                <div className="grid gap-4 md:grid-cols-2">
+                    {filtered.map((c) => {
+                        const cor = CORES_ESTADO_CONCURSO[c.estado]
+                        return (
+                            <DpPanel key={c.id} padding={false}>
+                                <div className="p-4 md:p-5 space-y-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <h3 className="text-base md:text-lg font-bold text-slate-900 leading-snug tracking-tight">
+                                            {c.titulo}
+                                        </h3>
+                                        <span className={`shrink-0 px-2.5 py-1 text-xs font-semibold rounded-full ring-1 ring-black/5 ${cor.bg} ${cor.text}`}>
+                                            {LABELS_ESTADO_CONCURSO[c.estado]}
                                         </span>
+                                    </div>
+                                    {c.descricao && (
+                                        <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">{c.descricao}</p>
                                     )}
-                                    {c.data_fim && (
-                                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-xs font-medium">
-                                            Fim: {new Date(c.data_fim).toLocaleDateString('pt-AO')}
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
+                                            {c.aberturas_count || 0} aberturas
                                         </span>
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
+                                            {c.inscricoes_count || 0} inscrições
+                                        </span>
+                                        {c.data_inicio && (
+                                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">
+                                                Início: {new Date(c.data_inicio).toLocaleDateString('pt-AO')}
+                                            </span>
+                                        )}
+                                        {c.data_fim && (
+                                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">
+                                                Fim: {new Date(c.data_fim).toLocaleDateString('pt-AO')}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap border-t border-slate-100 bg-slate-50/60">
+                                    <button
+                                        type="button"
+                                        onClick={() => openEdit(c)}
+                                        className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors min-h-[48px]"
+                                    >
+                                        Editar
+                                    </button>
+                                    {c.estado !== 'publicado' && c.estado !== 'encerrado' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => publicar(c.id, true)}
+                                            className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors min-h-[48px]"
+                                        >
+                                            Publicar
+                                        </button>
+                                    )}
+                                    {c.estado === 'publicado' && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => publicar(c.id, false)}
+                                                className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-amber-700 hover:bg-amber-50 transition-colors min-h-[48px]"
+                                            >
+                                                Despublicar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => encerrar(c.id)}
+                                                className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors min-h-[48px]"
+                                            >
+                                                Encerrar
+                                            </button>
+                                        </>
+                                    )}
+                                    {c.estado === 'rascunho' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setDeleteTarget(c)}
+                                            className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-red-700 hover:bg-red-50 transition-colors min-h-[48px]"
+                                        >
+                                            Eliminar
+                                        </button>
                                     )}
                                 </div>
-                            </div>
-                            <div className="flex flex-wrap border-t border-slate-200 bg-slate-50/80">
-                                <button
-                                    onClick={() => openEdit(c)}
-                                    className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                                >
-                                    Editar
-                                </button>
-                                {c.estado !== 'publicado' && c.estado !== 'encerrado' && (
-                                    <button
-                                        onClick={() => publicar(c.id, true)}
-                                        className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-                                    >
-                                        Publicar
-                                    </button>
-                                )}
-                                {c.estado === 'publicado' && (
-                                    <>
-                                        <button
-                                            onClick={() => publicar(c.id, false)}
-                                            className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-amber-800 hover:bg-amber-50"
-                                        >
-                                            Despublicar
-                                        </button>
-                                        <button
-                                            onClick={() => encerrar(c.id)}
-                                            className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                                        >
-                                            Encerrar
-                                        </button>
-                                    </>
-                                )}
-                                {c.estado === 'rascunho' && (
-                                    <button
-                                        onClick={async () => {
-                                            if (confirm('Eliminar este concurso?')) await eliminar(c.id)
-                                        }}
-                                        className="flex-1 min-w-[100px] py-3 text-sm font-semibold text-red-700 hover:bg-red-50"
-                                    >
-                                        Eliminar
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )
-                })}
-            </div>
-
-            {filtered.length === 0 && (
-                <div className="text-center py-16 text-slate-700 font-medium">
-                    Nenhum concurso criado. Publique um concurso para as Direções Municipais.
+                            </DpPanel>
+                        )
+                    })}
                 </div>
-            )}
 
-            {showModal && (
-                <div className="fixed inset-0 z-50">
-                    <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-                    <div className="absolute inset-0 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:max-w-3xl md:w-full md:mx-4 md:max-h-[92vh] bg-white md:rounded-2xl shadow-2xl flex flex-col">
-                        <div className="flex items-center justify-between px-4 py-4 md:px-6 border-b border-slate-100">
-                            <h2 className="text-lg font-semibold text-slate-900">
-                                {editing ? 'Editar concurso' : 'Novo concurso público'}
-                            </h2>
-                            <button onClick={() => setShowModal(false)} className="p-2 rounded-xl hover:bg-slate-100">
-                                <Icons.X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                            {formError && (
-                                <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-                                    {formError}
-                                </div>
-                            )}
+                {filtered.length === 0 && (
+                    <DpEmpty
+                        icon={<Icons.ClipboardList />}
+                        title="Nenhum concurso criado"
+                        description="Publique um concurso para as Direções Municipais abrirem inscrições."
+                        action={
+                            <DpButton onClick={openCreate} icon={<Icons.Plus className="w-5 h-5" />}>
+                                Novo concurso
+                            </DpButton>
+                        }
+                    />
+                )}
+            </DpContent>
 
-                            <section className="space-y-3">
-                                <h3 className="font-semibold text-slate-800">Dados gerais</h3>
-                                <input
+            <DpModal
+                isOpen={showModal}
+                onClose={() => {
+                    if (!saving) {
+                        setShowModal(false)
+                        resetForm()
+                    }
+                }}
+                title={editing ? 'Editar concurso' : 'Novo concurso público'}
+                subtitle="Categorias, requisitos e documentos para inscrição"
+                icon={<Icons.ClipboardList />}
+                accent="violet"
+                busy={saving}
+                size="xl"
+                badge={
+                    <DpBadge tone={editing ? 'info' : 'success'}>
+                        {editing ? 'Edição' : 'Novo'}
+                    </DpBadge>
+                }
+                footer={
+                    <DpModalFooter>
+                        <DpButton
+                            variant="secondary"
+                            onClick={() => {
+                                setShowModal(false)
+                                resetForm()
+                            }}
+                            disabled={saving}
+                            className="sm:min-w-[7.5rem]"
+                        >
+                            Cancelar
+                        </DpButton>
+                        <DpButton onClick={handleSave} disabled={saving} className="sm:min-w-[9rem]">
+                            {saving ? 'A guardar…' : 'Guardar concurso'}
+                        </DpButton>
+                    </DpModalFooter>
+                }
+            >
+                        <div className="space-y-4">
+                            {formError && <DpAlert>{formError}</DpAlert>}
+
+                            <DpFormSection title="Dados gerais" description="Identificação e calendário do concurso">
+                                <DpInput
                                     value={titulo}
                                     onChange={(e) => setTitulo(e.target.value)}
                                     placeholder="Título do concurso *"
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                                    label="Título"
+                                    required
                                 />
-                                <textarea
+                                <DpTextarea
                                     value={descricao}
                                     onChange={(e) => setDescricao(e.target.value)}
                                     placeholder="Descrição"
+                                    label="Descrição"
                                     rows={3}
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                                 />
-                                <textarea
+                                <DpTextarea
                                     value={instrucoes}
                                     onChange={(e) => setInstrucoes(e.target.value)}
                                     placeholder="Instruções para os candidatos"
+                                    label="Instruções"
                                     rows={2}
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                                 />
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <label className="text-sm text-slate-600 space-y-1">
-                                        <span>Data início</span>
-                                        <input
-                                            type="date"
-                                            value={dataInicio}
-                                            onChange={(e) => setDataInicio(e.target.value)}
-                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5"
-                                        />
-                                    </label>
-                                    <label className="text-sm text-slate-600 space-y-1">
-                                        <span>Data fim</span>
-                                        <input
-                                            type="date"
-                                            value={dataFim}
-                                            onChange={(e) => setDataFim(e.target.value)}
-                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5"
-                                        />
-                                    </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                    <DpInput
+                                        type="date"
+                                        label="Data início"
+                                        value={dataInicio}
+                                        onChange={(e) => setDataInicio(e.target.value)}
+                                    />
+                                    <DpInput
+                                        type="date"
+                                        label="Data fim"
+                                        value={dataFim}
+                                        onChange={(e) => setDataFim(e.target.value)}
+                                    />
                                 </div>
-                            </section>
+                            </DpFormSection>
 
-                            <section className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="font-semibold text-slate-800">Categorias de inscrição</h3>
+                            <DpFormSection title="Categorias de inscrição" description="Faixas etárias e áreas de candidatura">
+                                <div className="flex justify-end -mt-1 mb-1">
                                     <button
                                         type="button"
                                         onClick={() => setCategorias((prev) => [...prev, emptyCat()])}
-                                        className="text-sm text-blue-700 font-medium"
+                                        className="text-sm text-primary-700 font-semibold hover:text-primary-800 transition-colors"
                                     >
                                         + Categoria
                                     </button>
@@ -451,27 +474,24 @@ export function ConcursosProvinciaisPage() {
                                         </div>
                                     </div>
                                 ))}
-                            </section>
+                            </DpFormSection>
 
-                            <section className="space-y-3">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <h3 className="font-semibold text-slate-800">Requisitos e documentos</h3>
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setRequisitos((prev) => [...prev, emptyReq('campo')])}
-                                            className="text-sm text-blue-700 font-medium"
-                                        >
-                                            + Campo
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setRequisitos((prev) => [...prev, emptyReq('documento')])}
-                                            className="text-sm text-blue-700 font-medium"
-                                        >
-                                            + Documento
-                                        </button>
-                                    </div>
+                            <DpFormSection title="Requisitos e documentos" description="Campos do formulário e uploads exigidos">
+                                <div className="flex justify-end gap-3 -mt-1 mb-1 flex-wrap">
+                                    <button
+                                        type="button"
+                                        onClick={() => setRequisitos((prev) => [...prev, emptyReq('campo')])}
+                                        className="text-sm text-primary-700 font-semibold hover:text-primary-800 transition-colors"
+                                    >
+                                        + Campo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setRequisitos((prev) => [...prev, emptyReq('documento')])}
+                                        className="text-sm text-primary-700 font-semibold hover:text-primary-800 transition-colors"
+                                    >
+                                        + Documento
+                                    </button>
                                 </div>
                                 {requisitos.map((req, idx) => (
                                     <div key={idx} className="rounded-xl border border-slate-200 p-3 space-y-2">
@@ -608,27 +628,31 @@ export function ConcursosProvinciaisPage() {
                                         )}
                                     </div>
                                 ))}
-                            </section>
+                            </DpFormSection>
                         </div>
-                        <div className="border-t border-slate-100 p-4 flex gap-3">
-                            <button
-                                onClick={() => setShowModal(false)}
-                                className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-medium"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="flex-1 rounded-xl bg-blue-600 text-white py-3 text-sm font-semibold disabled:opacity-60"
-                            >
-                                {saving ? 'A guardar...' : 'Guardar concurso'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+            </DpModal>
+
+            <DpConfirmModal
+                isOpen={!!deleteTarget}
+                onClose={() => setDeleteTarget(null)}
+                onConfirm={async () => {
+                    if (!deleteTarget) return
+                    setDeleting(true)
+                    try {
+                        await eliminar(deleteTarget.id)
+                        setDeleteTarget(null)
+                    } finally {
+                        setDeleting(false)
+                    }
+                }}
+                title="Eliminar concurso"
+                message={`Eliminar "${deleteTarget?.titulo || ''}"? Esta acção não pode ser desfeita.`}
+                confirmText="Eliminar"
+                cancelText="Cancelar"
+                variant="danger"
+                loading={deleting}
+            />
+        </DpPage>
     )
 }
 

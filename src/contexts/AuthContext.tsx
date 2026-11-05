@@ -20,7 +20,9 @@ import type {
 
     DirecaoMunicipal,
     DirecaoProvincial,
-    DirecaoProvincialProfile
+    DirecaoProvincialProfile,
+    PessoalDirecaoProvincial,
+    PessoalDirecaoProvincialProfile,
 } from '../types'
 
 interface AuthContextType {
@@ -33,6 +35,7 @@ interface AuthContextType {
     isSecretario: boolean
     isDirecaoMunicipal: boolean
     isDirecaoProvincial: boolean
+    isFuncionarioProvincial: boolean
     escolaProfile: EscolaProfile | null
     professorProfile: ProfessorProfile | null
     alunoProfile: AlunoProfile | null
@@ -40,6 +43,7 @@ interface AuthContextType {
     secretarioProfile: SecretarioProfile | null
     direcaoMunicipalProfile: DirecaoMunicipalProfile | null
     direcaoProvincialProfile: DirecaoProvincialProfile | null
+    pessoalDirecaoProvincialProfile: PessoalDirecaoProvincialProfile | null
     profile: UserProfile | null  // Added for SUPERADMIN support
     signOut: () => Promise<void>
     refreshProfile: () => Promise<void>
@@ -69,6 +73,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [isSecretario, setIsSecretario] = useState(false)
     const [isDirecaoMunicipal, setIsDirecaoMunicipal] = useState(false)
     const [isDirecaoProvincial, setIsDirecaoProvincial] = useState(false)
+    const [isFuncionarioProvincial, setIsFuncionarioProvincial] = useState(false)
     const [escolaProfile, setEscolaProfile] = useState<EscolaProfile | null>(null)
     const [professorProfile, setProfessorProfile] = useState<ProfessorProfile | null>(null)
     const [alunoProfile, setAlunoProfile] = useState<AlunoProfile | null>(null)
@@ -76,6 +81,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [secretarioProfile, setSecretarioProfile] = useState<SecretarioProfile | null>(null)
     const [direcaoMunicipalProfile, setDirecaoMunicipalProfile] = useState<DirecaoMunicipalProfile | null>(null)
     const [direcaoProvincialProfile, setDirecaoProvincialProfile] = useState<DirecaoProvincialProfile | null>(null)
+    const [pessoalDirecaoProvincialProfile, setPessoalDirecaoProvincialProfile] = useState<PessoalDirecaoProvincialProfile | null>(null)
 
     // Blocked school modal state
     const [showBlockedModal, setShowBlockedModal] = useState(false)
@@ -510,6 +516,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             setIsSecretario(profile.tipo_perfil === 'SECRETARIO')
             setIsDirecaoMunicipal(profile.tipo_perfil === 'DIRECAO_MUNICIPAL')
             setIsDirecaoProvincial(profile.tipo_perfil === 'DIRECAO_PROVINCIAL')
+            setIsFuncionarioProvincial(profile.tipo_perfil === 'FUNCIONARIO_PROVINCIAL')
 
             // Handle SUPERADMIN separately (no escola_id required)
             if (profile.tipo_perfil === 'SUPERADMIN') {
@@ -547,6 +554,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             } else if (profile.tipo_perfil === 'DIRECAO_PROVINCIAL') {
                 console.log('🏛️ AuthContext: Loading direção provincial profile...')
                 await loadDirecaoProvincialProfile(authUser.id, profile)
+            } else if (profile.tipo_perfil === 'FUNCIONARIO_PROVINCIAL') {
+                console.log('🏛️ AuthContext: Loading funcionário provincial profile...')
+                await loadFuncionarioProvincialProfile(authUser.id, profile)
             }
 
             // CRITICAL: Always set loading to false, even if profile loading fails
@@ -1343,6 +1353,80 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     }
 
+    const loadFuncionarioProvincialProfile = async (userId: string, profile: UserProfile) => {
+        try {
+            const { data: pessoalData, error: pessoalError } = await supabase
+                .from('pessoal_direcao_provincial')
+                .select('*, direcoes_provinciais(*)')
+                .eq('user_id', userId)
+                .eq('ativo', true)
+                .maybeSingle()
+
+            if (pessoalError) {
+                console.error('❌ AuthContext: Error loading funcionário provincial:', pessoalError)
+                setUser({ id: userId, email: profile.user_id || '', profile })
+                return
+            }
+
+            if (!pessoalData) {
+                console.warn('⚠️ AuthContext: No pessoal_direcao_provincial for user')
+                setBlockedModalData({
+                    reason: 'O seu registo como funcionário provincial não foi encontrado ou está inactivo.',
+                    type: 'deleted',
+                    entityType: 'direcao_municipal',
+                })
+                setShowBlockedModal(true)
+                await supabase.auth.signOut()
+                setUser(null)
+                return
+            }
+
+            const row = pessoalData as PessoalDirecaoProvincial & {
+                direcoes_provinciais?: DirecaoProvincial | DirecaoProvincial[] | null
+            }
+            const { direcoes_provinciais: dpJoin, ...pessoalRest } = row
+            const pessoal = pessoalRest as PessoalDirecaoProvincial
+            const direcao = Array.isArray(dpJoin) ? dpJoin[0] : dpJoin
+
+            if (!direcao || !direcao.ativo) {
+                setBlockedModalData({
+                    reason: 'A Direção Provincial associada está inactiva.',
+                    type: 'inactive',
+                    entityType: 'direcao_municipal',
+                })
+                setShowBlockedModal(true)
+                await supabase.auth.signOut()
+                setUser(null)
+                return
+            }
+
+            const pessoalProfile: PessoalDirecaoProvincialProfile = {
+                ...pessoal,
+                user_profile: profile,
+                direcao_provincial: direcao,
+            }
+
+            const direcaoProfile: DirecaoProvincialProfile = {
+                ...direcao,
+                user_profile: profile,
+            }
+
+            setPessoalDirecaoProvincialProfile(pessoalProfile)
+            setDirecaoProvincialProfile(direcaoProfile)
+            setUser({
+                id: userId,
+                email: pessoal.email || profile.user_id || '',
+                profile,
+                direcaoProvincial: direcaoProfile,
+                pessoalDirecaoProvincial: pessoalProfile,
+            })
+            console.log('✅ AuthContext: Funcionário provincial profile set:', pessoal.departamento)
+        } catch (error) {
+            console.error('❌ AuthContext: Unexpected error in loadFuncionarioProvincialProfile:', error)
+            setUser({ id: userId, email: profile.user_id || '', profile })
+        }
+    }
+
     const refreshProfile = async () => {
         const { data: { user: authUser } } = await supabase.auth.getUser()
         if (authUser) {
@@ -1360,6 +1444,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setIsSecretario(false)
         setIsDirecaoMunicipal(false)
         setIsDirecaoProvincial(false)
+        setIsFuncionarioProvincial(false)
         setEscolaProfile(null)
         setProfessorProfile(null)
         setAlunoProfile(null)
@@ -1367,6 +1452,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setSecretarioProfile(null)
         setDirecaoMunicipalProfile(null)
         setDirecaoProvincialProfile(null)
+        setPessoalDirecaoProvincialProfile(null)
     }
 
     useEffect(() => {
@@ -1454,6 +1540,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         isSecretario,
         isDirecaoMunicipal,
         isDirecaoProvincial,
+        isFuncionarioProvincial,
         escolaProfile,
         professorProfile,
         alunoProfile,
@@ -1461,6 +1548,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         secretarioProfile,
         direcaoMunicipalProfile,
         direcaoProvincialProfile,
+        pessoalDirecaoProvincialProfile,
         profile: user?.profile || null,  // Expose profile for SUPERADMIN checks
         signOut,
         refreshProfile

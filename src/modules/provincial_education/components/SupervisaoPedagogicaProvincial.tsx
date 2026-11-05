@@ -7,6 +7,19 @@
 import React, { useState } from 'react';
 import { Icons } from '../../../components/ui/Icons';
 import { usePedagogicDataProvincial } from '../hooks/usePedagogicDataProvincial';
+import {
+    DpPage,
+    DpContent,
+    DpHeader,
+    DpIconButton,
+    DpPanel,
+    DpLoading,
+    DpAlert,
+    DpChip,
+    DpSectionTitle,
+    DpSelect,
+    DpBadge,
+} from './ProvincialChrome';
 
 // Classification card
 const ClassificationCard: React.FC<{
@@ -171,103 +184,66 @@ export const SupervisaoPedagogicaProvincial: React.FC = () => {
     };
 
     if (loading) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary-600 border-t-transparent" />
-            </div>
-        );
+        return <DpLoading label="A carregar supervisão pedagógica..." />;
     }
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            {/* Header */}
-            <div className="px-4 pt-4 pb-3 sm:px-6">
-                <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                            Supervisão Pedagógica
-                        </h1>
-                        <p className="text-sm text-slate-500 mt-0.5">
-                            Indicadores por município
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                        {/* Trimester filter */}
-                        <select
+        <DpPage>
+            <DpHeader
+                title="Supervisão Pedagógica"
+                subtitle="Indicadores e comparativos por município"
+                icon={<Icons.TrendingUp />}
+                accent="amber"
+                actions={
+                    <div className="flex items-center gap-2">
+                        <DpSelect
                             value={trimestre || ''}
                             onChange={(e) => setTrimestre(e.target.value ? Number(e.target.value) as 1 | 2 | 3 : undefined)}
-                            className="px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 min-h-[44px]"
+                            className="!min-h-[44px] !py-2.5 !w-[7.5rem] sm:!w-auto"
                         >
                             <option value="">Todos</option>
                             <option value="1">1º Trim.</option>
                             <option value="2">2º Trim.</option>
                             <option value="3">3º Trim.</option>
-                        </select>
-                        <button
+                        </DpSelect>
+                        <DpIconButton
+                            label="Actualizar"
                             onClick={handleRefresh}
                             disabled={refreshing}
-                            className="p-2.5 bg-primary-600 text-white rounded-xl shadow-sm hover:bg-primary-700 active:scale-95 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
                         >
                             <Icons.Refresh className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-                        </button>
+                        </DpIconButton>
                     </div>
-                </div>
-            </div>
+                }
+            />
 
-            <div className="px-4 sm:px-6 pb-6 space-y-5">
-                {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
-                        <Icons.ExclamationCircle className="w-5 h-5 flex-shrink-0" />
-                        <span>{error}</span>
-                    </div>
-                )}
+            <DpContent className="space-y-5">
+                {error && <DpAlert>{error}</DpAlert>}
 
-                {/* Key Indicators - 2x2 grid */}
                 {indicadores && (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
-                                    <Icons.BarChart className="w-4 h-4 text-blue-600" />
+                        {[
+                            { icon: <Icons.BarChart className="w-4 h-4 text-blue-600" />, tone: 'from-blue-50 to-blue-100', value: indicadores.media_geral.toFixed(1), label: 'Média Geral', accent: false },
+                            { icon: <Icons.TrendingUp className="w-4 h-4 text-emerald-600" />, tone: 'from-emerald-50 to-emerald-100', value: `${indicadores.taxa_aprovacao.toFixed(1)}%`, label: 'Aprovação', accent: true },
+                            { icon: <Icons.AcademicCap className="w-4 h-4 text-purple-600" />, tone: 'from-purple-50 to-purple-100', value: indicadores.total_alunos.toLocaleString(), label: 'Alunos', accent: false },
+                            { icon: <Icons.Award className="w-4 h-4 text-orange-600" />, tone: 'from-orange-50 to-orange-100', value: indicadores.total_escolas, label: 'Escolas', accent: false },
+                        ].map((stat) => (
+                            <DpPanel key={stat.label} className="!p-4">
+                                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${stat.tone} flex items-center justify-center mb-2`}>
+                                    {stat.icon}
                                 </div>
-                            </div>
-                            <p className="text-2xl sm:text-3xl font-bold text-slate-900">{indicadores.media_geral.toFixed(1)}</p>
-                            <p className="text-xs text-slate-500 font-medium">Média Geral</p>
-                        </div>
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 flex items-center justify-center">
-                                    <Icons.TrendingUp className="w-4 h-4 text-emerald-600" />
-                                </div>
-                            </div>
-                            <p className="text-2xl sm:text-3xl font-bold text-emerald-600">{indicadores.taxa_aprovacao.toFixed(1)}%</p>
-                            <p className="text-xs text-slate-500 font-medium">Aprovação</p>
-                        </div>
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-                                    <Icons.AcademicCap className="w-4 h-4 text-purple-600" />
-                                </div>
-                            </div>
-                            <p className="text-2xl sm:text-3xl font-bold text-slate-900">{indicadores.total_alunos.toLocaleString()}</p>
-                            <p className="text-xs text-slate-500 font-medium">Alunos</p>
-                        </div>
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center">
-                                    <Icons.Award className="w-4 h-4 text-orange-600" />
-                                </div>
-                            </div>
-                            <p className="text-2xl sm:text-3xl font-bold text-slate-900">{indicadores.total_escolas}</p>
-                            <p className="text-xs text-slate-500 font-medium">Escolas</p>
-                        </div>
+                                <p className={`text-2xl sm:text-3xl font-bold tabular-nums tracking-tight ${stat.accent ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                    {stat.value}
+                                </p>
+                                <p className="text-xs text-slate-500 font-medium mt-0.5">{stat.label}</p>
+                            </DpPanel>
+                        ))}
                     </div>
                 )}
 
-                {/* Classification Distribution */}
                 {indicadores && (
                     <div>
-                        <h2 className="text-base font-semibold text-slate-900 mb-3">Distribuição por Classificação</h2>
+                        <DpSectionTitle>Distribuição por Classificação</DpSectionTitle>
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                             <ClassificationCard
                                 label="Excelente"
@@ -297,27 +273,18 @@ export const SupervisaoPedagogicaProvincial: React.FC = () => {
                     </div>
                 )}
 
-                {/* Tabs for mobile */}
                 <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 lg:hidden">
                     {[
-                        { id: 'ranking', label: 'Ranking', icon: <Icons.Award className="w-4 h-4" /> },
-                        { id: 'aprovacao', label: 'Aprovação', icon: <Icons.TrendingUp className="w-4 h-4" /> },
-                        { id: 'detalhes', label: 'Detalhes', icon: <Icons.ClipboardList className="w-4 h-4" /> },
+                        { id: 'ranking', label: 'Ranking' },
+                        { id: 'aprovacao', label: 'Aprovação' },
+                        { id: 'detalhes', label: 'Detalhes' },
                     ].map((tab) => (
-                        <button
+                        <DpChip
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className={`
-                                flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all min-h-[44px]
-                                ${activeTab === tab.id
-                                    ? 'bg-primary-600 text-white shadow-sm'
-                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                }
-                            `}
-                        >
-                            {tab.icon}
-                            {tab.label}
-                        </button>
+                            label={tab.label}
+                            active={activeTab === tab.id}
+                            onClick={() => setActiveTab(tab.id as 'ranking' | 'aprovacao' | 'detalhes')}
+                        />
                     ))}
                 </div>
 
@@ -368,11 +335,9 @@ export const SupervisaoPedagogicaProvincial: React.FC = () => {
                     )}
                 </div>
 
-                {/* Desktop: Side by side */}
                 <div className="hidden lg:grid lg:grid-cols-2 gap-6">
-                    {/* Ranking */}
-                    <div className="bg-white rounded-2xl border border-slate-200/60 p-5">
-                        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <DpPanel>
+                        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2 tracking-tight">
                             <Icons.Award className="w-5 h-5 text-amber-500" />
                             Ranking de Municípios
                         </h2>
@@ -388,11 +353,10 @@ export const SupervisaoPedagogicaProvincial: React.FC = () => {
                                 />
                             ))}
                         </div>
-                    </div>
+                    </DpPanel>
 
-                    {/* Approval */}
-                    <div className="bg-white rounded-2xl border border-slate-200/60 p-5">
-                        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <DpPanel>
+                        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2 tracking-tight">
                             <Icons.TrendingUp className="w-5 h-5 text-emerald-500" />
                             Taxa de Aprovação
                         </h2>
@@ -405,25 +369,24 @@ export const SupervisaoPedagogicaProvincial: React.FC = () => {
                                 />
                             ))}
                         </div>
-                    </div>
+                    </DpPanel>
                 </div>
 
-                {/* Desktop: Detailed table */}
-                <div className="hidden lg:block bg-white rounded-2xl border border-slate-200/60 overflow-hidden">
+                <DpPanel padding={false} className="hidden lg:block">
                     <div className="px-5 py-4 border-b border-slate-100">
-                        <h2 className="text-lg font-semibold text-slate-900">Indicadores por Município</h2>
+                        <h2 className="text-lg font-semibold text-slate-900 tracking-tight">Indicadores por Município</h2>
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200">
-                            <thead className="bg-slate-50">
+                        <table className="min-w-full divide-y divide-slate-100">
+                            <thead className="bg-slate-50/80">
                                 <tr>
-                                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Município</th>
-                                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Escolas</th>
-                                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Professores</th>
-                                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Alunos</th>
-                                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Turmas</th>
-                                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Média</th>
-                                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Aprovação</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Município</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Escolas</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Professores</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Alunos</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Turmas</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Média</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Aprovação</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -443,21 +406,26 @@ export const SupervisaoPedagogicaProvincial: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-5 py-4">
-                                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${ind.taxa_aprovacao >= 80 ? 'bg-emerald-100 text-emerald-700' :
-                                                    ind.taxa_aprovacao >= 60 ? 'bg-amber-100 text-amber-700' :
-                                                        'bg-red-100 text-red-700'
-                                                }`}>
+                                            <DpBadge
+                                                tone={
+                                                    ind.taxa_aprovacao >= 80
+                                                        ? 'success'
+                                                        : ind.taxa_aprovacao >= 60
+                                                          ? 'warning'
+                                                          : 'danger'
+                                                }
+                                            >
                                                 {ind.taxa_aprovacao.toFixed(1)}%
-                                            </span>
+                                            </DpBadge>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-                </div>
-            </div>
-        </div>
+                </DpPanel>
+            </DpContent>
+        </DpPage>
     );
 };
 

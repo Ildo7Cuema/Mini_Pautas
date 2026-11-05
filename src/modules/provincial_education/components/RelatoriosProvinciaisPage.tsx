@@ -8,27 +8,37 @@ import React, { useState } from 'react';
 import { Icons } from '../../../components/ui/Icons';
 import { useRelatoriosProvinciais } from '../hooks/useRelatoriosProvinciais';
 import type { RelatorioConsolidadoProvincia } from '../types';
+import {
+    DpPage,
+    DpContent,
+    DpHeader,
+    DpPanel,
+    DpButton,
+    DpSelect,
+    DpEmpty,
+    DpAlert,
+    DpSectionTitle,
+} from './ProvincialChrome';
 
-// Report card for municipalities
 const MunicipioCard: React.FC<{
     municipio: string;
     total_alunos: number;
     taxa_aprovacao: number;
 }> = ({ municipio, total_alunos, taxa_aprovacao }) => (
-    <div className="bg-white rounded-xl border border-slate-200/60 p-4">
-        <div className="flex items-center justify-between">
+    <DpPanel className="!p-4">
+        <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-                <p className="font-semibold text-slate-900 truncate">{municipio}</p>
-                <p className="text-sm text-slate-500">{total_alunos.toLocaleString()} alunos</p>
+                <p className="font-semibold text-slate-900 truncate tracking-tight">{municipio}</p>
+                <p className="text-sm text-slate-500 mt-0.5">{total_alunos.toLocaleString()} alunos</p>
             </div>
-            <div className="text-right">
-                <p className={`text-xl font-bold ${taxa_aprovacao >= 70 ? 'text-emerald-600' : 'text-amber-600'}`}>
+            <div className="text-right flex-shrink-0">
+                <p className={`text-xl font-bold tabular-nums ${taxa_aprovacao >= 70 ? 'text-emerald-600' : 'text-amber-600'}`}>
                     {taxa_aprovacao.toFixed(1)}%
                 </p>
                 <p className="text-xs text-slate-400">aprovação</p>
             </div>
         </div>
-    </div>
+    </DpPanel>
 );
 
 export const RelatoriosProvinciaisPage: React.FC = () => {
@@ -78,69 +88,53 @@ export const RelatoriosProvinciaisPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            {/* Header */}
-            <div className="px-4 pt-4 pb-2 sm:px-6">
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Relatórios</h1>
-                <p className="text-sm text-slate-500">Gere relatórios consolidados</p>
-            </div>
+        <DpPage>
+            <DpHeader
+                title="Relatórios"
+                subtitle="Gere e exporte relatórios consolidados da província"
+                icon={<Icons.BarChart />}
+                accent="indigo"
+            />
 
-            <div className="px-4 sm:px-6 pb-6 space-y-4">
-                {/* Controls */}
-                <div className="bg-white rounded-2xl border border-slate-200/60 p-4 space-y-4">
+            <DpContent className="space-y-4">
+                <DpPanel className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                                Ano Lectivo
-                            </label>
-                            <select
-                                value={anoLectivo}
-                                onChange={(e) => setAnoLectivo(e.target.value)}
-                                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 min-h-[44px]"
-                            >
-                                <option value="">Todos</option>
-                                <option value="2024">2024</option>
-                                <option value="2024/2025">2024/2025</option>
-                                <option value="2025">2025</option>
-                                <option value="2025/2026">2025/2026</option>
-                                <option value="2026">2026</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                                Trimestre
-                            </label>
-                            <select
-                                value={trimestre || ''}
-                                onChange={(e) => setTrimestre(e.target.value ? Number(e.target.value) as 1 | 2 | 3 : undefined)}
-                                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 min-h-[44px]"
-                            >
-                                <option value="">Todo o Ano</option>
-                                <option value="1">1º Trimestre</option>
-                                <option value="2">2º Trimestre</option>
-                                <option value="3">3º Trimestre</option>
-                            </select>
-                        </div>
+                        <DpSelect
+                            label="Ano Lectivo"
+                            value={anoLectivo}
+                            onChange={(e) => setAnoLectivo(e.target.value)}
+                        >
+                            <option value="">Todos</option>
+                            <option value="2024">2024</option>
+                            <option value="2024/2025">2024/2025</option>
+                            <option value="2025">2025</option>
+                            <option value="2025/2026">2025/2026</option>
+                            <option value="2026">2026</option>
+                        </DpSelect>
+                        <DpSelect
+                            label="Trimestre"
+                            value={trimestre || ''}
+                            onChange={(e) => setTrimestre(e.target.value ? Number(e.target.value) as 1 | 2 | 3 : undefined)}
+                        >
+                            <option value="">Todo o Ano</option>
+                            <option value="1">1º Trimestre</option>
+                            <option value="2">2º Trimestre</option>
+                            <option value="3">3º Trimestre</option>
+                        </DpSelect>
                     </div>
 
-                    <button
+                    <DpButton
+                        fullWidth
                         onClick={handleGerarRelatorio}
                         disabled={loading}
-                        className="w-full py-3.5 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 min-h-[48px] shadow-sm"
+                        icon={<Icons.Refresh className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />}
                     >
-                        <Icons.Refresh className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                         {loading ? 'A gerar...' : 'Gerar Relatório'}
-                    </button>
-                </div>
+                    </DpButton>
+                </DpPanel>
 
-                {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
-                        <Icons.ExclamationCircle className="w-5 h-5 flex-shrink-0" />
-                        <span>{error}</span>
-                    </div>
-                )}
+                {error && <DpAlert>{error}</DpAlert>}
 
-                {/* Export success toast */}
                 {exportSuccess && (
                     <div className="fixed bottom-20 left-4 right-4 sm:left-auto sm:right-6 sm:w-auto bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-slide-up z-50">
                         <Icons.CheckCircle className="w-5 h-5" />
@@ -148,57 +142,52 @@ export const RelatoriosProvinciaisPage: React.FC = () => {
                     </div>
                 )}
 
-                {/* Report Display */}
                 {relatorio && (
                     <div className="space-y-4 animate-fade-in">
-                        {/* Export actions - sticky on mobile */}
-                        <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm py-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:static sm:bg-transparent">
+                        <div className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-md py-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:static sm:bg-transparent sm:backdrop-blur-none">
                             <div className="flex gap-2">
-                                <button
+                                <DpButton
+                                    variant="success"
+                                    fullWidth
                                     onClick={handleExportCSV}
                                     disabled={loadingExport}
-                                    className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 min-h-[44px] shadow-sm disabled:opacity-50"
+                                    icon={<Icons.FileSpreadsheet className="w-4 h-4" />}
                                 >
-                                    <Icons.FileSpreadsheet className="w-4 h-4" />
                                     CSV
-                                </button>
-                                <button
+                                </DpButton>
+                                <DpButton
+                                    variant="secondary"
+                                    fullWidth
                                     onClick={handleExportJSON}
                                     disabled={loadingExport}
-                                    className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-900 active:scale-[0.98] transition-all flex items-center justify-center gap-2 min-h-[44px] shadow-sm disabled:opacity-50"
+                                    icon={<Icons.FileJson className="w-4 h-4" />}
+                                    className="!bg-slate-800 !text-white !border-slate-800 hover:!bg-slate-900"
                                 >
-                                    <Icons.FileJson className="w-4 h-4" />
                                     JSON
-                                </button>
+                                </DpButton>
                             </div>
                         </div>
 
-                        {/* Summary Cards - 2x2 grid on mobile */}
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm">
-                                <p className="text-xs text-slate-500 font-medium">Escolas</p>
-                                <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">{relatorio.estatisticas_gerais.total_escolas}</p>
-                            </div>
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm">
-                                <p className="text-xs text-slate-500 font-medium">Alunos</p>
-                                <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">{relatorio.estatisticas_gerais.total_alunos.toLocaleString()}</p>
-                            </div>
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm">
-                                <p className="text-xs text-slate-500 font-medium">Professores</p>
-                                <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">{relatorio.estatisticas_gerais.total_professores.toLocaleString()}</p>
-                            </div>
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm">
-                                <p className="text-xs text-slate-500 font-medium">Aprovação</p>
-                                <p className="text-2xl sm:text-3xl font-bold text-emerald-600 mt-1">{relatorio.estatisticas_gerais.taxa_aprovacao_media.toFixed(1)}%</p>
-                            </div>
+                            {[
+                                { label: 'Escolas', value: relatorio.estatisticas_gerais.total_escolas },
+                                { label: 'Alunos', value: relatorio.estatisticas_gerais.total_alunos.toLocaleString() },
+                                { label: 'Professores', value: relatorio.estatisticas_gerais.total_professores.toLocaleString() },
+                                { label: 'Aprovação', value: `${relatorio.estatisticas_gerais.taxa_aprovacao_media.toFixed(1)}%`, accent: true },
+                            ].map((stat) => (
+                                <DpPanel key={stat.label} className="!p-4">
+                                    <p className="text-xs text-slate-500 font-medium">{stat.label}</p>
+                                    <p className={`text-2xl sm:text-3xl font-bold mt-1 tabular-nums tracking-tight ${stat.accent ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                        {stat.value}
+                                    </p>
+                                </DpPanel>
+                            ))}
                         </div>
 
-                        {/* Municipality Performance - vertical list on mobile */}
                         <div>
-                            <h2 className="text-base font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                                <Icons.BarChart className="w-5 h-5 text-primary-600" />
+                            <DpSectionTitle icon={<Icons.BarChart />}>
                                 Por Município
-                            </h2>
+                            </DpSectionTitle>
                             <div className="space-y-3">
                                 {relatorio.dados_por_municipio.map(mun => (
                                     <MunicipioCard
@@ -211,37 +200,32 @@ export const RelatoriosProvinciaisPage: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Alerts section - compact cards */}
                         <div className="grid grid-cols-2 gap-3">
-                            <div className="p-4 bg-red-50 rounded-xl border border-red-200">
+                            <div className="p-4 bg-red-50 rounded-2xl border border-red-200/70">
                                 <p className="text-xs font-medium text-red-700">Inactivas</p>
-                                <p className="text-2xl font-bold text-red-700 mt-1">{relatorio.estatisticas_gerais.escolas_inactivas}</p>
+                                <p className="text-2xl font-bold text-red-700 mt-1 tabular-nums">{relatorio.estatisticas_gerais.escolas_inactivas}</p>
                             </div>
-                            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200/70">
                                 <p className="text-xs font-medium text-amber-700">Bloqueadas</p>
-                                <p className="text-2xl font-bold text-amber-700 mt-1">{relatorio.estatisticas_gerais.escolas_bloqueadas}</p>
+                                <p className="text-2xl font-bold text-amber-700 mt-1 tabular-nums">{relatorio.estatisticas_gerais.escolas_bloqueadas}</p>
                             </div>
                         </div>
 
-                        {/* Generated footer */}
-                        <p className="text-center text-xs text-slate-400 pt-4">
+                        <p className="text-center text-xs text-slate-400 pt-2">
                             Gerado em {new Date(relatorio.data_geracao).toLocaleString('pt-AO')}
                         </p>
                     </div>
                 )}
 
-                {/* Empty state */}
                 {!relatorio && !loading && (
-                    <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/60">
-                        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                            <Icons.DocumentText className="w-8 h-8 text-slate-400" />
-                        </div>
-                        <h3 className="text-lg font-medium text-slate-500">Nenhum relatório</h3>
-                        <p className="text-sm text-slate-400 mt-1">Seleccione as opções e gere o relatório</p>
-                    </div>
+                    <DpEmpty
+                        icon={<Icons.DocumentText />}
+                        title="Nenhum relatório"
+                        description="Seleccione as opções e gere o relatório consolidado."
+                    />
                 )}
-            </div>
-        </div>
+            </DpContent>
+        </DpPage>
     );
 };
 

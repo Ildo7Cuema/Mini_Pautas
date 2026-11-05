@@ -15,6 +15,7 @@
         "seed:test:clean": "node scripts/unseed-test-data.mjs",
         "db:apply-delete-escola": "node scripts/apply-delete-escola-responsavel.mjs",
         "db:apply-concursos": "node scripts/apply-concursos-publicos.mjs",
+        "db:apply-pessoal-dp": "node scripts/apply-pessoal-direcao-provincial.mjs",
         "verify:delete-escola": "node scripts/verify-delete-escola-responsavel.mjs"
     },
     "dependencies": {

@@ -4,7 +4,7 @@
  * Mobile-first design with cards, bottom sheet actions, and full-screen modals
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Icons } from '../../../components/ui/Icons';
 import { BottomSheet } from '../../../components/ui/BottomSheet';
 import { useDirecoesMunicipais } from '../hooks/useDirecoesMunicipais';
@@ -13,106 +13,62 @@ import type {
     DirecaoMunicipalDetalhes,
     HistoricoAdministrativoDirecaoMunicipal
 } from '../types';
+import {
+    DpPage,
+    DpContent,
+    DpHeader,
+    DpSearch,
+    DpChip,
+    DpBadge,
+    DpPanel,
+    DpMetricPill,
+    DpEmpty,
+    DpLoading,
+    DpAlert,
+    DpModal,
+    DpModalFooter,
+    DpConfirmModal,
+    DpFormSection,
+    DpButton,
+    DpInput,
+    DpTextarea,
+} from './ProvincialChrome';
 
-// Mobile-optimized modal with full-screen on mobile
-const Modal: React.FC<{
-    isOpen: boolean;
-    onClose: () => void;
-    title: string;
-    children: React.ReactNode;
-}> = ({ isOpen, onClose, title, children }) => {
-    useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        }
-        return () => {
-            document.body.style.overflow = '';
-        };
-    }, [isOpen]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 z-50">
-            {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
-                onClick={onClose}
-            />
-
-            {/* Modal - Full screen on mobile, centered on desktop */}
-            <div className="absolute inset-0 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:max-w-2xl md:w-full md:mx-4 md:max-h-[90vh] bg-white md:rounded-2xl shadow-2xl flex flex-col animate-slide-up md:animate-scale-in">
-                {/* Header */}
-                <div className="flex items-center justify-between px-4 py-4 md:px-6 border-b border-slate-100 flex-shrink-0">
-                    <h2 className="text-lg md:text-xl font-semibold text-slate-900">{title}</h2>
-                    <button
-                        onClick={onClose}
-                        className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
-                    >
-                        <Icons.X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-6">
-                    {children}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// Search and filter bar
 const SearchFilterBar: React.FC<{
     searchTerm: string;
     onSearchChange: (value: string) => void;
     filterActivo: boolean | null;
     onFilterChange: (value: boolean | null) => void;
 }> = ({ searchTerm, onSearchChange, filterActivo, onFilterChange }) => (
-    <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm pb-4 -mx-4 px-4 pt-4 md:mx-0 md:px-0">
-        {/* Search */}
-        <div className="relative mb-3">
-            <Icons.Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
-            <input
-                type="text"
-                placeholder="Pesquisar direção..."
-                value={searchTerm}
-                onChange={(e) => onSearchChange(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all min-h-[48px]"
-            />
-        </div>
-
-        {/* Filter chips */}
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0">
+    <div className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-md pb-3 -mx-4 px-4 pt-2 md:mx-0 md:px-0 md:bg-transparent md:backdrop-blur-none">
+        <DpSearch
+            value={searchTerm}
+            onChange={onSearchChange}
+            placeholder="Pesquisar direção..."
+            className="mb-3"
+        />
+        <div className="flex gap-2 overflow-x-auto pb-1">
             {[
-                { label: 'Todas', value: null },
+                { label: 'Todas', value: null as boolean | null },
                 { label: 'Activas', value: true },
                 { label: 'Inactivas', value: false },
             ].map((filter) => (
-                <button
+                <DpChip
                     key={String(filter.value)}
+                    label={filter.label}
+                    active={filterActivo === filter.value}
                     onClick={() => onFilterChange(filter.value)}
-                    className={`
-                        px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all min-h-[36px]
-                        ${filterActivo === filter.value
-                            ? 'bg-primary-600 text-white shadow-sm'
-                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                        }
-                    `}
-                >
-                    {filter.label}
-                </button>
+                />
             ))}
         </div>
     </div>
 );
 
-// Direction card for mobile
 const DirectionCard: React.FC<{
     direcao: DirecaoMunicipalResumida;
     onOpenActions: () => void;
 }> = ({ direcao, onOpenActions }) => (
-    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
+    <DpPanel padding={false}>
         <div className="p-4">
             <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -120,16 +76,10 @@ const DirectionCard: React.FC<{
                 </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                        <h3 className="font-semibold text-slate-900 truncate">{direcao.municipio}</h3>
-                        <span className={`
-                            flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border
-                            ${direcao.ativo
-                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                : 'bg-red-100 text-red-700 border-red-200'
-                            }
-                        `}>
+                        <h3 className="font-semibold text-slate-900 truncate tracking-tight">{direcao.municipio}</h3>
+                        <DpBadge tone={direcao.ativo ? 'success' : 'danger'}>
                             {direcao.ativo ? 'Activa' : 'Inactiva'}
-                        </span>
+                        </DpBadge>
                     </div>
                     <p className="text-sm text-slate-600 truncate mt-0.5">{direcao.nome}</p>
                     <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
@@ -147,39 +97,30 @@ const DirectionCard: React.FC<{
                 </div>
             </div>
         </div>
-
-        {/* Actions footer */}
         <div className="flex items-center border-t border-slate-100">
             <button
+                type="button"
                 onClick={onOpenActions}
-                className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors min-h-[48px]"
+                className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors min-h-[48px]"
             >
                 <Icons.EyeOpen className="w-4 h-4" />
                 Ver Opções
             </button>
         </div>
-    </div>
+    </DpPanel>
 );
 
-// Stats bar
 const StatsBar: React.FC<{
     total: number;
     activas: number;
     suspensas: number;
     inactivas: number;
 }> = ({ total, activas, suspensas, inactivas }) => (
-    <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-4 md:gap-4">
-        {[
-            { label: 'Total', value: total, color: 'text-slate-700', bg: 'bg-slate-100' },
-            { label: 'Activas', value: activas, color: 'text-emerald-700', bg: 'bg-emerald-100' },
-            { label: 'Suspensas', value: suspensas, color: 'text-amber-700', bg: 'bg-amber-100' },
-            { label: 'Inactivas', value: inactivas, color: 'text-red-700', bg: 'bg-red-100' },
-        ].map((stat) => (
-            <div key={stat.label} className={`flex-shrink-0 ${stat.bg} rounded-xl px-4 py-3 min-w-[100px] md:min-w-0`}>
-                <p className={`text-xl md:text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-                <p className="text-xs text-slate-500 font-medium">{stat.label}</p>
-            </div>
-        ))}
+    <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-4 md:gap-3">
+        <DpMetricPill label="Total" value={total} tone="neutral" />
+        <DpMetricPill label="Activas" value={activas} tone="success" />
+        <DpMetricPill label="Suspensas" value={suspensas} tone="warning" />
+        <DpMetricPill label="Inactivas" value={inactivas} tone="danger" />
     </div>
 );
 
@@ -212,6 +153,7 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
     const [suspensionMotivo, setSuspensionMotivo] = useState('');
     const [suspensionObservacoes, setSuspensionObservacoes] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [showReactivateModal, setShowReactivateModal] = useState(false);
 
     // Filter directions
     const filteredDirecoes = direcoes.filter(d => {
@@ -270,15 +212,19 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
         }
     };
 
+    const handleOpenReactivate = () => {
+        setShowActionsSheet(false);
+        setShowReactivateModal(true);
+    };
+
     const handleReactivate = async () => {
         if (!selectedDirecao) return;
-        setShowActionsSheet(false);
-
-        if (!confirm(`Tem certeza que deseja reativar a direção municipal de ${selectedDirecao.municipio}?`)) return;
 
         try {
             setActionLoading(true);
             await reativar(selectedDirecao.id, 'Reativação manual');
+            setShowReactivateModal(false);
+            setSelectedDirecao(null);
         } catch (err) {
             console.error('Error reactivating:', err);
             alert('Erro ao reativar direção municipal');
@@ -288,27 +234,19 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
     };
 
     if (loading) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary-600 border-t-transparent" />
-            </div>
-        );
+        return <DpLoading label="A carregar direções municipais..." />;
     }
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            {/* Header */}
-            <div className="px-4 pt-4 pb-2 sm:px-6">
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                    Direções Municipais
-                </h1>
-                <p className="text-sm text-slate-500 mt-0.5">
-                    Gerencie as direções da sua província
-                </p>
-            </div>
+        <DpPage>
+            <DpHeader
+                title="Direções Municipais"
+                subtitle="Gerencie as direções da sua província"
+                icon={<Icons.Building />}
+                accent="blue"
+            />
 
-            <div className="px-4 sm:px-6 space-y-4">
-                {/* Stats */}
+            <DpContent>
                 <StatsBar
                     total={estatisticas.total}
                     activas={estatisticas.activas}
@@ -316,7 +254,6 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                     inactivas={estatisticas.inactivas}
                 />
 
-                {/* Search and Filters */}
                 <SearchFilterBar
                     searchTerm={searchTerm}
                     onSearchChange={setSearchTerm}
@@ -324,16 +261,9 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                     onFilterChange={setFilterActivo}
                 />
 
-                {/* Error */}
-                {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
-                        <Icons.ExclamationCircle className="w-5 h-5 flex-shrink-0" />
-                        <span>{error}</span>
-                    </div>
-                )}
+                {error && <DpAlert>{error}</DpAlert>}
 
-                {/* Mobile: Cards */}
-                <div className="space-y-3 md:hidden pb-6">
+                <div className="space-y-3 md:hidden pb-2">
                     {filteredDirecoes.map(direcao => (
                         <DirectionCard
                             key={direcao.id}
@@ -342,52 +272,38 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                         />
                     ))}
                     {filteredDirecoes.length === 0 && (
-                        <div className="text-center py-12 text-slate-500">
-                            <Icons.Building className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                            <p>Nenhuma direção encontrada</p>
-                        </div>
+                        <DpEmpty
+                            icon={<Icons.Building />}
+                            title="Nenhuma direção encontrada"
+                            description="Ajuste a pesquisa ou os filtros para ver resultados."
+                        />
                     )}
                 </div>
 
-                {/* Desktop: Table */}
-                <div className="hidden md:block bg-white rounded-2xl border border-slate-200/60 overflow-hidden mb-6">
-                    <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-50">
+                <DpPanel padding={false} className="hidden md:block">
+                    <table className="min-w-full divide-y divide-slate-100">
+                        <thead className="bg-slate-50/80">
                             <tr>
-                                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                    Município
-                                </th>
-                                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                    Director
-                                </th>
-                                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                    Contacto
-                                </th>
-                                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                    Escolas
-                                </th>
-                                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                    Estado
-                                </th>
-                                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                    Acções
-                                </th>
+                                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Município</th>
+                                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Director</th>
+                                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contacto</th>
+                                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Escolas</th>
+                                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado</th>
+                                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Acções</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-100">
+                        <tbody className="divide-y divide-slate-100">
                             {filteredDirecoes.map(direcao => (
-                                <tr key={direcao.id} className="hover:bg-slate-50 transition-colors">
+                                <tr key={direcao.id} className="hover:bg-slate-50/80 transition-colors">
                                     <td className="px-5 py-4 whitespace-nowrap">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                                                 <Icons.Building className="w-4 h-4 text-indigo-600" />
                                             </div>
-                                            <span className="font-medium text-slate-900">{direcao.municipio}</span>
+                                            <span className="font-semibold text-slate-900">{direcao.municipio}</span>
                                         </div>
                                     </td>
-                                    <td className="px-5 py-4 whitespace-nowrap text-slate-700">
-                                        {direcao.nome}
-                                    </td>
+                                    <td className="px-5 py-4 whitespace-nowrap text-slate-700">{direcao.nome}</td>
                                     <td className="px-5 py-4 whitespace-nowrap">
                                         <div>
                                             <p className="text-slate-700">{direcao.email}</p>
@@ -396,64 +312,59 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                                             )}
                                         </div>
                                     </td>
-                                    <td className="px-5 py-4 whitespace-nowrap text-slate-700">
-                                        {direcao.escolas_count}
-                                    </td>
+                                    <td className="px-5 py-4 whitespace-nowrap text-slate-700 tabular-nums">{direcao.escolas_count}</td>
                                     <td className="px-5 py-4 whitespace-nowrap">
-                                        <span className={`
-                                            inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border
-                                            ${direcao.ativo
-                                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                                : 'bg-red-100 text-red-700 border-red-200'
-                                            }
-                                        `}>
+                                        <DpBadge tone={direcao.ativo ? 'success' : 'danger'}>
                                             {direcao.ativo ? 'Activa' : 'Inactiva'}
-                                        </span>
+                                        </DpBadge>
                                     </td>
                                     <td className="px-5 py-4 whitespace-nowrap">
                                         <div className="flex items-center gap-1">
                                             <button
+                                                type="button"
                                                 onClick={() => {
                                                     setSelectedDirecao(direcao);
                                                     handleViewDetails();
                                                 }}
-                                                className="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                                                className="p-2.5 text-slate-500 hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
                                                 title="Ver detalhes"
                                             >
                                                 <Icons.EyeOpen className="w-4 h-4" />
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={async () => {
                                                     setSelectedDirecao(direcao);
                                                     const hist = await fetchHistorico(direcao.id);
                                                     setHistorico(hist);
                                                     setShowHistoryModal(true);
                                                 }}
-                                                className="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                                                className="p-2.5 text-slate-500 hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
                                                 title="Ver histórico"
                                             >
                                                 <Icons.History className="w-4 h-4" />
                                             </button>
                                             {direcao.ativo ? (
                                                 <button
+                                                    type="button"
                                                     onClick={() => {
                                                         setSelectedDirecao(direcao);
                                                         handleOpenSuspend();
                                                     }}
-                                                    className="p-2 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                    className="p-2.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
                                                     title="Suspender"
                                                 >
                                                     <Icons.Pause className="w-4 h-4" />
                                                 </button>
                                             ) : (
                                                 <button
-                                                    onClick={async () => {
+                                                    type="button"
+                                                    onClick={() => {
                                                         setSelectedDirecao(direcao);
-                                                        if (!confirm(`Reativar a direção de ${direcao.municipio}?`)) return;
-                                                        await reativar(direcao.id, 'Reativação manual');
+                                                        setShowReactivateModal(true);
                                                     }}
                                                     disabled={actionLoading}
-                                                    className="p-2 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                                    className="p-2.5 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors disabled:opacity-50 min-w-[40px] min-h-[40px] flex items-center justify-center"
                                                     title="Reativar"
                                                 >
                                                     <Icons.Play className="w-4 h-4" />
@@ -467,12 +378,12 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                     </table>
 
                     {filteredDirecoes.length === 0 && (
-                        <div className="text-center py-12 text-slate-500">
+                        <div className="text-center py-12 text-slate-500 text-sm">
                             Nenhuma direção municipal encontrada
                         </div>
                     )}
-                </div>
-            </div>
+                </DpPanel>
+            </DpContent>
 
             {/* Bottom Sheet for Actions (Mobile) */}
             <BottomSheet
@@ -501,140 +412,200 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                     }] : [{
                         label: 'Reativar Direção',
                         icon: <Icons.Play className="w-5 h-5" />,
-                        onClick: handleReactivate,
+                        onClick: handleOpenReactivate,
                         variant: 'success' as const,
                         description: 'Restaurar funcionamento',
                     }]),
                 ]}
             />
 
-            {/* Details Modal */}
-            <Modal
+            <DpModal
                 isOpen={showDetailsModal}
-                onClose={() => { setShowDetailsModal(false); setDirecaoDetalhes(null); }}
-                title={`Detalhes - ${selectedDirecao?.municipio || ''}`}
+                onClose={() => {
+                    setShowDetailsModal(false)
+                    setDirecaoDetalhes(null)
+                }}
+                title={`Detalhes — ${selectedDirecao?.municipio || ''}`}
+                subtitle="Informação da direção municipal"
+                icon={<Icons.Building />}
+                accent="blue"
+                size="lg"
+                badge={
+                    selectedDirecao ? (
+                        <DpBadge tone={selectedDirecao.ativo ? 'success' : 'warning'}>
+                            {selectedDirecao.ativo ? 'Activa' : 'Suspensa'}
+                        </DpBadge>
+                    ) : undefined
+                }
             >
                 {direcaoDetalhes ? (
-                    <div className="space-y-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {[
-                                { label: 'Município', value: direcaoDetalhes.municipio },
-                                { label: 'Província', value: direcaoDetalhes.provincia },
-                                { label: 'Director', value: direcaoDetalhes.nome },
-                                { label: 'Cargo', value: direcaoDetalhes.cargo || 'N/A' },
-                                { label: 'Email', value: direcaoDetalhes.email },
-                                { label: 'Telefone', value: direcaoDetalhes.telefone || 'N/A' },
-                            ].map((item) => (
-                                <div key={item.label}>
-                                    <p className="text-sm text-slate-500 font-medium">{item.label}</p>
-                                    <p className="text-slate-900 mt-0.5">{item.value}</p>
-                                </div>
-                            ))}
-                        </div>
+                    <div className="space-y-4">
+                        <DpFormSection title="Identificação" description="Dados institucionais e de contacto">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                {[
+                                    { label: 'Município', value: direcaoDetalhes.municipio },
+                                    { label: 'Província', value: direcaoDetalhes.provincia },
+                                    { label: 'Director', value: direcaoDetalhes.nome },
+                                    { label: 'Cargo', value: direcaoDetalhes.cargo || 'N/A' },
+                                    { label: 'Email', value: direcaoDetalhes.email },
+                                    { label: 'Telefone', value: direcaoDetalhes.telefone || 'N/A' },
+                                ].map((item) => (
+                                    <div
+                                        key={item.label}
+                                        className="rounded-xl bg-white/70 border border-slate-100 px-3 py-2.5"
+                                    >
+                                        <p className="text-xs text-slate-500 font-medium">{item.label}</p>
+                                        <p className="text-slate-900 mt-0.5 text-sm font-medium break-words">
+                                            {item.value}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </DpFormSection>
 
-                        <div className="border-t border-slate-100 pt-4">
-                            <h3 className="font-semibold text-slate-900 mb-3">Estatísticas</h3>
+                        <DpFormSection title="Estatísticas" description="Indicadores sob gestão desta direção">
                             <div className="grid grid-cols-3 gap-3">
                                 {[
-                                    { icon: <Icons.School className="w-5 h-5 text-blue-600" />, value: direcaoDetalhes.total_escolas, label: 'Escolas', bg: 'bg-blue-50' },
-                                    { icon: <Icons.Users className="w-5 h-5 text-purple-600" />, value: direcaoDetalhes.total_professores, label: 'Professores', bg: 'bg-purple-50' },
-                                    { icon: <Icons.AcademicCap className="w-5 h-5 text-emerald-600" />, value: direcaoDetalhes.total_alunos, label: 'Alunos', bg: 'bg-emerald-50' },
+                                    {
+                                        icon: <Icons.School className="w-5 h-5 text-blue-600" />,
+                                        value: direcaoDetalhes.total_escolas,
+                                        label: 'Escolas',
+                                        bg: 'bg-blue-50 border-blue-100',
+                                    },
+                                    {
+                                        icon: <Icons.Users className="w-5 h-5 text-violet-600" />,
+                                        value: direcaoDetalhes.total_professores,
+                                        label: 'Professores',
+                                        bg: 'bg-violet-50 border-violet-100',
+                                    },
+                                    {
+                                        icon: <Icons.AcademicCap className="w-5 h-5 text-emerald-600" />,
+                                        value: direcaoDetalhes.total_alunos,
+                                        label: 'Alunos',
+                                        bg: 'bg-emerald-50 border-emerald-100',
+                                    },
                                 ].map((stat) => (
-                                    <div key={stat.label} className={`${stat.bg} rounded-xl p-3 text-center`}>
+                                    <div
+                                        key={stat.label}
+                                        className={`${stat.bg} border rounded-xl p-3 text-center transition-transform hover:scale-[1.02]`}
+                                    >
                                         <div className="flex justify-center mb-1">{stat.icon}</div>
                                         <p className="text-xl font-bold text-slate-900">{stat.value}</p>
                                         <p className="text-xs text-slate-500">{stat.label}</p>
                                     </div>
                                 ))}
                             </div>
-                        </div>
+                        </DpFormSection>
                     </div>
                 ) : (
                     <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-600 border-t-transparent" />
                     </div>
                 )}
-            </Modal>
+            </DpModal>
 
-            {/* Suspend Modal */}
-            <Modal
+            <DpModal
                 isOpen={showSuspendModal}
-                onClose={() => setShowSuspendModal(false)}
+                onClose={() => {
+                    if (!actionLoading) setShowSuspendModal(false)
+                }}
                 title="Suspender Direção"
+                subtitle={selectedDirecao?.municipio}
+                icon={<Icons.Pause />}
+                accent="amber"
+                busy={actionLoading}
+                badge={<DpBadge tone="warning">Suspensão</DpBadge>}
+                footer={
+                    <DpModalFooter>
+                        <DpButton
+                            variant="secondary"
+                            onClick={() => setShowSuspendModal(false)}
+                            disabled={actionLoading}
+                            className="sm:min-w-[7.5rem]"
+                        >
+                            Cancelar
+                        </DpButton>
+                        <DpButton
+                            variant="warning"
+                            onClick={handleSuspend}
+                            disabled={actionLoading || !suspensionMotivo}
+                            className="sm:min-w-[8rem]"
+                        >
+                            {actionLoading ? 'A suspender…' : 'Suspender'}
+                        </DpButton>
+                    </DpModalFooter>
+                }
             >
                 <div className="space-y-4">
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                        <p className="text-amber-800 text-sm">
-                            Está prestes a suspender a direção municipal de <strong>{selectedDirecao?.municipio}</strong>.
-                            Esta acção será registada no histórico.
-                        </p>
-                    </div>
+                    <DpAlert tone="warning">
+                        Está prestes a suspender a direção municipal de{' '}
+                        <strong>{selectedDirecao?.municipio}</strong>. Esta acção será registada no
+                        histórico.
+                    </DpAlert>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                            Motivo da suspensão *
-                        </label>
-                        <input
-                            type="text"
+                    <DpFormSection title="Justificação" description="Motivo obrigatório e observações">
+                        <DpInput
+                            label="Motivo da suspensão"
+                            required
                             value={suspensionMotivo}
                             onChange={(e) => setSuspensionMotivo(e.target.value)}
                             placeholder="Indique o motivo..."
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 min-h-[48px]"
                         />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                            Observações (opcional)
-                        </label>
-                        <textarea
+                        <DpTextarea
+                            label="Observações (opcional)"
                             value={suspensionObservacoes}
                             onChange={(e) => setSuspensionObservacoes(e.target.value)}
                             placeholder="Observações adicionais..."
                             rows={3}
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                         />
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                        <button
-                            onClick={() => setShowSuspendModal(false)}
-                            className="flex-1 py-3 text-slate-700 bg-slate-100 rounded-xl font-medium hover:bg-slate-200 transition-colors min-h-[48px]"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            onClick={handleSuspend}
-                            disabled={actionLoading || !suspensionMotivo}
-                            className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors min-h-[48px]"
-                        >
-                            {actionLoading ? 'A suspender...' : 'Suspender'}
-                        </button>
-                    </div>
+                    </DpFormSection>
                 </div>
-            </Modal>
+            </DpModal>
 
-            {/* History Modal */}
-            <Modal
+            <DpConfirmModal
+                isOpen={showReactivateModal}
+                onClose={() => setShowReactivateModal(false)}
+                onConfirm={handleReactivate}
+                title="Reativar Direção"
+                message={`Tem a certeza que deseja reativar a direção municipal de ${selectedDirecao?.municipio || ''}?`}
+                confirmText="Reativar"
+                cancelText="Cancelar"
+                variant="info"
+                loading={actionLoading}
+            />
+
+            <DpModal
                 isOpen={showHistoryModal}
                 onClose={() => setShowHistoryModal(false)}
-                title={`Histórico - ${selectedDirecao?.municipio || ''}`}
+                title={`Histórico — ${selectedDirecao?.municipio || ''}`}
+                subtitle="Alterações administrativas"
+                icon={<Icons.History />}
+                accent="slate"
+                badge={<DpBadge tone="neutral">Auditoria</DpBadge>}
             >
                 {historico.length > 0 ? (
-                    <div className="space-y-4">
-                        {historico.map(entry => (
-                            <div key={entry.id} className="border-l-4 border-primary-400 pl-4 py-2">
+                    <div className="space-y-3">
+                        {historico.map((entry) => (
+                            <div
+                                key={entry.id}
+                                className="relative rounded-xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50/80 p-3.5 pl-4 border-l-4 border-l-primary-400 shadow-sm transition-shadow hover:shadow-md"
+                            >
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <span className={`
-                                        px-2.5 py-1 text-xs font-medium rounded-full
-                                        ${entry.estado_novo === 'activa' ? 'bg-emerald-100 text-emerald-700' :
-                                            entry.estado_novo === 'suspensa' ? 'bg-amber-100 text-amber-700' :
-                                                'bg-red-100 text-red-700'
+                                    <span
+                                        className={`
+                                        px-2.5 py-1 text-xs font-medium rounded-lg
+                                        ${
+                                            entry.estado_novo === 'activa'
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : entry.estado_novo === 'suspensa'
+                                                  ? 'bg-amber-100 text-amber-700'
+                                                  : 'bg-red-100 text-red-700'
                                         }
-                                    `}>
+                                    `}
+                                    >
                                         {entry.estado_anterior || 'N/A'} → {entry.estado_novo}
                                     </span>
-                                    <span className="text-sm text-slate-500">
+                                    <span className="text-xs text-slate-500 font-medium">
                                         {new Date(entry.created_at).toLocaleDateString('pt-AO')}
                                     </span>
                                 </div>
@@ -648,13 +619,14 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                         ))}
                     </div>
                 ) : (
-                    <div className="text-center py-8 text-slate-500">
+                    <div className="text-center py-10 text-slate-500">
                         <Icons.History className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                        <p>Nenhum histórico registado</p>
+                        <p className="font-medium text-slate-600">Nenhum histórico registado</p>
+                        <p className="text-sm mt-1">As alterações administrativas aparecerão aqui.</p>
                     </div>
                 )}
-            </Modal>
-        </div>
+            </DpModal>
+        </DpPage>
     );
 };
 

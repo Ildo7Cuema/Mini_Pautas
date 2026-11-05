@@ -143,7 +143,7 @@ Password comum: `SeedTest@2026!`
 
 | Email | Província | Estado | Para testar |
 |--------|-----------|--------|-------------|
-| `dp.luanda@seed.edugest.test` | Luanda | Activa | Dashboard provincial, DMs Belas/Cacuaco/Viana, escola SEED-PRI |
+| `dp.luanda@seed.edugest.test` | Luanda | Activa | Dashboard provincial, DMs Belas/Cacuaco/Viana, escola SEED-PRI; menu Pessoal / Planeamento / Estatísticas / Contratação / Projectos (após `npm run db:apply-pessoal-dp` ou SQL `20261105_pessoal_direcao_provincial.sql`) |
 | `dp.benguela@seed.edugest.test` | Benguela | Activa | DMs Benguela/Lobito, escola SEED-SEC |
 | `dp.huambo@seed.edugest.test` | Huambo | Activa | DMs Huambo/Caála (bloqueada), escola SEED-CMP |
 | `dp.cabinda.pendente@seed.edugest.test` | Cabinda | Pendente | Fluxo de aprovação SUPERADMIN |

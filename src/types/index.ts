@@ -459,7 +459,7 @@ export interface ImportError {
 // USER ROLES AND PROFILES
 // ============================================
 
-export type UserRole = 'ESCOLA' | 'PROFESSOR' | 'SUPERADMIN' | 'ALUNO' | 'ENCARREGADO' | 'SECRETARIO' | 'DIRECAO_MUNICIPAL' | 'DIRECAO_PROVINCIAL';
+export type UserRole = 'ESCOLA' | 'PROFESSOR' | 'SUPERADMIN' | 'ALUNO' | 'ENCARREGADO' | 'SECRETARIO' | 'DIRECAO_MUNICIPAL' | 'DIRECAO_PROVINCIAL' | 'FUNCIONARIO_PROVINCIAL';
 
 export interface UserProfile {
     id: string;
@@ -567,6 +567,84 @@ export interface DirecaoProvincialProfile extends DirecaoProvincial {
     municipios_count?: number;
     escolas_count?: number;
     direcoes_municipais_count?: number;
+}
+
+export type DepartamentoProvincial =
+    | 'EDUCACAO_ENSINO'
+    | 'PLANEAMENTO_RH'
+    | 'INSPECCAO_SUPERVISAO'
+    | 'CIENCIA_TECNOLOGIA';
+
+export interface PessoalDirecaoProvincial {
+    id: string;
+    direcao_provincial_id: string;
+    user_id?: string | null;
+    nome: string;
+    email: string;
+    telefone?: string | null;
+    numero_funcionario?: string | null;
+    departamento: DepartamentoProvincial | string;
+    cargo?: string | null;
+    ativo: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface PessoalDirecaoProvincialProfile extends PessoalDirecaoProvincial {
+    user_profile: UserProfile;
+    direcao_provincial?: DirecaoProvincial;
+}
+
+export type EstadoProcessoProvincial = 'rascunho' | 'em_curso' | 'concluido' | 'suspenso';
+
+export interface PlanoProvincial {
+    id: string;
+    direcao_provincial_id: string;
+    titulo: string;
+    descricao?: string | null;
+    periodo?: string | null;
+    objectivos?: string | null;
+    metas?: string | null;
+    responsavel?: string | null;
+    estado: EstadoProcessoProvincial;
+    data_inicio?: string | null;
+    data_fim?: string | null;
+    notas?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ContratacaoEmpresaProvincial {
+    id: string;
+    direcao_provincial_id: string;
+    titulo: string;
+    empresa?: string | null;
+    objecto?: string | null;
+    valor_estimado?: number | null;
+    responsavel?: string | null;
+    estado: EstadoProcessoProvincial;
+    data_inicio?: string | null;
+    data_fim?: string | null;
+    notas?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export type AreaProjectoProvincial = 'ciencia' | 'tecnologia' | 'inovacao' | 'investigacao';
+
+export interface ProjectoProvincial {
+    id: string;
+    direcao_provincial_id: string;
+    titulo: string;
+    descricao?: string | null;
+    area: AreaProjectoProvincial;
+    responsavel?: string | null;
+    estado: EstadoProcessoProvincial;
+    data_inicio?: string | null;
+    data_fim?: string | null;
+    notas?: string | null;
+    created_at: string;
+    updated_at: string;
 }
 
 // ============================================
@@ -697,6 +775,7 @@ export interface AuthUser {
     secretario?: SecretarioProfile;
     direcaoMunicipal?: DirecaoMunicipalProfile;
     direcaoProvincial?: DirecaoProvincialProfile;
+    pessoalDirecaoProvincial?: PessoalDirecaoProvincialProfile;
 }
 
 // ALUNO Profile - Student with turma and escola info

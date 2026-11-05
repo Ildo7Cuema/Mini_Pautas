@@ -4,6 +4,7 @@ import { LoginScreen } from './components/LoginScreen'
 import { DashboardLayout } from './components/DashboardLayout'
 import { PageSkeleton } from './components/ui/PageSkeleton'
 import { isSuperAdmin } from './utils/permissions'
+import { provincialStaffCanOpenPage } from './utils/provincialStaffAccess'
 import { PWAInstallPrompt } from './components/PWAInstallPrompt'
 import { SystemUpdateAlert } from './components/SystemUpdateAlert'
 import { EscolaProfileSetupModal } from './components/EscolaProfileSetupModal'
@@ -60,7 +61,13 @@ const EscolasProvincialOverview = lazy(() => import('./modules/provincial_educat
 const SupervisaoPedagogicaProvincial = lazy(() => import('./modules/provincial_education/components/SupervisaoPedagogicaProvincial').then(m => ({ default: m.SupervisaoPedagogicaProvincial })))
 const CircularesProvinciaisPage = lazy(() => import('./modules/provincial_education/components/CircularesProvinciaisPage').then(m => ({ default: m.CircularesProvinciaisPage })))
 const RelatoriosProvinciaisPage = lazy(() => import('./modules/provincial_education/components/RelatoriosProvinciaisPage').then(m => ({ default: m.RelatoriosProvinciaisPage })))
+const PessoalProvincialPage = lazy(() => import('./modules/provincial_education/components/PessoalProvincialPage').then(m => ({ default: m.PessoalProvincialPage })))
+const PlaneamentoProvinciaisPage = lazy(() => import('./modules/provincial_education/components/PlaneamentoProvinciaisPage').then(m => ({ default: m.PlaneamentoProvinciaisPage })))
+const EstatisticasProvinciaisPage = lazy(() => import('./modules/provincial_education/components/EstatisticasProvinciaisPage').then(m => ({ default: m.EstatisticasProvinciaisPage })))
+const ContratacaoEmpresasProvinciaisPage = lazy(() => import('./modules/provincial_education/components/ContratacaoEmpresasProvinciaisPage').then(m => ({ default: m.ContratacaoEmpresasProvinciaisPage })))
+const ProjectosProvinciaisPage = lazy(() => import('./modules/provincial_education/components/ProjectosProvinciaisPage').then(m => ({ default: m.ProjectosProvinciaisPage })))
 const DirecaoProvincialRegistration = lazy(() => import('./components/DirecaoProvincialRegistration').then(m => ({ default: m.DirecaoProvincialRegistration })))
+const FuncionarioProvincialRegistration = lazy(() => import('./components/FuncionarioProvincialRegistration').then(m => ({ default: m.FuncionarioProvincialRegistration })))
 const ConfiguracaoDocumentos = lazy(() => import('./components/ConfiguracaoDocumentos').then(m => ({ default: m.ConfiguracaoDocumentos })))
 const TemplatesManagement = lazy(() => import('./components/TemplatesManagement').then(m => ({ default: m.TemplatesManagement })))
 const ConcursosProvinciaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosProvinciaisPage').then(m => ({ default: m.ConcursosProvinciaisPage })))
@@ -68,7 +75,7 @@ const ConcursosMunicipaisPage = lazy(() => import('./modules/concursos_publicos/
 const InscricaoConcursoPublicaPage = lazy(() => import('./modules/concursos_publicos/components/InscricaoConcursoPublicaPage').then(m => ({ default: m.InscricaoConcursoPublicaPage })))
 
 function App() {
-    const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, escolaProfile, profile, secretarioProfile } = useAuth()
+    const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, isFuncionarioProvincial, escolaProfile, profile, secretarioProfile, pessoalDirecaoProvincialProfile } = useAuth()
     const [currentPage, setCurrentPage] = useState('dashboard')
     const [navigationParams, setNavigationParams] = useState<{ turmaId?: string; filter?: string }>({})
     const [searchQuery, setSearchQuery] = useState('')
@@ -157,6 +164,14 @@ function App() {
         return (
             <Suspense fallback={<PageSkeleton />}>
                 <SecretaryRegistration />
+            </Suspense>
+        )
+    }
+
+    if (window.location.pathname === '/register-funcionario-dp') {
+        return (
+            <Suspense fallback={<PageSkeleton />}>
+                <FuncionarioProvincialRegistration />
             </Suspense>
         )
     }
@@ -275,8 +290,18 @@ function App() {
             }
         }
 
-        // DIREÇÃO PROVINCIAL routes
-        if (isDirecaoProvincial) {
+        // DIREÇÃO PROVINCIAL + FUNCIONÁRIO PROVINCIAL routes
+        if (isDirecaoProvincial || isFuncionarioProvincial) {
+            if (
+                isFuncionarioProvincial &&
+                !provincialStaffCanOpenPage(
+                    pessoalDirecaoProvincialProfile?.departamento,
+                    currentPage,
+                )
+            ) {
+                return <DirecaoProvincialDashboard onNavigate={handleNavigate} />
+            }
+
             switch (currentPage) {
                 case 'dashboard':
                     return <DirecaoProvincialDashboard onNavigate={handleNavigate} />
@@ -292,10 +317,22 @@ function App() {
                     return <ConcursosProvinciaisPage />
                 case 'provincial-relatorios':
                     return <RelatoriosProvinciaisPage />
+                case 'provincial-pessoal':
+                    return <PessoalProvincialPage />
+                case 'provincial-planeamento':
+                    return <PlaneamentoProvinciaisPage />
+                case 'provincial-estatisticas':
+                    return <EstatisticasProvinciaisPage />
+                case 'provincial-contratacao-empresas':
+                    return <ContratacaoEmpresasProvinciaisPage />
+                case 'provincial-projectos':
+                    return <ProjectosProvinciaisPage />
                 case 'settings':
-                    return <SettingsPage />
+                    return isDirecaoProvincial ? <SettingsPage /> : (
+                        <DirecaoProvincialDashboard onNavigate={handleNavigate} />
+                    )
                 default:
-                    return <DirecaoProvincialDashboard />
+                    return <DirecaoProvincialDashboard onNavigate={handleNavigate} />
             }
         }
 
