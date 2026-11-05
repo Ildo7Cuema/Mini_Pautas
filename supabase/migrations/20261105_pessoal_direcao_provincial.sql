@@ -19,7 +19,10 @@ ALTER TABLE user_profiles
     DROP CONSTRAINT IF EXISTS user_profiles_superadmin_escola_check;
 
 ALTER TABLE user_profiles
-    ADD CONSTRAINT user_profiles_superadmin_escola_check
+    DROP CONSTRAINT IF EXISTS user_profiles_escola_check;
+
+ALTER TABLE user_profiles
+    ADD CONSTRAINT user_profiles_escola_check
     CHECK (
         (tipo_perfil IN ('SUPERADMIN', 'DIRECAO_MUNICIPAL', 'DIRECAO_PROVINCIAL', 'FUNCIONARIO_PROVINCIAL')
             AND escola_id IS NULL)
@@ -233,6 +236,7 @@ CREATE OR REPLACE FUNCTION register_funcionario_provincial_account(
 DECLARE
     v_pessoal RECORD;
     v_provincia TEXT;
+    v_existing_tipo TEXT;
 BEGIN
     SELECT * INTO v_pessoal
     FROM pessoal_direcao_provincial
@@ -246,6 +250,21 @@ BEGIN
         );
     END IF;
 
+    SELECT tipo_perfil INTO v_existing_tipo
+    FROM user_profiles
+    WHERE user_id = p_user_id;
+
+    IF v_existing_tipo IS NOT NULL
+       AND v_existing_tipo <> 'FUNCIONARIO_PROVINCIAL' THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', format(
+                'Este email já está associado ao perfil %s. Use outro email no convite.',
+                v_existing_tipo
+            )
+        );
+    END IF;
+
     UPDATE pessoal_direcao_provincial
     SET user_id = p_user_id,
         updated_at = NOW()
@@ -256,7 +275,9 @@ BEGIN
     ON CONFLICT (user_id) DO UPDATE
     SET tipo_perfil = 'FUNCIONARIO_PROVINCIAL',
         escola_id = NULL,
-        ativo = true;
+        ativo = true
+    WHERE user_profiles.tipo_perfil IS NULL
+       OR user_profiles.tipo_perfil = 'FUNCIONARIO_PROVINCIAL';
 
     SELECT provincia INTO v_provincia
     FROM direcoes_provinciais

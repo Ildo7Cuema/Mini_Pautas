@@ -166,7 +166,7 @@ export const DpIconButton: React.FC<{
             title={label}
             className={`
                 flex items-center justify-center
-                min-w-[44px] min-h-[44px] p-2.5 rounded-xl
+                min-w-[44px] min-h-[44px] p-2.5 rounded
                 transition-all duration-200 active:scale-95
                 disabled:opacity-50 disabled:pointer-events-none
                 ${styles[variant]} ${className}
@@ -182,18 +182,22 @@ export const DpButton: React.FC<{
     onClick?: () => void
     disabled?: boolean
     type?: 'button' | 'submit'
+    form?: string
     variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'warning'
     fullWidth?: boolean
     icon?: React.ReactNode
+    iconRight?: React.ReactNode
     className?: string
 }> = ({
     children,
     onClick,
     disabled,
     type = 'button',
+    form,
     variant = 'primary',
     fullWidth,
     icon,
+    iconRight,
     className = '',
 }) => {
     const styles = {
@@ -209,20 +213,23 @@ export const DpButton: React.FC<{
     return (
         <button
             type={type}
+            form={form}
             onClick={onClick}
             disabled={disabled}
             className={`
                 inline-flex items-center justify-center gap-2
-                px-4 py-2.5 min-h-[44px] rounded-xl
+                px-4 py-2.5 min-h-[44px] rounded
                 text-sm font-semibold tracking-tight
                 transition-all duration-200 active:scale-[0.98]
                 disabled:opacity-50 disabled:pointer-events-none
+                [&_svg]:w-4 [&_svg]:h-4 [&_svg]:flex-shrink-0
                 ${fullWidth ? 'w-full' : ''}
                 ${styles[variant]} ${className}
             `}
         >
             {icon}
-            {children}
+            <span className="truncate">{children}</span>
+            {iconRight}
         </button>
     )
 }
@@ -344,18 +351,18 @@ export const DpSearch: React.FC<{
     className?: string
 }> = ({ value, onChange, placeholder = 'Pesquisar...', className = '' }) => (
     <div className={`relative ${className}`}>
-        <Icons.Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+        <Icons.Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         <input
             type="search"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             className="
-                w-full pl-11 pr-4 py-3 min-h-[48px]
-                bg-white border border-slate-200/80 rounded-xl
-                text-base text-slate-900 placeholder:text-slate-400
+                w-full pl-10 pr-3.5 py-2.5 min-h-[44px]
+                bg-white border border-slate-200 rounded
+                text-sm text-slate-900 placeholder:text-slate-400
                 shadow-sm shadow-slate-900/[0.02]
-                focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500
+                focus:outline-none focus:ring-2 focus:ring-primary-500/35 focus:border-primary-500
                 transition-all duration-200
             "
         />
@@ -371,7 +378,7 @@ export const DpChip: React.FC<{
         type="button"
         onClick={onClick}
         className={`
-            px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap
+            px-3.5 py-2 rounded text-sm font-medium whitespace-nowrap
             min-h-[36px] transition-all duration-200
             ${active
                 ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/25'
@@ -397,54 +404,114 @@ export const DpLabel: React.FC<{
     </label>
 )
 
-const fieldClass =
-    'w-full px-4 py-3 min-h-[48px] bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 shadow-sm shadow-slate-900/[0.02] focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 transition-all duration-200'
+const fieldBase =
+    'w-full py-2.5 min-h-[44px] bg-white border border-slate-200 rounded text-sm text-slate-900 placeholder:text-slate-400 shadow-sm shadow-slate-900/[0.02] focus:outline-none focus:ring-2 focus:ring-primary-500/35 focus:border-primary-500 transition-all duration-200 disabled:bg-slate-50 disabled:text-slate-500'
+
+const resolveInputIcon = (
+    icon: React.ReactNode | undefined,
+    type?: string,
+): React.ReactNode | undefined => {
+    if (icon) return icon
+    if (type === 'email') return <Icons.Email className="w-4 h-4" />
+    if (type === 'tel') return <Icons.Phone className="w-4 h-4" />
+    if (type === 'date' || type === 'datetime-local' || type === 'month')
+        return <Icons.Calendar className="w-4 h-4" />
+    if (type === 'search') return <Icons.Search className="w-4 h-4" />
+    if (type === 'password') return <Icons.Lock className="w-4 h-4" />
+    return undefined
+}
 
 export const DpInput: React.FC<
-    React.InputHTMLAttributes<HTMLInputElement> & { label?: string }
-> = ({ label, className = '', id, required, ...props }) => (
-    <div className="w-full">
-        {label && (
-            <DpLabel htmlFor={id} required={required}>
-                {label}
-            </DpLabel>
-        )}
-        <input id={id} required={required} className={`${fieldClass} ${className}`} {...props} />
-    </div>
-)
+    React.InputHTMLAttributes<HTMLInputElement> & {
+        label?: string
+        icon?: React.ReactNode
+    }
+> = ({ label, icon, className = '', id, required, type, ...props }) => {
+    const resolvedIcon = resolveInputIcon(icon, type)
+    return (
+        <div className="w-full">
+            {label && (
+                <DpLabel htmlFor={id} required={required}>
+                    {label}
+                </DpLabel>
+            )}
+            <div className="relative">
+                {resolvedIcon && (
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none [&_svg]:w-4 [&_svg]:h-4">
+                        {resolvedIcon}
+                    </span>
+                )}
+                <input
+                    id={id}
+                    type={type}
+                    required={required}
+                    className={`${fieldBase} ${resolvedIcon ? 'pl-10 pr-3.5' : 'px-3.5'} ${className}`}
+                    {...props}
+                />
+            </div>
+        </div>
+    )
+}
 
 export const DpTextarea: React.FC<
-    React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string }
-> = ({ label, className = '', id, required, ...props }) => (
+    React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+        label?: string
+        icon?: React.ReactNode
+    }
+> = ({ label, icon, className = '', id, required, ...props }) => (
     <div className="w-full">
         {label && (
             <DpLabel htmlFor={id} required={required}>
                 {label}
             </DpLabel>
         )}
-        <textarea
-            id={id}
-            required={required}
-            className={`${fieldClass} min-h-[96px] resize-y ${className}`}
-            {...props}
-        />
+        <div className="relative">
+            {icon && (
+                <span className="absolute left-3 top-3 text-slate-400 pointer-events-none [&_svg]:w-4 [&_svg]:h-4">
+                    {icon}
+                </span>
+            )}
+            <textarea
+                id={id}
+                required={required}
+                className={`${fieldBase} min-h-[96px] resize-y ${icon ? 'pl-10 pr-3.5 pt-2.5' : 'px-3.5'} ${className}`}
+                {...props}
+            />
+        </div>
     </div>
 )
 
 export const DpSelect: React.FC<
-    React.SelectHTMLAttributes<HTMLSelectElement> & { label?: string }
-> = ({ label, className = '', id, required, children, ...props }) => (
-    <div className="w-full">
-        {label && (
-            <DpLabel htmlFor={id} required={required}>
-                {label}
-            </DpLabel>
-        )}
-        <select id={id} required={required} className={`${fieldClass} ${className}`} {...props}>
-            {children}
-        </select>
-    </div>
-)
+    React.SelectHTMLAttributes<HTMLSelectElement> & {
+        label?: string
+        icon?: React.ReactNode
+    }
+> = ({ label, icon, className = '', id, required, children, ...props }) => {
+    const resolvedIcon = icon ?? <Icons.List className="w-4 h-4" />
+    return (
+        <div className="w-full">
+            {label && (
+                <DpLabel htmlFor={id} required={required}>
+                    {label}
+                </DpLabel>
+            )}
+            <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none [&_svg]:w-4 [&_svg]:h-4">
+                    {resolvedIcon}
+                </span>
+                <select
+                    id={id}
+                    required={required}
+                    className={`${fieldBase} appearance-none pl-10 pr-9 cursor-pointer ${className}`}
+                    {...props}
+                >
+                    {children}
+                </select>
+                <Icons.ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            </div>
+        </div>
+    )
+}
 
 /* -------------------------------------------------------------------------- */
 /* Status / empty / loading                                                    */
@@ -464,7 +531,7 @@ export const DpBadge: React.FC<{
     return (
         <span
             className={`
-                inline-flex items-center px-2.5 py-1 rounded-full
+                inline-flex items-center px-2 py-0.5 rounded
                 text-xs font-semibold tracking-tight ${tones[tone]}
             `}
         >
@@ -731,8 +798,8 @@ export const DpModal: React.FC<{
                             disabled={busy}
                             aria-label="Fechar"
                             className="
-                                group w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-xl
-                                text-slate-400 bg-slate-100/60
+                                group w-9 h-9 flex-shrink-0 flex items-center justify-center rounded
+                                text-slate-400 bg-slate-100/70
                                 hover:text-slate-700 hover:bg-slate-200/80 hover:rotate-90
                                 active:scale-95
                                 transition-all duration-200
@@ -882,12 +949,14 @@ export const DpConfirmModal: React.FC<{
                         onClick={onClose}
                         disabled={loading}
                         className="
-                            flex-1 px-4 py-2.5 min-h-[44px] rounded-xl
+                            flex-1 inline-flex items-center justify-center gap-2
+                            px-4 py-2.5 min-h-[44px] rounded
                             bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm
                             transition-all duration-200 active:scale-[0.98]
                             disabled:opacity-50
                         "
                     >
+                        <Icons.X className="w-4 h-4" />
                         {cancelText}
                     </button>
                     <button
@@ -898,7 +967,7 @@ export const DpConfirmModal: React.FC<{
                         disabled={loading}
                         className={`
                             flex-1 inline-flex items-center justify-center gap-2
-                            px-4 py-2.5 min-h-[44px] rounded-xl
+                            px-4 py-2.5 min-h-[44px] rounded
                             text-white font-semibold text-sm shadow-md
                             transition-all duration-200 active:scale-[0.98]
                             disabled:opacity-50 ${tones.btn}
@@ -910,7 +979,16 @@ export const DpConfirmModal: React.FC<{
                                 A processar…
                             </>
                         ) : (
-                            confirmText
+                            <>
+                                {variant === 'danger' ? (
+                                    <Icons.Trash className="w-4 h-4" />
+                                ) : variant === 'success' ? (
+                                    <Icons.Check className="w-4 h-4" />
+                                ) : (
+                                    <Icons.CheckCircle className="w-4 h-4" />
+                                )}
+                                {confirmText}
+                            </>
                         )}
                     </button>
                 </div>

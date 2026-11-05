@@ -356,11 +356,17 @@ export function ConcursosProvinciaisPage() {
                                 resetForm()
                             }}
                             disabled={saving}
+                            icon={<Icons.X />}
                             className="sm:min-w-[7.5rem]"
                         >
                             Cancelar
                         </DpButton>
-                        <DpButton onClick={handleSave} disabled={saving} className="sm:min-w-[9rem]">
+                        <DpButton
+                            onClick={handleSave}
+                            disabled={saving}
+                            icon={saving ? <Icons.Spinner /> : <Icons.Check />}
+                            className="sm:min-w-[9rem]"
+                        >
                             {saving ? 'A guardar…' : 'Guardar concurso'}
                         </DpButton>
                     </DpModalFooter>
@@ -375,6 +381,7 @@ export function ConcursosProvinciaisPage() {
                                     onChange={(e) => setTitulo(e.target.value)}
                                     placeholder="Título do concurso *"
                                     label="Título"
+                                    icon={<Icons.DocumentText />}
                                     required
                                 />
                                 <DpTextarea
@@ -382,6 +389,7 @@ export function ConcursosProvinciaisPage() {
                                     onChange={(e) => setDescricao(e.target.value)}
                                     placeholder="Descrição"
                                     label="Descrição"
+                                    icon={<Icons.ClipboardList />}
                                     rows={3}
                                 />
                                 <DpTextarea
@@ -389,6 +397,7 @@ export function ConcursosProvinciaisPage() {
                                     onChange={(e) => setInstrucoes(e.target.value)}
                                     placeholder="Instruções para os candidatos"
                                     label="Instruções"
+                                    icon={<Icons.Info />}
                                     rows={2}
                                 />
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">

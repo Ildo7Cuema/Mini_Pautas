@@ -11,11 +11,17 @@ import {
     fetchTaxaAprovacaoPorMunicipio,
     fetchEstatisticasProvinciaRPC
 } from '../api/pedagogicSupervisionProvincial';
+import { dedupeRequest } from '../../../utils/requestDedupe';
 import type {
     IndicadoresPedagogicosProvinciais,
     IndicadoresPorMunicipio,
     ComparativoMunicipios
 } from '../types';
+
+interface UsePedagogicDataProvincialOptions {
+    /** Dashboard only needs RPC stats — skip heavy pedagogic aggregates. */
+    mode?: 'full' | 'stats';
+}
 
 interface UsePedagogicDataProvincialReturn {
     indicadores: IndicadoresPedagogicosProvinciais | null;
@@ -46,7 +52,10 @@ interface UsePedagogicDataProvincialReturn {
     };
 }
 
-export function usePedagogicDataProvincial(): UsePedagogicDataProvincialReturn {
+export function usePedagogicDataProvincial(
+    options: UsePedagogicDataProvincialOptions = {}
+): UsePedagogicDataProvincialReturn {
+    const mode = options.mode ?? 'full';
     const { user } = useAuth();
     const [indicadores, setIndicadores] = useState<IndicadoresPedagogicosProvinciais | null>(null);
     const [indicadoresPorMunicipio, setIndicadoresPorMunicipio] = useState<IndicadoresPorMunicipio[]>([]);
@@ -81,6 +90,15 @@ export function usePedagogicDataProvincial(): UsePedagogicDataProvincialReturn {
             setLoading(true);
             setError(null);
 
+            if (mode === 'stats') {
+                const statsData = await dedupeRequest(
+                    `estatisticas-provincia:${provincia}`,
+                    () => fetchEstatisticasProvinciaRPC(provincia)
+                );
+                setEstatisticas(statsData);
+                return;
+            }
+
             const [
                 indicadoresData,
                 porMunicipioData,
@@ -92,7 +110,10 @@ export function usePedagogicDataProvincial(): UsePedagogicDataProvincialReturn {
                 fetchIndicadoresPorMunicipio(provincia),
                 fetchComparativoMunicipios(provincia),
                 fetchTaxaAprovacaoPorMunicipio(provincia, trimestre),
-                fetchEstatisticasProvinciaRPC(provincia)
+                dedupeRequest(
+                    `estatisticas-provincia:${provincia}`,
+                    () => fetchEstatisticasProvinciaRPC(provincia)
+                ),
             ]);
 
             setIndicadores(indicadoresData);
@@ -106,7 +127,7 @@ export function usePedagogicDataProvincial(): UsePedagogicDataProvincialReturn {
         } finally {
             setLoading(false);
         }
-    }, [provincia, trimestre, anoLectivo]);
+    }, [provincia, trimestre, anoLectivo, mode]);
 
     useEffect(() => {
         loadData();

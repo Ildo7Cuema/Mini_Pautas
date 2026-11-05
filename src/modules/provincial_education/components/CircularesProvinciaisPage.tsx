@@ -377,6 +377,7 @@ export const CircularesProvinciaisPage: React.FC = () => {
                                 resetForm()
                             }}
                             disabled={actionLoading}
+                            icon={<Icons.X />}
                             className="sm:min-w-[7.5rem]"
                         >
                             Cancelar
@@ -384,6 +385,15 @@ export const CircularesProvinciaisPage: React.FC = () => {
                         <DpButton
                             onClick={showCreateModal ? handleCreate : handleUpdate}
                             disabled={actionLoading || !formData.titulo || !formData.conteudo}
+                            icon={
+                                actionLoading ? (
+                                    <Icons.Spinner />
+                                ) : showCreateModal ? (
+                                    <Icons.Plus />
+                                ) : (
+                                    <Icons.Check />
+                                )
+                            }
                             className="sm:min-w-[8rem]"
                         >
                             {actionLoading ? 'A guardar…' : showCreateModal ? 'Criar circular' : 'Guardar'}
@@ -395,6 +405,7 @@ export const CircularesProvinciaisPage: React.FC = () => {
                     <DpFormSection title="Conteúdo" description="Título e texto da circular">
                         <DpInput
                             label="Título"
+                            icon={<Icons.DocumentText />}
                             required
                             value={formData.titulo}
                             onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
@@ -402,6 +413,7 @@ export const CircularesProvinciaisPage: React.FC = () => {
                         />
                         <DpTextarea
                             label="Conteúdo"
+                            icon={<Icons.ClipboardList />}
                             required
                             value={formData.conteudo}
                             onChange={(e) => setFormData({ ...formData, conteudo: e.target.value })}

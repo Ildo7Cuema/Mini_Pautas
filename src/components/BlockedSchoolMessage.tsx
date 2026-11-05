@@ -12,7 +12,7 @@ interface BlockedSchoolMessageProps {
     type: 'blocked' | 'inactive' | 'deleted'
     escolaCodigo?: string
     escolaNome?: string
-    entityType?: 'escola' | 'direcao_municipal' // Tipo de entidade
+    entityType?: 'escola' | 'direcao_municipal' | 'direcao_provincial'
     onClose: () => void
 }
 
@@ -29,8 +29,18 @@ export const BlockedSchoolMessage: React.FC<BlockedSchoolMessageProps> = ({
 
     // Nomenclatura baseada no tipo de entidade
     const isDirecaoMunicipal = entityType === 'direcao_municipal'
-    const entityName = isDirecaoMunicipal ? 'Direção Municipal' : 'Instituição'
-    const entityNameLower = isDirecaoMunicipal ? 'direção municipal' : 'instituição de ensino'
+    const isDirecaoProvincial = entityType === 'direcao_provincial'
+    const isDirecao = isDirecaoMunicipal || isDirecaoProvincial
+    const entityName = isDirecaoProvincial
+        ? 'Direção Provincial'
+        : isDirecaoMunicipal
+          ? 'Direção Municipal'
+          : 'Instituição'
+    const entityNameLower = isDirecaoProvincial
+        ? 'direção provincial'
+        : isDirecaoMunicipal
+          ? 'direção municipal'
+          : 'instituição de ensino'
 
     useEffect(() => {
         // Prevent body scroll when modal is open
@@ -54,18 +64,18 @@ export const BlockedSchoolMessage: React.FC<BlockedSchoolMessageProps> = ({
 
     const isBlocked = type === 'blocked'
     const isDeleted = type === 'deleted'
-    const isLicenseExpired = !isDirecaoMunicipal && (reason?.toLowerCase().includes('licença') || reason?.toLowerCase().includes('expirad'))
+    const isLicenseExpired = !isDirecao && (reason?.toLowerCase().includes('licença') || reason?.toLowerCase().includes('expirad'))
 
     // Generate WhatsApp link for renewal
     const getWhatsAppLink = () => {
         if (!superAdminContact) return '#'
 
-        const entityLabel = isDirecaoMunicipal ? 'Direção Municipal' : 'Escola'
+        const entityLabel = isDirecao ? entityName : 'Escola'
         const message = encodeURIComponent(
-            `Olá! Gostaria de ${isDirecaoMunicipal ? 'obter informações sobre o meu registo' : 'renovar a licença da minha escola'}.\n\n` +
+            `Olá! Gostaria de ${isDirecao ? 'obter informações sobre o meu registo' : 'renovar a licença da minha escola'}.\n\n` +
             `📋 ${entityLabel}: ${escolaNome || 'N/A'}\n` +
-            `${!isDirecaoMunicipal ? `🔢 Código: ${escolaCodigo || 'N/A'}\n` : ''}\n` +
-            `Por favor, ${isDirecaoMunicipal ? 'ajude-me a esclarecer a situação' : 'envie-me os dados para efectuar o pagamento'}.`
+            `${!isDirecao ? `🔢 Código: ${escolaCodigo || 'N/A'}\n` : ''}\n` +
+            `Por favor, ${isDirecao ? 'ajude-me a esclarecer a situação' : 'envie-me os dados para efectuar o pagamento'}.`
         )
 
         const cleanPhone = superAdminContact.numero.replace(/[^\d+]/g, '')
@@ -117,19 +127,19 @@ export const BlockedSchoolMessage: React.FC<BlockedSchoolMessageProps> = ({
                         <div className={`${isDeleted ? 'bg-slate-50 border-slate-300' : isBlocked ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'} border-l-4 rounded-r-lg p-4 mb-4`}>
                             <p className={`${isDeleted ? 'text-slate-900' : isBlocked ? 'text-red-900' : 'text-amber-900'} font-semibold mb-2`}>
                                 {isDeleted
-                                    ? `${isDirecaoMunicipal ? '🏢' : '🏫'} ${entityName} Encerrada Definitivamente`
+                                    ? `${isDirecao ? '🏢' : '🏫'} ${entityName} Encerrada Definitivamente`
                                     : isBlocked
                                         ? `🚫 ${entityName} Bloqueada`
-                                        : `⏸️ ${entityName} ${isDirecaoMunicipal ? 'Pendente de Aprovação' : 'Inactiva'}`
+                                        : `⏸️ ${entityName} ${isDirecao ? 'Pendente de Aprovação' : 'Inactiva'}`
                                 }
                             </p>
                             <p className={`${isDeleted ? 'text-slate-700' : isBlocked ? 'text-red-700' : 'text-amber-700'} text-sm leading-relaxed`}>
                                 {reason || (isDeleted
-                                    ? `Esta ${entityNameLower} foi encerrada definitivamente pelo administrador do sistema.${!isDirecaoMunicipal ? ' Todos os dados da escola foram removidos do sistema.' : ''}`
+                                    ? `Esta ${entityNameLower} foi encerrada definitivamente pelo administrador do sistema.${!isDirecao ? ' Todos os dados da escola foram removidos do sistema.' : ''}`
                                     : isBlocked
                                         ? `Esta ${entityNameLower} foi temporariamente bloqueada pelo administrador do sistema.`
-                                        : isDirecaoMunicipal
-                                            ? 'O seu registo como Direção Municipal está pendente de aprovação. Será notificado quando o acesso for activado.'
+                                        : isDirecao
+                                            ? `O seu registo como ${entityName} está pendente de aprovação. Será notificado quando o acesso for activado.`
                                             : 'Esta instituição de ensino encontra-se temporariamente inactiva.'
                                 )}
                             </p>

@@ -14,39 +14,41 @@ import type {
 
 /**
  * Fetch all municipal directorates in the province
+ * Uses 2 queries (direções + escolas) instead of N+1 HEAD counts.
  */
 export async function fetchDirecoesMunicipaisProvincia(provincia: string): Promise<DirecaoMunicipalResumida[]> {
-    // Get all municipal directorates in the province
-    const { data: direcoes, error } = await supabase
-        .from('direcoes_municipais')
-        .select('*')
-        .eq('provincia', provincia)
-        .order('municipio');
+    const [{ data: direcoes, error }, { data: escolas, error: escolasError }] = await Promise.all([
+        supabase
+            .from('direcoes_municipais')
+            .select('id, nome, municipio, email, telefone, ativo, created_at')
+            .eq('provincia', provincia)
+            .order('municipio'),
+        supabase
+            .from('escolas')
+            .select('municipio')
+            .eq('provincia', provincia),
+    ]);
 
     if (error) throw error;
+    if (escolasError) throw escolasError;
 
-    // Count schools for each municipality
-    const results: DirecaoMunicipalResumida[] = [];
-
-    for (const direcao of direcoes || []) {
-        const { count: escolasCount } = await supabase
-            .from('escolas')
-            .select('*', { count: 'exact', head: true })
-            .eq('municipio', direcao.municipio);
-
-        results.push({
-            id: direcao.id,
-            nome: direcao.nome,
-            municipio: direcao.municipio,
-            email: direcao.email,
-            telefone: direcao.telefone,
-            ativo: direcao.ativo,
-            escolas_count: escolasCount || 0,
-            created_at: direcao.created_at
-        });
+    const escolasPorMunicipio = new Map<string, number>();
+    for (const escola of escolas || []) {
+        const key = (escola.municipio || '').trim().toLowerCase();
+        if (!key) continue;
+        escolasPorMunicipio.set(key, (escolasPorMunicipio.get(key) || 0) + 1);
     }
 
-    return results;
+    return (direcoes || []).map((direcao) => ({
+        id: direcao.id,
+        nome: direcao.nome,
+        municipio: direcao.municipio,
+        email: direcao.email,
+        telefone: direcao.telefone,
+        ativo: direcao.ativo,
+        escolas_count: escolasPorMunicipio.get((direcao.municipio || '').trim().toLowerCase()) || 0,
+        created_at: direcao.created_at,
+    }));
 }
 
 /**
@@ -289,6 +291,7 @@ export async function fetchHistoricoProvincia(
 
 /**
  * Get municipal directorate state statistics for the province
+ * Lightweight: only fetches ativo flags (no escolas N+1).
  */
 export async function fetchEstatisticasEstadosDirecoes(provincia: string): Promise<{
     activas: number;
@@ -296,21 +299,52 @@ export async function fetchEstatisticasEstadosDirecoes(provincia: string): Promi
     inactivas: number;
     total: number;
 }> {
-    const direcoes = await fetchDirecoesMunicipaisProvincia(provincia);
+    const { data: direcoes, error } = await supabase
+        .from('direcoes_municipais')
+        .select('ativo')
+        .eq('provincia', provincia);
+
+    if (error) throw error;
 
     const stats = {
         activas: 0,
         suspensas: 0,
         inactivas: 0,
-        total: direcoes.length
+        total: direcoes?.length || 0,
     };
 
-    for (const direcao of direcoes) {
+    for (const direcao of direcoes || []) {
         if (direcao.ativo) {
             stats.activas++;
         } else {
             stats.inactivas++;
         }
+    }
+
+    return stats;
+}
+
+/**
+ * Derive state stats from an already-loaded list (avoids a second round-trip).
+ */
+export function deriveEstatisticasEstadosDirecoes(
+    direcoes: Array<{ ativo: boolean }>
+): {
+    activas: number;
+    suspensas: number;
+    inactivas: number;
+    total: number;
+} {
+    const stats = {
+        activas: 0,
+        suspensas: 0,
+        inactivas: 0,
+        total: direcoes.length,
+    };
+
+    for (const direcao of direcoes) {
+        if (direcao.ativo) stats.activas++;
+        else stats.inactivas++;
     }
 
     return stats;

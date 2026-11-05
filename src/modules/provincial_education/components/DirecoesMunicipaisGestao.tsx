@@ -521,6 +521,7 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                             variant="secondary"
                             onClick={() => setShowSuspendModal(false)}
                             disabled={actionLoading}
+                            icon={<Icons.X />}
                             className="sm:min-w-[7.5rem]"
                         >
                             Cancelar
@@ -529,6 +530,7 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                             variant="warning"
                             onClick={handleSuspend}
                             disabled={actionLoading || !suspensionMotivo}
+                            icon={actionLoading ? <Icons.Spinner /> : <Icons.Pause />}
                             className="sm:min-w-[8rem]"
                         >
                             {actionLoading ? 'A suspender…' : 'Suspender'}
@@ -546,6 +548,7 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                     <DpFormSection title="Justificação" description="Motivo obrigatório e observações">
                         <DpInput
                             label="Motivo da suspensão"
+                            icon={<Icons.ExclamationTriangle />}
                             required
                             value={suspensionMotivo}
                             onChange={(e) => setSuspensionMotivo(e.target.value)}
@@ -553,6 +556,7 @@ export const DirecoesMunicipaisGestao: React.FC = () => {
                         />
                         <DpTextarea
                             label="Observações (opcional)"
+                            icon={<Icons.DocumentText />}
                             value={suspensionObservacoes}
                             onChange={(e) => setSuspensionObservacoes(e.target.value)}
                             placeholder="Observações adicionais..."

@@ -113,7 +113,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             'escola_nova': 'Nova Escola',
             'atualizacao_sistema': 'Actualização do Sistema',
             'nova_circular_municipal': 'Comunicação Oficial',
-            'nova_circular_provincial': 'Circular Provincial'
+            'nova_circular_provincial': 'Circular Provincial',
+            'novo_concurso_publico': 'Concurso Público'
         }
         return labels[tipo] || 'Notificação'
     }
@@ -197,6 +198,20 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                                 </span>
                                 {notification.dados_adicionais?.provincia && (
                                     <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
+                                        📍 {notification.dados_adicionais.provincia}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Concurso Público Info Badge */}
+                        {notification.tipo === 'novo_concurso_publico' && (
+                            <div className="flex flex-wrap gap-2 mb-4">
+                                <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-medium rounded-full">
+                                    Concurso Público
+                                </span>
+                                {notification.dados_adicionais?.provincia && (
+                                    <span className="px-3 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
                                         📍 {notification.dados_adicionais.provincia}
                                     </span>
                                 )}

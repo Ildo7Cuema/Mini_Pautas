@@ -13,6 +13,7 @@ import type {
 
 /**
  * Fetch all circulars for the province
+ * Batches leitura counts into 2 queries instead of 3*N HEAD requests.
  */
 export async function fetchCircularesProvinciais(
     provincia: string,
@@ -44,36 +45,42 @@ export async function fetchCircularesProvinciais(
 
     if (error) throw error;
 
-    // Get reading counts for each circular
-    const circulares: CircularProvincial[] = [];
-    for (const circular of data || []) {
-        const { count: leiturasCount } = await supabase
-            .from('leituras_circulares_provinciais')
-            .select('*', { count: 'exact', head: true })
-            .eq('circular_id', circular.id);
+    const rows = data || [];
+    if (rows.length === 0) return [];
 
-        // Count pending municipal directorates
-        const { count: totalDirecoes } = await supabase
+    const circularIds = rows.map((c) => c.id);
+
+    const [{ count: totalDirecoes }, { data: leituras }] = await Promise.all([
+        supabase
             .from('direcoes_municipais')
             .select('*', { count: 'exact', head: true })
             .eq('provincia', provincia)
-            .eq('ativo', true);
-
-        const { count: direcoesLidas } = await supabase
+            .eq('ativo', true),
+        supabase
             .from('leituras_circulares_provinciais')
-            .select('*', { count: 'exact', head: true })
-            .eq('circular_id', circular.id)
-            .not('direcao_municipal_id', 'is', null);
+            .select('circular_id, direcao_municipal_id')
+            .in('circular_id', circularIds),
+    ]);
 
-        circulares.push({
-            ...circular,
-            leituras_count: leiturasCount || 0,
-            direcoes_pendentes: (totalDirecoes || 0) - (direcoesLidas || 0),
-            escolas_pendentes: 0 // TODO: Calculate school pending count
-        });
+    const leiturasPorCircular = new Map<string, { total: number; comDirecao: number }>();
+    for (const leitura of leituras || []) {
+        const current = leiturasPorCircular.get(leitura.circular_id) || { total: 0, comDirecao: 0 };
+        current.total += 1;
+        if (leitura.direcao_municipal_id) current.comDirecao += 1;
+        leiturasPorCircular.set(leitura.circular_id, current);
     }
 
-    return circulares;
+    const direcoesActivas = totalDirecoes || 0;
+
+    return rows.map((circular) => {
+        const counts = leiturasPorCircular.get(circular.id) || { total: 0, comDirecao: 0 };
+        return {
+            ...circular,
+            leituras_count: counts.total,
+            direcoes_pendentes: Math.max(0, direcoesActivas - counts.comDirecao),
+            escolas_pendentes: 0,
+        };
+    });
 }
 
 /**
@@ -258,7 +265,7 @@ export async function registrarLeituraEscola(
 }
 
 /**
- * Get circular statistics
+ * Get circular statistics without fetching leitura counts (dashboard-friendly).
  */
 export async function fetchEstatisticasCirculares(provincia: string): Promise<{
     total: number;
@@ -267,21 +274,56 @@ export async function fetchEstatisticasCirculares(provincia: string): Promise<{
     urgentes: number;
     por_tipo: Record<string, number>;
 }> {
-    const circulares = await fetchCircularesProvinciais(provincia);
+    const { data: circulares, error } = await supabase
+        .from('circulares_provinciais')
+        .select('tipo, publicado, urgente')
+        .eq('provincia', provincia);
+
+    if (error) throw error;
 
     const stats = {
+        total: circulares?.length || 0,
+        publicadas: 0,
+        rascunhos: 0,
+        urgentes: 0,
+        por_tipo: {} as Record<string, number>,
+    };
+
+    for (const circular of circulares || []) {
+        if (circular.publicado) stats.publicadas++;
+        else stats.rascunhos++;
+        if (circular.urgente) stats.urgentes++;
+        stats.por_tipo[circular.tipo] = (stats.por_tipo[circular.tipo] || 0) + 1;
+    }
+
+    return stats;
+}
+
+/**
+ * Derive stats from an already-loaded circular list.
+ */
+export function deriveEstatisticasCirculares(
+    circulares: Array<{ tipo: string; publicado: boolean; urgente: boolean }>
+): {
+    total: number;
+    publicadas: number;
+    rascunhos: number;
+    urgentes: number;
+    por_tipo: Record<string, number>;
+} {
+    const stats = {
         total: circulares.length,
-        publicadas: circulares.filter(c => c.publicado).length,
-        rascunhos: circulares.filter(c => !c.publicado).length,
-        urgentes: circulares.filter(c => c.urgente).length,
-        por_tipo: {} as Record<string, number>
+        publicadas: 0,
+        rascunhos: 0,
+        urgentes: 0,
+        por_tipo: {} as Record<string, number>,
     };
 
     for (const circular of circulares) {
-        if (!stats.por_tipo[circular.tipo]) {
-            stats.por_tipo[circular.tipo] = 0;
-        }
-        stats.por_tipo[circular.tipo]++;
+        if (circular.publicado) stats.publicadas++;
+        else stats.rascunhos++;
+        if (circular.urgente) stats.urgentes++;
+        stats.por_tipo[circular.tipo] = (stats.por_tipo[circular.tipo] || 0) + 1;
     }
 
     return stats;

@@ -182,7 +182,7 @@ export const LoginScreen: React.FC = () => {
     const [schoolStatusType, setSchoolStatusType] = useState<'blocked' | 'inactive' | 'deleted'>('deleted')
     const [schoolStatusReason, setSchoolStatusReason] = useState<string | undefined>(undefined)
     const [schoolInfo, setSchoolInfo] = useState<{ nome?: string; codigo?: string }>({})
-    const [entityType, setEntityType] = useState<'escola' | 'direcao_municipal'>('escola')
+    const [entityType, setEntityType] = useState<'escola' | 'direcao_municipal' | 'direcao_provincial'>('escola')
     // Suggestion modal state
     const [showSuggestionModal, setShowSuggestionModal] = useState(false)
     const [suggestionName, setSuggestionName] = useState('')
@@ -437,6 +437,59 @@ export const LoginScreen: React.FC = () => {
                     }
                     // Active - let AuthContext handle
                     logSystemVisit(undefined, 'DIRECAO_PROVINCIAL')
+                    return
+                }
+
+                // FUNCIONARIO_PROVINCIAL: sem escola; só bloqueia se a DP associada estiver inactiva
+                if (profileData.tipo_perfil === 'FUNCIONARIO_PROVINCIAL') {
+                    if (!profileData.ativo) {
+                        await supabase.auth.signOut()
+                        setSchoolStatusType('inactive')
+                        setSchoolStatusReason('A sua conta de funcionário provincial está inactiva. Contacte a Direção Provincial.')
+                        setEntityType('direcao_provincial')
+                        setShowSchoolStatusModal(true)
+                        return
+                    }
+
+                    const { data: pessoalDp } = await supabase
+                        .from('pessoal_direcao_provincial')
+                        .select('id, ativo, direcao_provincial_id, direcoes_provinciais(id, ativo, nome)')
+                        .eq('user_id', userId)
+                        .eq('ativo', true)
+                        .maybeSingle()
+
+                    const dpJoin = pessoalDp?.direcoes_provinciais as
+                        | { id: string; ativo: boolean; nome?: string }
+                        | { id: string; ativo: boolean; nome?: string }[]
+                        | null
+                        | undefined
+                    const direcao = Array.isArray(dpJoin) ? dpJoin[0] : dpJoin
+
+                    if (!pessoalDp) {
+                        await supabase.auth.signOut()
+                        setSchoolStatusType('deleted')
+                        setSchoolStatusReason(
+                            'O seu registo como funcionário provincial não foi encontrado ou está inactivo. Peça à Direção Provincial para reactivar o convite.',
+                        )
+                        setEntityType('direcao_provincial')
+                        setShowSchoolStatusModal(true)
+                        return
+                    }
+
+                    if (direcao && direcao.ativo === false) {
+                        await supabase.auth.signOut()
+                        setSchoolStatusType('blocked')
+                        setSchoolStatusReason(
+                            'A Direção Provincial a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Provincial estiver activa.',
+                        )
+                        setEntityType('direcao_provincial')
+                        if (direcao.nome) setSchoolInfo({ nome: direcao.nome, codigo: '' })
+                        setShowSchoolStatusModal(true)
+                        return
+                    }
+
+                    // DP activa (ou ainda não legível por RLS) — AuthContext completa o perfil
+                    logSystemVisit(undefined, 'FUNCIONARIO_PROVINCIAL')
                     return
                 }
 

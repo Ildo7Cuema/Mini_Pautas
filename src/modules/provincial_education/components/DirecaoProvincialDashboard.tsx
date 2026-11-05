@@ -7,9 +7,7 @@
 import React, { useState } from 'react';
 import { Icons } from '../../../components/ui/Icons';
 import { useAuth } from '../../../contexts/AuthContext';
-import { usePedagogicDataProvincial } from '../hooks/usePedagogicDataProvincial';
-import { useDirecoesMunicipais } from '../hooks/useDirecoesMunicipais';
-import { useCircularesProvinciais } from '../hooks/useCircularesProvinciais';
+import { useProvincialDashboardData } from '../hooks/useProvincialDashboardData';
 import {
     DpPage,
     DpContent,
@@ -69,9 +67,14 @@ const DirectionCard: React.FC<{
 
 export const DirecaoProvincialDashboard: React.FC<DirecaoProvincialDashboardProps> = ({ onNavigate }) => {
     const { user } = useAuth();
-    const { estatisticas, loading: loadingPedagogic, refresh: refreshPedagogic } = usePedagogicDataProvincial();
-    const { direcoes, estatisticas: estatsDirecoes, loading: loadingDirecoes, refresh: refreshDirecoes } = useDirecoesMunicipais();
-    const { estatisticas: estatsCirculares, loading: loadingCirculares } = useCircularesProvinciais();
+    const {
+        estatisticas,
+        direcoes,
+        estatsDirecoes,
+        estatsCirculares,
+        loading,
+        refresh,
+    } = useProvincialDashboardData();
     const [refreshing, setRefreshing] = useState(false);
 
     const provincia = user?.direcaoProvincial?.provincia || 'Desconhecida';
@@ -79,11 +82,10 @@ export const DirecaoProvincialDashboard: React.FC<DirecaoProvincialDashboardProp
 
     const handleRefresh = async () => {
         setRefreshing(true);
-        await Promise.all([refreshPedagogic(), refreshDirecoes()]);
+        await refresh();
         setRefreshing(false);
     };
 
-    const loading = loadingPedagogic || loadingDirecoes || loadingCirculares;
     const direcoesInactivas = direcoes.filter(d => !d.ativo);
 
     if (loading) {

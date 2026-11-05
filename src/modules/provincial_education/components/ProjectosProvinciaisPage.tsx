@@ -260,6 +260,7 @@ export const ProjectosProvinciaisPage: React.FC = () => {
                             variant="secondary"
                             onClick={() => setShowModal(false)}
                             disabled={submitting}
+                            icon={<Icons.X />}
                             className="sm:min-w-[7.5rem]"
                         >
                             Cancelar
@@ -268,6 +269,7 @@ export const ProjectosProvinciaisPage: React.FC = () => {
                             type="submit"
                             form="dp-projecto-form"
                             disabled={submitting}
+                            icon={submitting ? <Icons.Spinner /> : <Icons.Check />}
                             className="sm:min-w-[8rem]"
                         >
                             {submitting ? 'A guardar…' : 'Guardar projecto'}
@@ -282,6 +284,7 @@ export const ProjectosProvinciaisPage: React.FC = () => {
                     >
                         <DpInput
                             label="Título"
+                            icon={<Icons.DocumentText />}
                             value={form.titulo}
                             onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
                             required
@@ -289,6 +292,7 @@ export const ProjectosProvinciaisPage: React.FC = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                             <DpSelect
                                 label="Área"
+                                icon={<Icons.AcademicCap />}
                                 value={form.area}
                                 onChange={(e) =>
                                     setForm((f) => ({
@@ -307,6 +311,7 @@ export const ProjectosProvinciaisPage: React.FC = () => {
                             </DpSelect>
                             <DpSelect
                                 label="Estado"
+                                icon={<Icons.Flag />}
                                 value={form.estado}
                                 onChange={(e) =>
                                     setForm((f) => ({
@@ -326,6 +331,7 @@ export const ProjectosProvinciaisPage: React.FC = () => {
                         </div>
                         <DpInput
                             label="Responsável"
+                            icon={<Icons.User />}
                             value={form.responsavel}
                             onChange={(e) => setForm((f) => ({ ...f, responsavel: e.target.value }))}
                         />
@@ -347,11 +353,13 @@ export const ProjectosProvinciaisPage: React.FC = () => {
                     <DpFormSection title="Descrição" description="Detalhe e notas de acompanhamento">
                         <DpTextarea
                             label="Descrição"
+                            icon={<Icons.ClipboardList />}
                             value={form.descricao}
                             onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
                         />
                         <DpTextarea
                             label="Notas"
+                            icon={<Icons.DocumentText />}
                             value={form.notas}
                             onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
                         />

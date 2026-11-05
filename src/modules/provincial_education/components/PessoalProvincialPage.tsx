@@ -331,6 +331,7 @@ export const PessoalProvincialPage: React.FC = () => {
                             variant="secondary"
                             onClick={() => setShowModal(false)}
                             disabled={submitting}
+                            icon={<Icons.X />}
                             className="sm:min-w-[7.5rem]"
                         >
                             Cancelar
@@ -339,6 +340,15 @@ export const PessoalProvincialPage: React.FC = () => {
                             type="submit"
                             form="dp-pessoal-form"
                             disabled={submitting}
+                            icon={
+                                submitting ? (
+                                    <Icons.Spinner />
+                                ) : editId ? (
+                                    <Icons.Check />
+                                ) : (
+                                    <Icons.Send />
+                                )
+                            }
                             className="sm:min-w-[8.5rem]"
                         >
                             {submitting ? 'A guardar…' : editId ? 'Guardar alterações' : 'Criar e convidar'}
@@ -353,6 +363,7 @@ export const PessoalProvincialPage: React.FC = () => {
                     >
                         <DpInput
                             label="Nome completo"
+                            icon={<Icons.User />}
                             value={form.nome}
                             onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
                             required
@@ -367,6 +378,7 @@ export const PessoalProvincialPage: React.FC = () => {
                             />
                             <DpInput
                                 label="Telefone"
+                                type="tel"
                                 value={form.telefone}
                                 onChange={(e) => setForm((f) => ({ ...f, telefone: e.target.value }))}
                             />
@@ -378,6 +390,7 @@ export const PessoalProvincialPage: React.FC = () => {
                     >
                         <DpSelect
                             label="Departamento"
+                            icon={<Icons.Building />}
                             value={form.departamento}
                             onChange={(e) =>
                                 setForm((f) => ({
@@ -396,12 +409,14 @@ export const PessoalProvincialPage: React.FC = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                             <DpInput
                                 label="Cargo"
+                                icon={<Icons.Briefcase />}
                                 value={form.cargo}
                                 onChange={(e) => setForm((f) => ({ ...f, cargo: e.target.value }))}
                                 placeholder="Ex.: Chefe de Departamento"
                             />
                             <DpInput
                                 label="N.º de funcionário"
+                                icon={<Icons.Hash />}
                                 value={form.numero_funcionario}
                                 onChange={(e) =>
                                     setForm((f) => ({ ...f, numero_funcionario: e.target.value }))

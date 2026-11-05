@@ -7,6 +7,8 @@ export const translateError = (error: string): string => {
         'Invalid login credentials': 'Email ou senha incorretos',
         'Email not confirmed': 'Email não confirmado. Verifique sua caixa de entrada',
         'User already registered': 'Este email já está cadastrado',
+        'user_already_exists': 'Este email já está registado',
+        'email_exists': 'Este email já está registado',
         'Password should be at least 6 characters': 'A senha deve ter pelo menos 6 caracteres',
         'Unable to validate email address: invalid format': 'Formato de email inválido',
         'Email rate limit exceeded': 'Muitas tentativas. Tente novamente mais tarde',
@@ -18,6 +20,7 @@ export const translateError = (error: string): string => {
         'Password is too weak': 'Senha muito fraca. Use letras, números e símbolos',
         'Signup requires a valid password': 'É necessária uma senha válida',
         'User already exists': 'Usuário já existe',
+        'Signups not allowed for this instance': 'Novos registos estão desactivados neste ambiente',
         'Email address is invalid': 'Endereço de email inválido',
         'Only an email address or phone number should be provided': 'Forneça apenas email ou telefone',
         'User not authenticated': 'Utilizador não autenticado. Por favor, faça login',
@@ -41,6 +44,10 @@ export const translateError = (error: string): string => {
         'violates foreign key constraint': 'Não é possível completar esta ação. Existem registros dependentes',
         'violates not-null constraint': 'Campo obrigatório não preenchido',
         'violates check constraint': 'Valor inválido. Verifique os dados informados',
+        'user_profiles_escola_check':
+            'Perfil provincial sem escola bloqueado pela base de dados. Aplique a migração de FUNCIONARIO_PROVINCIAL (user_profiles_escola_check).',
+        'user_profiles_tipo_perfil_check':
+            'Tipo de perfil não permitido na base de dados. Aplique a migração de FUNCIONARIO_PROVINCIAL.',
         'violates unique constraint': 'Este valor já está em uso. Por favor, escolha outro',
         'Row level security': 'Você não tem permissão para esta operação',
         'new row violates row-level security policy': 'Você não tem permissão para esta operação',

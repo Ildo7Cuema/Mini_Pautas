@@ -11,8 +11,9 @@ import {
     reativarDirecaoMunicipal,
     fetchHistoricoDirecaoMunicipal,
     fetchHistoricoProvincia,
-    fetchEstatisticasEstadosDirecoes
+    deriveEstatisticasEstadosDirecoes,
 } from '../api/direcoesMunicipaisManagement';
+import { dedupeRequest } from '../../../utils/requestDedupe';
 import type {
     DirecaoMunicipalResumida,
     DirecaoMunicipalDetalhes,
@@ -70,13 +71,13 @@ export function useDirecoesMunicipais(): UseDirecoesMunicipaisReturn {
             setLoading(true);
             setError(null);
 
-            const [direcoesData, statsData] = await Promise.all([
-                fetchDirecoesMunicipaisProvincia(provincia),
-                fetchEstatisticasEstadosDirecoes(provincia)
-            ]);
+            const direcoesData = await dedupeRequest(
+                `direcoes-municipais:${provincia}`,
+                () => fetchDirecoesMunicipaisProvincia(provincia)
+            );
 
             setDirecoes(direcoesData);
-            setEstatisticas(statsData);
+            setEstatisticas(deriveEstatisticasEstadosDirecoes(direcoesData));
         } catch (err) {
             console.error('Error loading municipal directorates:', err);
             setError('Erro ao carregar direções municipais');

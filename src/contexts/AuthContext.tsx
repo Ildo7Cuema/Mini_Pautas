@@ -2,6 +2,11 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
 import { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
 import { BlockedSchoolMessage } from '../components/BlockedSchoolMessage'
+import {
+    clearAuthProfileCache,
+    readAuthProfileCache,
+    writeAuthProfileCache,
+} from '../utils/authProfileCache'
 import type {
     AuthUser,
     UserProfile,
@@ -88,12 +93,332 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [blockedModalData, setBlockedModalData] = useState<{
         reason?: string
         type: 'blocked' | 'inactive' | 'deleted'
-        entityType?: 'escola' | 'direcao_municipal'
+        entityType?: 'escola' | 'direcao_municipal' | 'direcao_provincial'
     }>({ type: 'blocked', entityType: 'escola' })
 
     // Flag to prevent race conditions between getSession and onAuthStateChange
     // Using useRef instead of useState for synchronous check
     const isLoadingProfileRef = useRef(false)
+
+    const finishBlocked = async (
+        reason: string | undefined,
+        type: 'blocked' | 'inactive' | 'deleted',
+        entityType?: 'escola' | 'direcao_municipal' | 'direcao_provincial',
+    ) => {
+        setBlockedModalData({ reason, type, entityType })
+        setShowBlockedModal(true)
+        clearAuthProfileCache()
+        await supabase.auth.signOut()
+        setUser(null)
+        isLoadingProfileRef.current = false
+        setLoading(false)
+    }
+
+    const tryApplyAuthBootstrap = async (authUser: User): Promise<boolean> => {
+        // Opt-in until migration 20261105_perf_auth_bootstrap_and_rls.sql is applied:
+        // set VITE_AUTH_BOOTSTRAP=true in .env (or session flag after a successful call).
+        let enabled = import.meta.env.VITE_AUTH_BOOTSTRAP === 'true'
+        try {
+            const flag = sessionStorage.getItem('edugest_has_auth_bootstrap')
+            if (flag === '0') return false
+            if (flag === '1') enabled = true
+        } catch {
+            // ignore
+        }
+        if (!enabled) return false
+
+        const { data, error } = await supabase.rpc('get_auth_bootstrap')
+        if (error || !data) {
+            const missing =
+                error?.code === 'PGRST202' ||
+                error?.code === '42883' ||
+                /could not find|does not exist|not find the function/i.test(error?.message || '')
+            if (missing) {
+                try {
+                    sessionStorage.setItem('edugest_has_auth_bootstrap', '0')
+                } catch {
+                    // ignore
+                }
+            }
+            console.log('ℹ️ AuthContext: get_auth_bootstrap unavailable, using legacy path', error?.message)
+            return false
+        }
+
+        try {
+            sessionStorage.setItem('edugest_has_auth_bootstrap', '1')
+        } catch {
+            // ignore
+        }
+
+        const result = data as {
+            success?: boolean
+            error?: string
+            profile?: UserProfile
+            escola?: Escola
+            professor?: Professor & { escola?: Escola | null }
+            turmas_associadas?: TurmaProfessor[]
+            secretario?: Secretario & { escola?: Escola | null }
+            direcaoMunicipal?: DirecaoMunicipal
+            direcaoProvincial?: DirecaoProvincial
+            pessoal?: PessoalDirecaoProvincial
+            aluno?: Aluno & { turma?: Turma; escola?: Escola }
+            alunos?: Array<Aluno & { turma?: Turma; escola?: Escola }>
+        }
+
+        if (!result.success || !result.profile) {
+            // no_profile → fall through to legacy fallbacks (professor by email, etc.)
+            return false
+        }
+
+        const profile = result.profile as UserProfile
+        console.log('⚡ AuthContext: Bootstrap RPC success:', profile.tipo_perfil)
+
+        setIsEscola(profile.tipo_perfil === 'ESCOLA')
+        setIsProfessor(profile.tipo_perfil === 'PROFESSOR')
+        setIsAluno(profile.tipo_perfil === 'ALUNO')
+        setIsEncarregado(profile.tipo_perfil === 'ENCARREGADO')
+        setIsSecretario(profile.tipo_perfil === 'SECRETARIO')
+        setIsDirecaoMunicipal(profile.tipo_perfil === 'DIRECAO_MUNICIPAL')
+        setIsDirecaoProvincial(profile.tipo_perfil === 'DIRECAO_PROVINCIAL')
+        setIsFuncionarioProvincial(profile.tipo_perfil === 'FUNCIONARIO_PROVINCIAL')
+
+        if (profile.tipo_perfil === 'SUPERADMIN') {
+            setUser({ id: authUser.id, email: authUser.email || '', profile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'ESCOLA') {
+            const escola = result.escola
+            if (!escola) {
+                await finishBlocked('A escola associada à sua conta foi eliminada do sistema. Contacte o suporte para mais informações.', 'deleted')
+                return true
+            }
+            if (escola.bloqueado) {
+                await finishBlocked(escola.bloqueado_motivo || undefined, 'blocked')
+                return true
+            }
+            if (!escola.ativo) {
+                await finishBlocked(undefined, 'inactive')
+                return true
+            }
+            const escolaProfile: EscolaProfile = { ...escola, user_profile: profile }
+            setEscolaProfile(escolaProfile)
+            setUser({ id: authUser.id, email: escola.email || '', profile, escola: escolaProfile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'PROFESSOR') {
+            const professorRow = result.professor
+            if (!professorRow) {
+                setUser({ id: authUser.id, email: authUser.email || '', profile })
+                isLoadingProfileRef.current = false
+                setLoading(false)
+                return true
+            }
+            const { escola, ...professor } = professorRow
+            if (!escola) {
+                await finishBlocked('A escola associada à sua conta de professor foi eliminada do sistema. Contacte o suporte para mais informações.', 'deleted')
+                return true
+            }
+            if (escola.bloqueado) {
+                await finishBlocked(escola.bloqueado_motivo || undefined, 'blocked')
+                return true
+            }
+            if (!escola.ativo) {
+                await finishBlocked(undefined, 'inactive')
+                return true
+            }
+            const professorProfile: ProfessorProfile = {
+                ...(professor as Professor),
+                user_profile: profile,
+                turmas_associadas: result.turmas_associadas || [],
+                escola,
+            }
+            setProfessorProfile(professorProfile)
+            setUser({ id: authUser.id, email: professorProfile.email, profile, professor: professorProfile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'SECRETARIO') {
+            const row = result.secretario
+            if (!row) {
+                setUser({ id: authUser.id, email: authUser.email || '', profile })
+                isLoadingProfileRef.current = false
+                setLoading(false)
+                return true
+            }
+            const { escola, ...secretario } = row
+            if (escola?.bloqueado) {
+                await finishBlocked(escola.bloqueado_motivo || undefined, 'blocked')
+                return true
+            }
+            if (escola && escola.ativo === false) {
+                await finishBlocked(undefined, 'inactive')
+                return true
+            }
+            const secretarioProfile: SecretarioProfile = {
+                ...(secretario as Secretario),
+                user_profile: profile,
+                escola: escola || undefined,
+            }
+            setSecretarioProfile(secretarioProfile)
+            setUser({ id: authUser.id, email: secretarioProfile.email, profile, secretario: secretarioProfile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'DIRECAO_MUNICIPAL') {
+            const direcao = result.direcaoMunicipal
+            if (!direcao) {
+                await finishBlocked('O seu registo como Direção Municipal foi removido do sistema.', 'deleted', 'direcao_municipal')
+                return true
+            }
+            if (!direcao.ativo) {
+                await finishBlocked('O seu registo como Direção Municipal está pendente ou inactivo.', 'inactive', 'direcao_municipal')
+                return true
+            }
+            const direcaoProfile: DirecaoMunicipalProfile = { ...direcao, user_profile: profile }
+            setDirecaoMunicipalProfile(direcaoProfile)
+            setUser({ id: authUser.id, email: direcao.email || '', profile, direcaoMunicipal: direcaoProfile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'DIRECAO_PROVINCIAL') {
+            const direcao = result.direcaoProvincial
+            if (!direcao) {
+                await finishBlocked('O seu registo como Direção Provincial foi removido do sistema.', 'deleted', 'direcao_provincial')
+                return true
+            }
+            if (!direcao.ativo) {
+                await finishBlocked(
+                    'O seu registo como Direção Provincial está pendente de aprovação. Será notificado quando o acesso for activado.',
+                    'inactive',
+                    'direcao_provincial',
+                )
+                return true
+            }
+            const direcaoProfile: DirecaoProvincialProfile = { ...direcao, user_profile: profile }
+            setDirecaoProvincialProfile(direcaoProfile)
+            setUser({ id: authUser.id, email: direcao.email || '', profile, direcaoProvincial: direcaoProfile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'FUNCIONARIO_PROVINCIAL') {
+            const pessoal = result.pessoal
+            const direcao = result.direcaoProvincial
+            if (!pessoal || !direcao) {
+                await finishBlocked('O seu registo de funcionário provincial foi removido do sistema.', 'deleted', 'direcao_provincial')
+                return true
+            }
+            if (!direcao.ativo) {
+                await finishBlocked(
+                    'A Direção Provincial a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Provincial estiver activa.',
+                    'blocked',
+                    'direcao_provincial',
+                )
+                return true
+            }
+            const pessoalProfile: PessoalDirecaoProvincialProfile = { ...pessoal, user_profile: profile }
+            const direcaoProfile: DirecaoProvincialProfile = { ...direcao, user_profile: profile }
+            setPessoalDirecaoProvincialProfile(pessoalProfile)
+            setDirecaoProvincialProfile(direcaoProfile)
+            setUser({
+                id: authUser.id,
+                email: pessoal.email || '',
+                profile,
+                direcaoProvincial: direcaoProfile,
+                pessoalDirecaoProvincial: pessoalProfile,
+            })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'ALUNO') {
+            const aluno = result.aluno
+            if (!aluno) {
+                setUser({ id: authUser.id, email: authUser.email || '', profile })
+                isLoadingProfileRef.current = false
+                setLoading(false)
+                return true
+            }
+            if (!aluno.escola) {
+                await finishBlocked('A escola associada à sua conta de aluno foi eliminada do sistema. Contacte o suporte para mais informações.', 'deleted')
+                return true
+            }
+            if (aluno.escola.bloqueado) {
+                await finishBlocked(aluno.escola.bloqueado_motivo || undefined, 'blocked')
+                return true
+            }
+            if (aluno.escola.ativo === false) {
+                await finishBlocked(undefined, 'inactive')
+                return true
+            }
+            const alunoProfile: AlunoProfile = {
+                ...aluno,
+                turma: aluno.turma,
+                escola: aluno.escola,
+                user_profile: profile,
+            }
+            setAlunoProfile(alunoProfile)
+            setUser({ id: authUser.id, email: authUser.email || '', profile, aluno: alunoProfile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'ENCARREGADO') {
+            const alunos = result.alunos || []
+            if (alunos.length === 0) {
+                setUser({ id: authUser.id, email: authUser.email || '', profile })
+                isLoadingProfileRef.current = false
+                setLoading(false)
+                return true
+            }
+            const escola = alunos[0]?.escola
+            if (!escola) {
+                await finishBlocked('A escola associada à conta do seu educando foi eliminada do sistema. Contacte o suporte para mais informações.', 'deleted')
+                return true
+            }
+            if (escola.bloqueado) {
+                await finishBlocked(escola.bloqueado_motivo || undefined, 'blocked')
+                return true
+            }
+            if (escola.ativo === false) {
+                await finishBlocked(undefined, 'inactive')
+                return true
+            }
+            const encarregadoProfile: EncarregadoProfile = {
+                alunos_associados: alunos.map((aluno) => ({
+                    ...aluno,
+                    turma: aluno.turma,
+                    escola: aluno.escola,
+                    user_profile: profile,
+                })),
+                escola,
+                user_profile: profile,
+            }
+            setEncarregadoProfile(encarregadoProfile)
+            setUser({ id: authUser.id, email: authUser.email || '', profile, encarregado: encarregadoProfile })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        // Unknown role — let legacy path handle
+        return false
+    }
 
     const loadUserProfile = async (authUser: User) => {
         // Prevent multiple simultaneous calls (synchronous check)
@@ -105,12 +430,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         console.log('🔍 AuthContext: Loading user profile for:', authUser.id)
         console.log('🔍 AuthContext: Current loading state:', loading)
         try {
-            // Get user profile
+            // Prefer single-round-trip SECURITY DEFINER bootstrap when available
+            const bootstrapped = await tryApplyAuthBootstrap(authUser)
+            if (bootstrapped) {
+                console.log('✅ AuthContext: Profile loaded via bootstrap RPC')
+                return
+            }
+
+            // Get user profile (legacy multi-query path)
             console.log('📡 AuthContext: Querying user_profiles table...')
 
             const { data: profileData, error: profileError } = await supabase
                 .from('user_profiles')
-                .select('*')
+                .select('id, user_id, tipo_perfil, escola_id, ativo, created_at, updated_at')
                 .eq('user_id', authUser.id)
                 .eq('ativo', true)
                 .maybeSingle()
@@ -482,7 +814,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                     setBlockedModalData({
                         reason: 'O seu registo como Direção Provincial está pendente de aprovação. Será notificado quando o acesso for activado.',
                         type: 'inactive',
-                        entityType: 'direcao_municipal'
+                        entityType: 'direcao_provincial',
                     })
                     setShowBlockedModal(true)
                     await supabase.auth.signOut()
@@ -685,17 +1017,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const loadProfessorProfile = async (userId: string, profile: UserProfile) => {
         try {
             console.log('👨‍🏫 AuthContext: Fetching professor data for user_id:', userId)
-            // Get professor data
+            // Professor + escola in one round-trip
             const { data: professorData, error: professorError } = await supabase
                 .from('professores')
-                .select('*')
+                .select('*, escola:escolas(*)')
                 .eq('user_id', userId)
                 .eq('ativo', true)
                 .maybeSingle()
 
             if (professorError) {
                 console.error('❌ AuthContext: Error loading professor:', professorError)
-                // Set minimal user data even if professor loading fails
                 setUser({
                     id: userId,
                     email: profile.user_id || '',
@@ -714,24 +1045,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 return
             }
 
-            console.log('✅ AuthContext: Professor data loaded:', professorData)
-            const professor = professorData as Professor
+            const { escola: escolaJoined, ...professorRow } = professorData as Professor & { escola?: Escola | null }
+            const professor = professorRow as Professor
+            const escola = escolaJoined || undefined
 
-            // Get escola data
-            console.log('🏫 AuthContext: Fetching escola data for escola_id:', professor.escola_id)
-            const { data: escolaData, error: escolaError } = await supabase
-                .from('escolas')
-                .select('*')
-                .eq('id', professor.escola_id)
-                .maybeSingle()
-
-            if (escolaError) {
-                console.warn('⚠️ AuthContext: Error loading escola for professor:', escolaError)
-            }
-
-            const escola = escolaData ? (escolaData as Escola) : undefined
-
-            // Check if escola was deleted (not found)
             if (!escola) {
                 console.warn('🗑️ AuthContext: Escola not found - may have been deleted')
                 setBlockedModalData({
@@ -745,9 +1062,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 setLoading(false)
                 return
             }
-
-            // Check if escola is blocked or inactive
-            console.log('✅ AuthContext: Escola data loaded:', escola.nome)
 
             if (escola.bloqueado) {
                 console.error('🚫 AuthContext: Escola is blocked:', escola.bloqueado_motivo)
@@ -777,10 +1091,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 return
             }
 
-            // Get turmas associadas (may fail due to RLS, that's OK)
-            console.log('📚 AuthContext: Fetching turmas associadas...')
-            console.log('📚 AuthContext: Professor ID:', professor.id)
-
             const { data: turmasData, error: turmasError } = await supabase
                 .from('turma_professores')
                 .select(`
@@ -790,29 +1100,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 `)
                 .eq('professor_id', professor.id)
 
-            console.log('📊 AuthContext: Turmas query result:', {
-                data: turmasData,
-                error: turmasError,
-                errorDetails: turmasError ? {
-                    message: turmasError.message,
-                    details: turmasError.details,
-                    hint: turmasError.hint,
-                    code: turmasError.code
-                } : null
-            })
-
             if (turmasError) {
                 console.warn('⚠️ AuthContext: Error loading turmas associadas:', turmasError)
-                console.warn('⚠️ AuthContext: This may be due to RLS policies or missing associations')
             }
 
             const turmasAssociadas = (turmasData || []) as TurmaProfessor[]
-            console.log('✅ AuthContext: Loaded', turmasAssociadas.length, 'turmas associadas')
-
-            if (turmasAssociadas.length === 0) {
-                console.warn('⚠️ AuthContext: No turmas associadas found for professor')
-                console.warn('⚠️ AuthContext: This professor may need to be associated with turmas via admin panel')
-            }
 
             const professorProfile: ProfessorProfile = {
                 ...professor,
@@ -832,7 +1124,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         } catch (error) {
             console.error('❌ AuthContext: Unexpected error in loadProfessorProfile:', error)
-            // Set minimal user data even on unexpected error
             setUser({
                 id: userId,
                 email: profile.user_id || '',
@@ -1290,7 +1581,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 setBlockedModalData({
                     reason: 'O seu registo como Direção Provincial está pendente de aprovação. Será notificado quando o acesso for activado.',
                     type: 'inactive',
-                    entityType: 'direcao_municipal' // Reuse existing type style for now
+                    entityType: 'direcao_provincial',
                 })
                 setShowBlockedModal(true)
                 await supabase.auth.signOut()
@@ -1314,7 +1605,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 setBlockedModalData({
                     reason: 'O seu registo como Direção Provincial foi removido do sistema.',
                     type: 'deleted',
-                    entityType: 'direcao_municipal' // Reuse modal type for now or add new one
+                    entityType: 'direcao_provincial',
                 })
                 setShowBlockedModal(true)
                 await supabase.auth.signOut()
@@ -1355,6 +1646,71 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const loadFuncionarioProvincialProfile = async (userId: string, profile: UserProfile) => {
         try {
+            // Preferir RPC SECURITY DEFINER (não depende de RLS na DP)
+            const { data: rpcData, error: rpcError } = await supabase.rpc(
+                'get_funcionario_provincial_login_context',
+            )
+
+            if (!rpcError && rpcData) {
+                const result = rpcData as {
+                    success?: boolean
+                    error?: string
+                    pessoal?: PessoalDirecaoProvincial
+                    direcao?: DirecaoProvincial
+                }
+
+                if (result.error === 'direcao_inactive') {
+                    setBlockedModalData({
+                        reason: 'A Direção Provincial a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Provincial estiver activa.',
+                        type: 'blocked',
+                        entityType: 'direcao_provincial',
+                    })
+                    setShowBlockedModal(true)
+                    await supabase.auth.signOut()
+                    setUser(null)
+                    return
+                }
+
+                if (result.error === 'pessoal_not_found' || result.error === 'direcao_missing') {
+                    setBlockedModalData({
+                        reason: 'O seu registo como funcionário provincial não foi encontrado ou a Direção Provincial associada não existe. Peça à Direção Provincial para reactivar o convite.',
+                        type: 'deleted',
+                        entityType: 'direcao_provincial',
+                    })
+                    setShowBlockedModal(true)
+                    await supabase.auth.signOut()
+                    setUser(null)
+                    return
+                }
+
+                if (result.success && result.pessoal && result.direcao) {
+                    const pessoal = result.pessoal
+                    const direcao = result.direcao
+                    const pessoalProfile: PessoalDirecaoProvincialProfile = {
+                        ...pessoal,
+                        user_profile: profile,
+                        direcao_provincial: direcao,
+                    }
+                    const direcaoProfile: DirecaoProvincialProfile = {
+                        ...direcao,
+                        user_profile: profile,
+                    }
+                    setPessoalDirecaoProvincialProfile(pessoalProfile)
+                    setDirecaoProvincialProfile(direcaoProfile)
+                    setUser({
+                        id: userId,
+                        email: pessoal.email || profile.user_id || '',
+                        profile,
+                        direcaoProvincial: direcaoProfile,
+                        pessoalDirecaoProvincial: pessoalProfile,
+                    })
+                    console.log('✅ AuthContext: Funcionário provincial profile set (RPC):', pessoal.departamento)
+                    return
+                }
+            } else if (rpcError) {
+                console.warn('⚠️ AuthContext: RPC login context unavailable, falling back to tables:', rpcError.message)
+            }
+
             const { data: pessoalData, error: pessoalError } = await supabase
                 .from('pessoal_direcao_provincial')
                 .select('*, direcoes_provinciais(*)')
@@ -1371,9 +1727,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             if (!pessoalData) {
                 console.warn('⚠️ AuthContext: No pessoal_direcao_provincial for user')
                 setBlockedModalData({
-                    reason: 'O seu registo como funcionário provincial não foi encontrado ou está inactivo.',
+                    reason: 'O seu registo como funcionário provincial não foi encontrado ou está inactivo. Peça à Direção Provincial para reactivar o convite.',
                     type: 'deleted',
-                    entityType: 'direcao_municipal',
+                    entityType: 'direcao_provincial',
                 })
                 setShowBlockedModal(true)
                 await supabase.auth.signOut()
@@ -1386,13 +1742,39 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             }
             const { direcoes_provinciais: dpJoin, ...pessoalRest } = row
             const pessoal = pessoalRest as PessoalDirecaoProvincial
-            const direcao = Array.isArray(dpJoin) ? dpJoin[0] : dpJoin
+            let direcao = Array.isArray(dpJoin) ? dpJoin[0] : dpJoin
 
-            if (!direcao || !direcao.ativo) {
+            if (!direcao && pessoal.direcao_provincial_id) {
+                const { data: dpData, error: dpError } = await supabase
+                    .from('direcoes_provinciais')
+                    .select('*')
+                    .eq('id', pessoal.direcao_provincial_id)
+                    .maybeSingle()
+
+                if (dpError) {
+                    console.error('❌ AuthContext: Error loading parent DP for funcionário:', dpError)
+                }
+                direcao = dpData as DirecaoProvincial | null
+            }
+
+            if (direcao && direcao.ativo === false) {
                 setBlockedModalData({
-                    reason: 'A Direção Provincial associada está inactiva.',
+                    reason: 'A Direção Provincial a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Provincial estiver activa.',
+                    type: 'blocked',
+                    entityType: 'direcao_provincial',
+                })
+                setShowBlockedModal(true)
+                await supabase.auth.signOut()
+                setUser(null)
+                return
+            }
+
+            if (!direcao) {
+                console.error('❌ AuthContext: Parent Direção Provincial not readable for funcionário')
+                setBlockedModalData({
+                    reason: 'Não foi possível carregar a Direção Provincial associada. Aplique a migração 20261105_rpc_funcionario_dp_login_context.sql (ou a policy de leitura da DP) e tente novamente.',
                     type: 'inactive',
-                    entityType: 'direcao_municipal',
+                    entityType: 'direcao_provincial',
                 })
                 setShowBlockedModal(true)
                 await supabase.auth.signOut()
@@ -1434,7 +1816,28 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     }
 
+    const applyCachedSnapshot = (cached: NonNullable<ReturnType<typeof readAuthProfileCache>>) => {
+        setUser(cached.user)
+        setIsEscola(cached.isEscola)
+        setIsProfessor(cached.isProfessor)
+        setIsAluno(cached.isAluno)
+        setIsEncarregado(cached.isEncarregado)
+        setIsSecretario(cached.isSecretario)
+        setIsDirecaoMunicipal(cached.isDirecaoMunicipal)
+        setIsDirecaoProvincial(cached.isDirecaoProvincial)
+        setIsFuncionarioProvincial(cached.isFuncionarioProvincial)
+        setEscolaProfile(cached.escolaProfile)
+        setProfessorProfile(cached.professorProfile)
+        setAlunoProfile(cached.alunoProfile)
+        setEncarregadoProfile(cached.encarregadoProfile)
+        setSecretarioProfile(cached.secretarioProfile)
+        setDirecaoMunicipalProfile(cached.direcaoMunicipalProfile)
+        setDirecaoProvincialProfile(cached.direcaoProvincialProfile)
+        setPessoalDirecaoProvincialProfile(cached.pessoalDirecaoProvincialProfile)
+    }
+
     const signOut = async () => {
+        clearAuthProfileCache()
         await supabase.auth.signOut()
         setUser(null)
         setIsEscola(false)
@@ -1454,6 +1857,50 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setDirecaoProvincialProfile(null)
         setPessoalDirecaoProvincialProfile(null)
     }
+
+    // Persist auth snapshot so the next refresh paints instantly
+    useEffect(() => {
+        if (loading || !user?.id) return
+        writeAuthProfileCache({
+            userId: user.id,
+            user,
+            isEscola,
+            isProfessor,
+            isAluno,
+            isEncarregado,
+            isSecretario,
+            isDirecaoMunicipal,
+            isDirecaoProvincial,
+            isFuncionarioProvincial,
+            escolaProfile,
+            professorProfile,
+            alunoProfile,
+            encarregadoProfile,
+            secretarioProfile,
+            direcaoMunicipalProfile,
+            direcaoProvincialProfile,
+            pessoalDirecaoProvincialProfile,
+        })
+    }, [
+        loading,
+        user,
+        isEscola,
+        isProfessor,
+        isAluno,
+        isEncarregado,
+        isSecretario,
+        isDirecaoMunicipal,
+        isDirecaoProvincial,
+        isFuncionarioProvincial,
+        escolaProfile,
+        professorProfile,
+        alunoProfile,
+        encarregadoProfile,
+        secretarioProfile,
+        direcaoMunicipalProfile,
+        direcaoProvincialProfile,
+        pessoalDirecaoProvincialProfile,
+    ])
 
     useEffect(() => {
         // Flag to track if initial auth check is complete
@@ -1479,9 +1926,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             initialAuthChecked = true
 
             if (session?.user) {
-                loadUserProfile(session.user)
+                const cached = readAuthProfileCache(session.user.id)
+                if (cached) {
+                    console.log('⚡ AuthContext: Restoring cached profile for instant paint')
+                    applyCachedSnapshot(cached)
+                    setLoading(false)
+                    // Revalidate in background without blocking the UI
+                    void loadUserProfile(session.user)
+                } else {
+                    loadUserProfile(session.user)
+                }
             } else {
                 console.log('✅ AuthContext: No session, setting loading=false immediately')
+                clearAuthProfileCache()
                 setLoading(false)
             }
         }).catch((error) => {
@@ -1492,7 +1949,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         // Listen for auth changes (only for CHANGES after initial load)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
+            (event, session) => {
                 console.log('🔔 AuthContext: onAuthStateChange event:', event, 'initialAuthChecked:', initialAuthChecked)
 
                 // Skip the initial event since getSession already handles it
@@ -1501,14 +1958,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                     return
                 }
 
-                // Only process actual changes (sign in/out)
+                // Keep callback sync — defer async work (Supabase guidance)
                 if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                     if (session?.user) {
-                        // Reset the loading flag so we can reload profile
                         isLoadingProfileRef.current = false
-                        await loadUserProfile(session.user)
+                        void loadUserProfile(session.user)
                     }
                 } else if (event === 'SIGNED_OUT') {
+                    clearAuthProfileCache()
                     setUser(null)
                     setIsEscola(false)
                     setIsProfessor(false)

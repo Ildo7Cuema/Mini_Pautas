@@ -13,8 +13,9 @@ import {
     publishCircularProvincial,
     unpublishCircularProvincial,
     fetchLeiturasCircular,
-    fetchEstatisticasCirculares
+    deriveEstatisticasCirculares,
 } from '../api/circularesProvinciais';
+import { dedupeRequest } from '../../../utils/requestDedupe';
 import type {
     CircularProvincial,
     LeituraCircularProvincial,
@@ -93,13 +94,13 @@ export function useCircularesProvinciais(): UseCircularesProvinciaisReturn {
             setLoading(true);
             setError(null);
 
-            const [circularesData, statsData] = await Promise.all([
-                fetchCircularesProvinciais(provincia, filtros),
-                fetchEstatisticasCirculares(provincia)
-            ]);
-
-            setCirculares(circularesData);
-            setEstatisticas(statsData);
+            // Full list; derive stats locally (no second round-trip / N+1).
+            const cacheKey = `circulares:${provincia}:${JSON.stringify(filtros || {})}`
+            const circularesData = await dedupeRequest(cacheKey, () =>
+                fetchCircularesProvinciais(provincia, filtros)
+            )
+            setCirculares(circularesData)
+            setEstatisticas(deriveEstatisticasCirculares(circularesData))
         } catch (err) {
             console.error('Error loading circulars:', err);
             setError('Erro ao carregar circulares');

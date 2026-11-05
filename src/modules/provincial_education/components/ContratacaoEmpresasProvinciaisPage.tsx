@@ -269,6 +269,7 @@ export const ContratacaoEmpresasProvinciaisPage: React.FC = () => {
                             variant="secondary"
                             onClick={() => setShowModal(false)}
                             disabled={submitting}
+                            icon={<Icons.X />}
                             className="sm:min-w-[7.5rem]"
                         >
                             Cancelar
@@ -277,6 +278,7 @@ export const ContratacaoEmpresasProvinciaisPage: React.FC = () => {
                             type="submit"
                             form="dp-contratacao-form"
                             disabled={submitting}
+                            icon={submitting ? <Icons.Spinner /> : <Icons.Check />}
                             className="sm:min-w-[8rem]"
                         >
                             {submitting ? 'A guardar…' : 'Guardar processo'}
@@ -291,18 +293,21 @@ export const ContratacaoEmpresasProvinciaisPage: React.FC = () => {
                     >
                         <DpInput
                             label="Título"
+                            icon={<Icons.DocumentText />}
                             value={form.titulo}
                             onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
                             required
                         />
                         <DpInput
                             label="Empresa / fornecedor"
+                            icon={<Icons.Building />}
                             value={form.empresa}
                             onChange={(e) => setForm((f) => ({ ...f, empresa: e.target.value }))}
                         />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                             <DpInput
                                 label="Valor estimado (Kz)"
+                                icon={<Icons.Currency />}
                                 value={form.valor_estimado}
                                 onChange={(e) =>
                                     setForm((f) => ({ ...f, valor_estimado: e.target.value }))
@@ -310,6 +315,7 @@ export const ContratacaoEmpresasProvinciaisPage: React.FC = () => {
                             />
                             <DpSelect
                                 label="Estado"
+                                icon={<Icons.Flag />}
                                 value={form.estado}
                                 onChange={(e) =>
                                     setForm((f) => ({
@@ -329,6 +335,7 @@ export const ContratacaoEmpresasProvinciaisPage: React.FC = () => {
                         </div>
                         <DpInput
                             label="Responsável"
+                            icon={<Icons.User />}
                             value={form.responsavel}
                             onChange={(e) => setForm((f) => ({ ...f, responsavel: e.target.value }))}
                         />
@@ -350,11 +357,13 @@ export const ContratacaoEmpresasProvinciaisPage: React.FC = () => {
                     <DpFormSection title="Detalhe" description="Objecto contratual e notas">
                         <DpTextarea
                             label="Objecto"
+                            icon={<Icons.ClipboardList />}
                             value={form.objecto}
                             onChange={(e) => setForm((f) => ({ ...f, objecto: e.target.value }))}
                         />
                         <DpTextarea
                             label="Notas"
+                            icon={<Icons.DocumentText />}
                             value={form.notas}
                             onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
                         />

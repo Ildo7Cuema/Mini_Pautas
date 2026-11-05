@@ -14,7 +14,10 @@ import { NotificationDetailModal } from './NotificationDetailModal'
 import { AppNotification } from '../utils/notificationUtils'
 import { fetchNotifications, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, subscribeToNotifications } from '../utils/notificationApi'
 import { isSuperAdmin } from '../utils/permissions'
-import { provincialStaffAllowedPages } from '../utils/provincialStaffAccess'
+import {
+    getDepartamentoProvincialLabel,
+    provincialStaffAllowedPages,
+} from '../utils/provincialStaffAccess'
 
 interface SidebarProps {
     children: ReactNode
@@ -151,11 +154,39 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
 
     const unreadCount = notifications.filter(n => !n.lida).length
 
+    const getOrgSubtitle = (): string | null => {
+        if (isFuncionarioProvincialRole) {
+            return (
+                pessoalDirecaoProvincialProfile?.direcao_provincial?.nome ||
+                direcaoProvincialProfile?.nome ||
+                null
+            )
+        }
+        if (isSecretarioRole && secretarioProfile?.escola?.nome) {
+            return secretarioProfile.escola.nome
+        }
+        if (isProfessor && professorProfile) {
+            const escolaNome = (professorProfile as { escola?: { nome?: string } }).escola?.nome
+            return escolaNome || null
+        }
+        return null
+    }
+
     // Helper to get role label
     const getRoleLabel = () => {
         if (isSuperAdminUser) return 'SUPERADMIN'
-        if (isFuncionarioProvincialRole) return 'Funcionário Provincial'
-        if (isDirecaoProvincialRole) return 'Direção Provincial'
+        if (isFuncionarioProvincialRole) {
+            const dep = getDepartamentoProvincialLabel(
+                pessoalDirecaoProvincialProfile?.departamento,
+            )
+            const cargo = pessoalDirecaoProvincialProfile?.cargo?.trim()
+            return cargo ? `${cargo} · ${dep}` : dep
+        }
+        if (isDirecaoProvincialRole) {
+            return direcaoProvincialProfile?.provincia
+                ? `Direção Provincial · ${direcaoProvincialProfile.provincia}`
+                : 'Direção Provincial'
+        }
         if (isDirecaoMunicipalRole) return 'Direção Municipal'
         if (isEscola) return 'Administrador'
         if (isProfessor) return 'Professor'
@@ -861,13 +892,19 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                                 <p className="text-sm font-bold text-slate-800 truncate">
                                     {getDisplayName()}
                                 </p>
-                                {isSecretarioRole && secretarioProfile?.escola ? (
+                                {getOrgSubtitle() ? (
                                     <>
-                                        <p className="text-xs text-primary-600 truncate font-medium">{secretarioProfile.escola.nome}</p>
-                                        <p className="text-[10px] text-slate-400 truncate">{getRoleLabel()}</p>
+                                        <p className="text-xs text-primary-600 truncate font-medium">
+                                            {getOrgSubtitle()}
+                                        </p>
+                                        <p className="text-[10px] text-slate-400 truncate">
+                                            {getRoleLabel()}
+                                        </p>
                                     </>
                                 ) : (
-                                    <p className="text-xs text-slate-500 truncate font-medium">{getRoleLabel()}</p>
+                                    <p className="text-xs text-slate-500 truncate font-medium">
+                                        {getRoleLabel()}
+                                    </p>
                                 )}
                             </div>
                         )}
@@ -1077,7 +1114,20 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                                     <p className="font-bold text-slate-900 truncate text-sm">
                                         {getDisplayName()}
                                     </p>
-                                    <p className="text-xs text-slate-500 font-medium">{getRoleLabel()}</p>
+                                    {getOrgSubtitle() ? (
+                                        <>
+                                            <p className="text-xs text-primary-600 truncate font-medium">
+                                                {getOrgSubtitle()}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 truncate">
+                                                {getRoleLabel()}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            {getRoleLabel()}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         </div>

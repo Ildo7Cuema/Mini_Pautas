@@ -16,10 +16,12 @@
         "db:apply-delete-escola": "node scripts/apply-delete-escola-responsavel.mjs",
         "db:apply-concursos": "node scripts/apply-concursos-publicos.mjs",
         "db:apply-pessoal-dp": "node scripts/apply-pessoal-direcao-provincial.mjs",
+        "db:apply-perf-auth": "node scripts/apply-perf-auth-bootstrap.mjs",
+        "db:apply-notify-concurso": "node scripts/apply-notify-dm-concurso.mjs",
         "verify:delete-escola": "node scripts/verify-delete-escola-responsavel.mjs"
     },
     "dependencies": {
-        "@supabase/supabase-js": "^2.39.0",
+        "@supabase/supabase-js": "^2.86.2",
         "@tanstack/react-query": "^5.12.0",
         "date-fns": "^2.30.0",
         "jspdf": "^2.5.2",
