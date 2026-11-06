@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import {
     fetchMunicipioStats,
@@ -10,6 +10,18 @@ import { getEstadoLabel, formatDataSolicitacao } from '../utils/solicitacoes'
 import { generatePDF, defaultTemplate, fetchEmployeeDataForDocument, type DocumentData } from '../utils/documentGenerator'
 import type { MunicipioStats, SolicitacaoDocumento, SolicitacaoStats, EstadoSolicitacao } from '../types'
 import { supabase } from '../lib/supabaseClient'
+import { Icons } from './ui/Icons'
+import {
+    DmPage,
+    DmHeader,
+    DmContent,
+    DmPanel,
+    DmStatCard,
+    DmEmpty,
+    DmButton,
+    DmBadge,
+    DmIconButton,
+} from '../modules/municipal_education/components/MunicipalChrome'
 
 interface DirecaoMunicipalDashboardProps {
     onNavigate?: (page: string, params?: Record<string, any>) => void
@@ -138,156 +150,148 @@ export default function DirecaoMunicipalDashboard({ onNavigate }: DirecaoMunicip
 
     if (!direcaoMunicipalProfile) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                    <div className="text-6xl mb-4">🏛️</div>
-                    <h2 className="text-xl font-semibold text-gray-700">
-                        Perfil de Direção Municipal não encontrado
-                    </h2>
-                    <p className="text-gray-500 mt-2">
-                        Por favor, contacte o administrador do sistema.
-                    </p>
-                </div>
-            </div>
+            <DmPage className="pb-24 md:pb-0">
+                <DmContent>
+                    <DmEmpty
+                        title="Perfil de Direção Municipal não encontrado"
+                        description="Por favor, contacte o administrador do sistema."
+                        icon={<Icons.Building className="w-8 h-8" />}
+                    />
+                </DmContent>
+            </DmPage>
         )
     }
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            {/* Modern Header with Gradient */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-                <div className="relative z-10">
-                    <div className="flex items-center gap-4 mb-4">
-                        <div className="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20 shadow-lg">
-                            <span className="text-3xl">🏛️</span>
-                        </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
-                                Direção Municipal de Educação
-                            </h1>
-                            <p className="text-white/80 font-medium mt-1">
-                                {municipio}, {provincia}
-                            </p>
-                        </div>
+        <DmPage className="pb-24 md:pb-0">
+            <DmHeader
+                title="Direção Municipal de Educação"
+                subtitle={`${municipio}, ${provincia}`}
+                icon={<Icons.Building className="w-6 h-6" />}
+                accent="emerald"
+                meta={
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-white/80">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 backdrop-blur-sm">
+                            <Icons.User className="w-3.5 h-3.5" />
+                            {direcaoMunicipalProfile.nome}
+                        </span>
+                        {direcaoMunicipalProfile.cargo && (
+                            <span className="hidden sm:inline text-white/70">{direcaoMunicipalProfile.cargo}</span>
+                        )}
                     </div>
-                    <div className="flex items-center gap-3 text-sm text-white/60">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full backdrop-blur-sm">
-                            <span>👤</span>
-                            <span className="font-medium text-white/90">{direcaoMunicipalProfile.nome}</span>
-                        </div>
-                        <span className="hidden md:inline text-white/40">•</span>
-                        <span className="hidden md:inline text-white/70">{direcaoMunicipalProfile.cargo}</span>
-                    </div>
-                </div>
-            </div>
-
+                }
+            />
+            <DmContent>
             {
                 loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16">
+                        <Icons.Spinner className="w-8 h-8 text-emerald-600" />
+                        <p className="text-sm font-medium text-slate-500">A carregar painel municipal...</p>
                     </div>
                 ) : (
                     <>
-                        {/* Statistics Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
-                            <StatCard
-                                icon="🏫"
-                                label="Escolas"
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
+                            <DmStatCard
+                                title="Escolas"
                                 value={stats?.total_escolas || 0}
-                                subLabel={`${stats?.escolas_ativas || 0} activas`}
-                                color="blue"
+                                subtitle={`${stats?.escolas_ativas || 0} activas`}
+                                icon={<Icons.School className="w-5 h-5" />}
+                                iconTone="from-blue-50 to-blue-100 text-blue-600"
                             />
-                            <StatCard
-                                icon="👨‍🎓"
-                                label="Alunos"
+                            <DmStatCard
+                                title="Alunos"
                                 value={stats?.total_alunos || 0}
-                                subLabel={`♂ ${stats?.alunos_masculino || 0} • ♀ ${stats?.alunos_feminino || 0}`}
-                                color="green"
+                                subtitle={`M ${stats?.alunos_masculino || 0} · F ${stats?.alunos_feminino || 0}`}
+                                icon={<Icons.AcademicCap className="w-5 h-5" />}
+                                iconTone="from-emerald-50 to-emerald-100 text-emerald-600"
                             />
-                            <StatCard
-                                icon="👨‍🏫"
-                                label="Professores"
+                            <DmStatCard
+                                title="Professores"
                                 value={stats?.total_professores || 0}
-                                subLabel={`♂ ${stats?.professores_masculino || 0} • ♀ ${stats?.professores_feminino || 0}`}
-                                color="purple"
+                                subtitle={`M ${stats?.professores_masculino || 0} · F ${stats?.professores_feminino || 0}`}
+                                icon={<Icons.Users className="w-5 h-5" />}
+                                iconTone="from-violet-50 to-violet-100 text-violet-600"
                             />
-                            <StatCard
-                                icon="👥"
-                                label="Funcionários"
+                            <DmStatCard
+                                title="Funcionários"
                                 value={stats?.total_funcionarios || 0}
-                                subLabel={`♂ ${stats?.funcionarios_masculino || 0} • ♀ ${stats?.funcionarios_feminino || 0}`}
-                                color="gray"
+                                subtitle={`M ${stats?.funcionarios_masculino || 0} · F ${stats?.funcionarios_feminino || 0}`}
+                                icon={<Icons.Briefcase className="w-5 h-5" />}
+                                iconTone="from-slate-50 to-slate-100 text-slate-600"
                             />
-                            <StatCard
-                                icon="📋"
-                                label="Solicitações"
+                            <DmStatCard
+                                title="Solicitações"
                                 value={solicitacaoStats?.pendentes || 0}
-                                subLabel="Pendentes"
-                                color={(solicitacaoStats?.pendentes || 0) > 0 ? 'red' : 'gray'}
-                                highlight={(solicitacaoStats?.pendentes || 0) > 0}
+                                subtitle="Pendentes"
+                                icon={<Icons.ClipboardList className="w-5 h-5" />}
+                                iconTone={(solicitacaoStats?.pendentes || 0) > 0
+                                    ? 'from-amber-50 to-amber-100 text-amber-600'
+                                    : 'from-slate-50 to-slate-100 text-slate-600'}
                             />
                         </div>
 
-                        {/* Performance Stats - Secondary Metrics */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-                                <div className="flex items-center justify-between mb-3">
-                                    <span className="text-slate-600 font-medium">Total de Turmas</span>
-                                    <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
-                                        <span className="text-xl">📚</span>
-                                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                            <DmPanel className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm text-slate-600 font-medium">Total de Turmas</p>
+                                    <p className="text-3xl font-bold text-slate-900 tracking-tight mt-1">
+                                        {stats?.total_turmas || 0}
+                                    </p>
                                 </div>
-                                <div className="text-3xl font-bold text-slate-900 tracking-tight">
-                                    {stats?.total_turmas || 0}
+                                <div className="w-11 h-11 bg-amber-100 text-amber-700 rounded-xl flex items-center justify-center">
+                                    <Icons.ClipboardList className="w-5 h-5" />
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-                                <div className="flex items-center justify-between mb-3">
-                                    <span className="text-slate-600 font-medium">Média Geral</span>
-                                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                        <span className="text-xl">📊</span>
-                                    </div>
+                            </DmPanel>
+                            <DmPanel className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm text-slate-600 font-medium">Média Geral</p>
+                                    <p className="text-3xl font-bold text-slate-900 tracking-tight mt-1">
+                                        {stats?.media_geral?.toFixed(1) || '0.0'}
+                                    </p>
                                 </div>
-                                <div className="text-3xl font-bold text-slate-900 tracking-tight">
-                                    {stats?.media_geral?.toFixed(1) || '0.0'}
+                                <div className="w-11 h-11 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center">
+                                    <Icons.BarChart className="w-5 h-5" />
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-                                <div className="flex items-center justify-between mb-3">
-                                    <span className="text-slate-600 font-medium">Taxa de Aprovação</span>
-                                    <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-                                        <span className="text-xl">✅</span>
-                                    </div>
+                            </DmPanel>
+                            <DmPanel className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm text-slate-600 font-medium">Taxa de Aprovação</p>
+                                    <p className="text-3xl font-bold text-slate-900 tracking-tight mt-1">
+                                        {stats?.taxa_aprovacao || 0}%
+                                    </p>
                                 </div>
-                                <div className="text-3xl font-bold text-slate-900 tracking-tight">
-                                    {stats?.taxa_aprovacao || 0}%
+                                <div className="w-11 h-11 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center">
+                                    <Icons.CheckCircle className="w-5 h-5" />
                                 </div>
-                            </div>
+                            </DmPanel>
                         </div>
 
-                        {/* Two Column Layout */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Recent Requests */}
-                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                            <DmPanel className="!p-0 overflow-hidden">
+                                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
                                     <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2">
-                                        <span className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">📋</span>
+                                        <span className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-lg flex items-center justify-center">
+                                            <Icons.ClipboardList className="w-4 h-4" />
+                                        </span>
                                         Solicitações Recentes
                                     </h2>
-                                    <button
+                                    <DmButton
+                                        variant="ghost"
                                         onClick={() => onNavigate?.('solicitacoes')}
-                                        className="text-indigo-600 hover:text-indigo-700 text-sm font-medium hover:underline flex items-center gap-1"
+                                        iconRight={<Icons.ChevronRight className="w-4 h-4" />}
+                                        className="!min-h-0 !py-1.5 !px-2.5 !text-xs"
                                     >
-                                        Ver Todas
-                                        <span>→</span>
-                                    </button>
+                                        Ver todas
+                                    </DmButton>
                                 </div>
                                 <div className="divide-y divide-slate-100">
                                     {solicitacoes.length === 0 ? (
-                                        <div className="p-8 text-center text-slate-500">
-                                            <div className="w-12 h-12 bg-slate-100 rounded-full mx-auto mb-3 flex items-center justify-center">📭</div>
-                                            Nenhuma solicitação encontrada
+                                        <div className="p-6">
+                                            <DmEmpty
+                                                title="Nenhuma solicitação"
+                                                description="Não há pedidos recentes neste município."
+                                                icon={<Icons.ClipboardList className="w-6 h-6" />}
+                                            />
                                         </div>
                                     ) : (
                                         solicitacoes.slice(0, 5).map((sol) => {
@@ -298,19 +302,17 @@ export default function DirecaoMunicipalDashboard({ onNavigate }: DirecaoMunicip
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2 mb-1">
                                                                 {sol.urgente && (
-                                                                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                                                                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                                                                 )}
                                                                 <span className="font-medium text-slate-900 truncate">
                                                                     {sol.assunto}
                                                                 </span>
                                                             </div>
                                                             <div className="text-sm text-slate-500 truncate">
-                                                                {sol.solicitante_nome} • {sol.escola?.nome}
+                                                                {sol.solicitante_nome} · {sol.escola?.nome}
                                                             </div>
                                                             <div className="flex items-center gap-2 mt-2">
-                                                                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${estadoInfo.bgColor} ${estadoInfo.color}`}>
-                                                                    {estadoInfo.label}
-                                                                </span>
+                                                                <DmBadge tone="info">{estadoInfo.label}</DmBadge>
                                                                 <span className="text-xs text-slate-400">
                                                                     {formatDataSolicitacao(sol.created_at)}
                                                                 </span>
@@ -318,22 +320,22 @@ export default function DirecaoMunicipalDashboard({ onNavigate }: DirecaoMunicip
                                                         </div>
                                                         {sol.estado === 'pendente' && (
                                                             <div className="flex gap-1">
-                                                                <button
+                                                                <DmIconButton
+                                                                    label="Marcar em análise"
                                                                     onClick={() => handleQuickAction(sol.id, 'analyze')}
                                                                     disabled={processingId === sol.id}
-                                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                                                                    title="Marcar em análise"
+                                                                    className="!bg-blue-50 !text-blue-700 !shadow-none"
                                                                 >
-                                                                    🔍
-                                                                </button>
-                                                                <button
+                                                                    <Icons.Search className="w-4 h-4" />
+                                                                </DmIconButton>
+                                                                <DmIconButton
+                                                                    label="Aprovar"
                                                                     onClick={() => handleQuickAction(sol.id, 'approve')}
                                                                     disabled={processingId === sol.id}
-                                                                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                                                                    title="Aprovar"
+                                                                    className="!bg-emerald-50 !text-emerald-700 !shadow-none"
                                                                 >
-                                                                    ✅
-                                                                </button>
+                                                                    <Icons.Check className="w-4 h-4" />
+                                                                </DmIconButton>
                                                             </div>
                                                         )}
                                                     </div>
@@ -342,61 +344,33 @@ export default function DirecaoMunicipalDashboard({ onNavigate }: DirecaoMunicip
                                         })
                                     )}
                                 </div>
-                            </div>
+                            </DmPanel>
 
-                            {/* Quick Actions */}
-                            <div className="space-y-6">
-                                {/* Actions */}
-                                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                            <div className="space-y-5">
+                                <DmPanel>
                                     <h2 className="text-base font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                                        <span className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">⚡</span>
+                                        <span className="w-8 h-8 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center">
+                                            <Icons.Target className="w-4 h-4" />
+                                        </span>
                                         Acesso Rápido
                                     </h2>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <ActionButton
-                                            icon="🏫"
-                                            label="Escolas"
-                                            onClick={() => onNavigate?.('escolas')}
-                                        />
-                                        <ActionButton
-                                            icon="📋"
-                                            label="Solicitações"
-                                            onClick={() => onNavigate?.('solicitacoes')}
-                                            badge={solicitacaoStats?.pendentes}
-                                        />
-                                        <ActionButton
-                                            icon="📊"
-                                            label="Supervisão"
-                                            onClick={() => onNavigate?.('supervisao-pedagogica')}
-                                        />
-                                        <ActionButton
-                                            icon="👥"
-                                            label="Funcionários"
-                                            onClick={() => onNavigate?.('funcionarios')}
-                                        />
-                                        <ActionButton
-                                            icon="📢"
-                                            label="Circulares"
-                                            onClick={() => onNavigate?.('circulares')}
-                                        />
-                                        <ActionButton
-                                            icon="📈"
-                                            label="Relatórios"
-                                            onClick={() => onNavigate?.('relatorios-municipais')}
-                                        />
-                                        <ActionButton
-                                            icon="⚙️"
-                                            label="Config. Documentos"
-                                            onClick={() => onNavigate?.('config-documentos')}
-                                        />
+                                        <QuickNav icon={<Icons.School className="w-5 h-5" />} label="Escolas" onClick={() => onNavigate?.('escolas')} />
+                                        <QuickNav icon={<Icons.ClipboardList className="w-5 h-5" />} label="Solicitações" onClick={() => onNavigate?.('solicitacoes')} badge={solicitacaoStats?.pendentes} />
+                                        <QuickNav icon={<Icons.BarChart className="w-5 h-5" />} label="Supervisão" onClick={() => onNavigate?.('supervisao-pedagogica')} />
+                                        <QuickNav icon={<Icons.Users className="w-5 h-5" />} label="Funcionários" onClick={() => onNavigate?.('funcionarios')} />
+                                        <QuickNav icon={<Icons.DocumentText className="w-5 h-5" />} label="Circulares" onClick={() => onNavigate?.('circulares')} />
+                                        <QuickNav icon={<Icons.TrendingUp className="w-5 h-5" />} label="Relatórios" onClick={() => onNavigate?.('relatorios-municipais')} />
+                                        <QuickNav icon={<Icons.Edit className="w-5 h-5" />} label="Config. Documentos" onClick={() => onNavigate?.('config-documentos')} />
                                     </div>
-                                </div>
+                                </DmPanel>
 
-                                {/* Top Schools by Performance */}
-                                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                                    <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                                <DmPanel className="!p-0 overflow-hidden">
+                                    <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60">
                                         <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2">
-                                            <span className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">🏆</span>
+                                            <span className="w-8 h-8 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center">
+                                                <Icons.Award className="w-4 h-4" />
+                                            </span>
                                             Top Escolas
                                         </h2>
                                     </div>
@@ -406,9 +380,9 @@ export default function DirecaoMunicipalDashboard({ onNavigate }: DirecaoMunicip
                                             .slice(0, 5)
                                             .map((escola, index) => (
                                                 <div key={escola.escola_id} className="p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors">
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-100 text-yellow-700' :
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-amber-100 text-amber-800' :
                                                         index === 1 ? 'bg-slate-200 text-slate-600' :
-                                                            index === 2 ? 'bg-amber-100 text-amber-700' :
+                                                            index === 2 ? 'bg-orange-100 text-orange-700' :
                                                                 'bg-slate-100 text-slate-500'
                                                         }`}>
                                                         {index + 1}
@@ -432,115 +406,49 @@ export default function DirecaoMunicipalDashboard({ onNavigate }: DirecaoMunicip
                                                 </div>
                                             ))}
                                         {!stats?.estatisticas_por_escola?.length && (
-                                            <div className="p-8 text-center text-slate-500">
-                                                <div className="w-12 h-12 bg-slate-100 rounded-full mx-auto mb-3 flex items-center justify-center">🏫</div>
-                                                Nenhuma escola encontrada
+                                            <div className="p-6">
+                                                <DmEmpty
+                                                    title="Nenhuma escola"
+                                                    description="Ainda não há estatísticas por escola."
+                                                    icon={<Icons.School className="w-6 h-6" />}
+                                                />
                                             </div>
                                         )}
                                     </div>
-                                </div>
+                                </DmPanel>
                             </div>
                         </div>
                     </>
                 )
             }
-        </div >
+            </DmContent>
+        </DmPage>
     )
 }
 
-// Stat Card Component - Modern Design
-function StatCard({
-    icon,
-    label,
-    value,
-    subLabel,
-    color = 'blue',
-    highlight = false
-}: {
-    icon: string
-    label: string
-    value: number
-    subLabel?: string
-    color?: 'blue' | 'green' | 'purple' | 'red' | 'gray'
-    highlight?: boolean
-}) {
-    const colorConfig = {
-        blue: {
-            bg: 'bg-gradient-to-br from-blue-500 to-blue-600',
-            light: 'bg-blue-50 border-blue-100',
-            text: 'text-white',
-            subText: 'text-blue-100'
-        },
-        green: {
-            bg: 'bg-gradient-to-br from-emerald-500 to-emerald-600',
-            light: 'bg-emerald-50 border-emerald-100',
-            text: 'text-white',
-            subText: 'text-emerald-100'
-        },
-        purple: {
-            bg: 'bg-gradient-to-br from-purple-500 to-purple-600',
-            light: 'bg-purple-50 border-purple-100',
-            text: 'text-white',
-            subText: 'text-purple-100'
-        },
-        red: {
-            bg: 'bg-gradient-to-br from-red-500 to-red-600',
-            light: 'bg-red-50 border-red-100',
-            text: 'text-white',
-            subText: 'text-red-100'
-        },
-        gray: {
-            bg: 'bg-gradient-to-br from-slate-500 to-slate-600',
-            light: 'bg-slate-50 border-slate-100',
-            text: 'text-white',
-            subText: 'text-slate-200'
-        }
-    }
-
-    const config = colorConfig[color]
-
-    return (
-        <div className={`relative rounded-2xl p-5 ${config.bg} ${config.text} shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 ${highlight ? 'ring-2 ring-red-400 ring-offset-2' : ''}`}>
-            <div className="flex items-center justify-between mb-3">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                    <span className="text-2xl">{icon}</span>
-                </div>
-                {highlight && <span className="animate-pulse text-xl">⚠️</span>}
-            </div>
-            <div className="text-3xl font-bold mb-1 tracking-tight">
-                {value.toLocaleString('pt-AO')}
-            </div>
-            <div className="text-sm font-medium opacity-90">{label}</div>
-            {subLabel && (
-                <div className={`text-xs mt-1 ${config.subText}`}>{subLabel}</div>
-            )}
-        </div>
-    )
-}
-
-// Action Button Component - Modern Design
-function ActionButton({
+function QuickNav({
     icon,
     label,
     onClick,
-    badge
+    badge,
 }: {
-    icon: string
+    icon: ReactNode
     label: string
     onClick: () => void
     badge?: number
 }) {
     return (
         <button
+            type="button"
             onClick={onClick}
-            className="relative p-4 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md transition-all duration-200 text-left group"
+            className="relative p-3.5 bg-slate-50 hover:bg-white rounded-xl border border-slate-200 hover:border-emerald-300 shadow-sm hover:shadow-md transition-all text-left group"
         >
-            <div className="w-10 h-10 bg-slate-100 group-hover:bg-indigo-100 rounded-lg flex items-center justify-center mb-3 transition-colors">
-                <span className="text-xl group-hover:scale-110 transition-transform">{icon}</span>
+            <div className="w-9 h-9 bg-white group-hover:bg-emerald-50 text-slate-600 group-hover:text-emerald-700 rounded-lg flex items-center justify-center mb-2.5 border border-slate-100 transition-colors">
+                {icon}
             </div>
-            <div className="font-semibold text-slate-800 group-hover:text-indigo-700 transition-colors">{label}</div>
+            <div className="font-semibold text-sm text-slate-800 group-hover:text-emerald-800 transition-colors">{label}</div>
             {badge !== undefined && badge > 0 && (
-                <span className="absolute top-3 right-3 bg-red-500 text-white text-xs font-bold rounded-full min-w-[22px] h-[22px] flex items-center justify-center px-1 shadow-lg animate-pulse">
+                <span className="absolute top-2.5 right-2.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1 shadow">
                     {badge > 99 ? '99+' : badge}
                 </span>
             )}

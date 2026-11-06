@@ -94,9 +94,9 @@ const PERFIL_OPTIONS: { value: TipoPerfilStaff; label: string; area?: string; mo
 
 const SUBCATEGORIAS_POR_CATEGORIA: Record<string, { value: string; label: string }[]> = {
     DIRECAO: [
-        { value: 'DIRECTOR_PEDAGOGICO', label: 'Director Pedagógico' },
-        { value: 'DIRECTOR_ADMINISTRATIVO', label: 'Director Administrativo' },
-        { value: 'DIRECTOR_GERAL', label: 'Director Geral' },
+        { value: 'DIRECTOR_PEDAGOGICO', label: 'Subdirector Pedagógico' },
+        { value: 'DIRECTOR_ADMINISTRATIVO', label: 'Subdirector Administrativo' },
+        { value: 'DIRECTOR_GERAL', label: 'Subdirector Geral' },
     ],
     COORDENACAO: [
         { value: 'COORDENADOR_CLASSE', label: 'Coordenador de Classe' },
@@ -121,9 +121,9 @@ const SUBCATEGORIAS_POR_CATEGORIA: Record<string, { value: string; label: string
 
 function perfilFromSubcategoria(subcategoria: string, _source?: StaffSource): string {
     const map: Record<string, string> = {
-        DIRECTOR_PEDAGOGICO: 'Director Pedagógico',
-        DIRECTOR_ADMINISTRATIVO: 'Director Administrativo',
-        DIRECTOR_GERAL: 'Director Geral',
+        DIRECTOR_PEDAGOGICO: 'Subdirector Pedagógico',
+        DIRECTOR_ADMINISTRATIVO: 'Subdirector Administrativo',
+        DIRECTOR_GERAL: 'Subdirector Geral',
         TECNICO_SECRETARIA: 'Técnico de Secretaria',
         SECRETARIO: 'Técnico de Secretaria',
     }
@@ -138,11 +138,22 @@ function isUniqueDirectorRole(role?: string | null): role is UniqueDirectorRole 
     return UNIQUE_DIRECTOR_ROLES.includes(role as UniqueDirectorRole)
 }
 
+const LEGACY_DIRECTOR_CARGO_LABELS: Record<UniqueDirectorRole, string[]> = {
+    DIRECTOR_PEDAGOGICO: ['Director Pedagógico', 'Diretor Pedagógico'],
+    DIRECTOR_ADMINISTRATIVO: ['Director Administrativo', 'Diretor Administrativo'],
+}
+
 function itemHoldsDirectorRole(item: UnifiedStaffItem, role: UniqueDirectorRole): boolean {
     if (!item.ativo) return false
     if (item.subcategoria === role) return true
-    // secretarios.cargo / labels espelhados
-    if (item.cargo === role || item.cargo === getStaffCargoLabel(role)) return true
+    // secretarios.cargo / labels espelhados (actual + legado Director)
+    if (
+        item.cargo === role ||
+        item.cargo === getStaffCargoLabel(role) ||
+        LEGACY_DIRECTOR_CARGO_LABELS[role].includes(item.cargo)
+    ) {
+        return true
+    }
     return false
 }
 
@@ -159,7 +170,7 @@ function resolvePerfilConfig(tipo: TipoPerfilStaff): {
             return {
                 categoria: 'DIRECAO',
                 subcategoria: 'DIRECTOR_PEDAGOGICO',
-                cargoLabel: 'Director Pedagógico',
+                cargoLabel: 'Subdirector Pedagógico',
                 cargoCode: 'DIRECTOR_PEDAGOGICO',
                 hasLoginAccess: true,
                 departamentoDefault: 'Direcção Pedagógica',
@@ -168,7 +179,7 @@ function resolvePerfilConfig(tipo: TipoPerfilStaff): {
             return {
                 categoria: 'DIRECAO',
                 subcategoria: 'DIRECTOR_ADMINISTRATIVO',
-                cargoLabel: 'Director Administrativo',
+                cargoLabel: 'Subdirector Administrativo',
                 cargoCode: 'DIRECTOR_ADMINISTRATIVO',
                 hasLoginAccess: true,
                 departamentoDefault: 'Direcção Administrativa',
@@ -646,16 +657,22 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                 ? item.cargo
                 : null,
         )
+        const isPedLabel =
+            item.cargo === getStaffCargoLabel('DIRECTOR_PEDAGOGICO') ||
+            LEGACY_DIRECTOR_CARGO_LABELS.DIRECTOR_PEDAGOGICO.includes(item.cargo)
+        const isAdmLabel =
+            item.cargo === getStaffCargoLabel('DIRECTOR_ADMINISTRATIVO') ||
+            LEGACY_DIRECTOR_CARGO_LABELS.DIRECTOR_ADMINISTRATIVO.includes(item.cargo)
         if (
             item.source === 'secretario' ||
-            item.cargo === getStaffCargoLabel('DIRECTOR_PEDAGOGICO') ||
-            item.cargo === getStaffCargoLabel('DIRECTOR_ADMINISTRATIVO') ||
+            isPedLabel ||
+            isAdmLabel ||
             item.cargo === getStaffCargoLabel('TECNICO_SECRETARIA')
         ) {
-            if (item.cargo === getStaffCargoLabel('DIRECTOR_PEDAGOGICO') || fromCargo === 'DIRECTOR_PEDAGOGICO') {
+            if (isPedLabel || fromCargo === 'DIRECTOR_PEDAGOGICO') {
                 return 'DIRECTOR_PEDAGOGICO'
             }
-            if (item.cargo === getStaffCargoLabel('DIRECTOR_ADMINISTRATIVO') || fromCargo === 'DIRECTOR_ADMINISTRATIVO') {
+            if (isAdmLabel || fromCargo === 'DIRECTOR_ADMINISTRATIVO') {
                 return 'DIRECTOR_ADMINISTRATIVO'
             }
             return 'TECNICO_SECRETARIA'
@@ -894,7 +911,7 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                             {searchQuery ? 'Nenhum funcionário encontrado' : 'Nenhum funcionário cadastrado'}
                         </h3>
                         <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
-                            Cadastre Directores Pedagógicos/Administrativos, Técnicos de Secretaria e outros funcionários.
+                            Cadastre Subdirectores Pedagógicos/Administrativos, Técnicos de Secretaria e outros funcionários.
                         </p>
                     </CardBody>
                 </Card>
@@ -1199,7 +1216,7 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                                                 type="text"
                                                 value={formData.cargo}
                                                 onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
-                                                placeholder="Ex: Director Pedagógico"
+                                                placeholder="Ex: Subdirector Pedagógico"
                                             />
                                             <Input
                                                 label="Departamento"

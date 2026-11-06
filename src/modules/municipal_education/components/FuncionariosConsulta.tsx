@@ -14,6 +14,13 @@ import type {
     LABELS_CATEGORIA,
     LABELS_CATEGORIA_DOCENTE
 } from '../types';
+import { Icons } from '../../../components/ui/Icons';
+import {
+    DmPage,
+    DmHeader,
+    DmContent,
+    DmButton,
+} from './MunicipalChrome';
 
 interface FuncionariosConsultaProps {
     onNavigate?: (page: string, params?: Record<string, any>) => void;
@@ -87,42 +94,35 @@ export function FuncionariosConsulta({ onNavigate }: FuncionariosConsultaProps) 
 
     if (loading && funcionarios.length === 0) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            </div>
+            <DmPage className="pb-24 md:pb-0">
+                <DmContent>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16">
+                        <Icons.Spinner className="w-8 h-8 text-slate-600" />
+                        <p className="text-sm font-medium text-slate-500">A carregar funcionários...</p>
+                    </div>
+                </DmContent>
+            </DmPage>
         );
     }
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            {/* Modern Header with Gradient */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-                <div className="relative z-10">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20">
-                                <span className="text-3xl">👥</span>
-                            </div>
-                            <div>
-                                <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
-                                    Consulta de Funcionários
-                                </h1>
-                                <p className="text-white/80 font-medium mt-1">
-                                    Todos os funcionários das escolas do município
-                                </p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={refresh}
-                            className="px-5 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-all font-medium backdrop-blur-sm border border-white/20 flex items-center gap-2"
-                        >
-                            🔄 Actualizar
-                        </button>
-                    </div>
-                </div>
-            </div>
-
+        <DmPage className="pb-24 md:pb-0">
+            <DmHeader
+                title="Consulta de Funcionários"
+                subtitle="Todos os funcionários das escolas do município"
+                icon={<Icons.Users className="w-6 h-6" />}
+                accent="slate"
+                actions={
+                    <DmButton
+                        onClick={refresh}
+                        icon={<Icons.Refresh className="w-4 h-4" />}
+                        className="!bg-white/15 !text-white !border !border-white/20 hover:!bg-white/25"
+                    >
+                        Actualizar
+                    </DmButton>
+                }
+            />
+            <DmContent>
             {/* Main Stats Cards */}
             {stats && (
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
@@ -529,7 +529,8 @@ export function FuncionariosConsulta({ onNavigate }: FuncionariosConsultaProps) 
                     </div>
                 </div>
             )}
-        </div>
+            </DmContent>
+        </DmPage>
     );
 }
 

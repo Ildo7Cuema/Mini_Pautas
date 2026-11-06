@@ -160,7 +160,7 @@ Password comum: `SeedTest@2026!`
 
 | Email | Município / Província | Estado | Escola seed ligada |
 |--------|----------------------|--------|---------------------|
-| `dm.belas@seed.edugest.test` | Belas / Luanda | Activa | `SEED-PRI-2026` |
+| `dm.belas@seed.edugest.test` | Belas / Luanda | Activa | `SEED-PRI-2026`; menu **Pessoal** (secções Dec. 35/23) após `npm run db:apply-pessoal-dm` ou SQL `20261105_pessoal_direcao_municipal.sql` |
 | `dm.cacuaco@seed.edugest.test` | Cacuaco / Luanda | Activa | *(sem escolas — estado vazio)* |
 | `dm.viana.pendente@seed.edugest.test` | Viana / Luanda | Pendente | — |
 | `dm.benguela@seed.edugest.test` | Benguela / Benguela | Activa | `SEED-SEC-2026` |
@@ -211,3 +211,5 @@ A seed só apaga dados marcados:
 - emails `*@seed.edugest.test`  
 
 Não remove escolas, direções ou utilizadores reais fora destes marcadores.
+
+`sueper admin: superadmin@edugest.ao

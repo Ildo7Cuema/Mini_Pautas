@@ -28,6 +28,8 @@ import type {
     DirecaoProvincialProfile,
     PessoalDirecaoProvincial,
     PessoalDirecaoProvincialProfile,
+    PessoalDirecaoMunicipal,
+    PessoalDirecaoMunicipalProfile,
 } from '../types'
 
 interface AuthContextType {
@@ -41,6 +43,7 @@ interface AuthContextType {
     isDirecaoMunicipal: boolean
     isDirecaoProvincial: boolean
     isFuncionarioProvincial: boolean
+    isFuncionarioMunicipal: boolean
     escolaProfile: EscolaProfile | null
     professorProfile: ProfessorProfile | null
     alunoProfile: AlunoProfile | null
@@ -49,6 +52,7 @@ interface AuthContextType {
     direcaoMunicipalProfile: DirecaoMunicipalProfile | null
     direcaoProvincialProfile: DirecaoProvincialProfile | null
     pessoalDirecaoProvincialProfile: PessoalDirecaoProvincialProfile | null
+    pessoalDirecaoMunicipalProfile: PessoalDirecaoMunicipalProfile | null
     profile: UserProfile | null  // Added for SUPERADMIN support
     signOut: () => Promise<void>
     refreshProfile: () => Promise<void>
@@ -79,6 +83,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [isDirecaoMunicipal, setIsDirecaoMunicipal] = useState(false)
     const [isDirecaoProvincial, setIsDirecaoProvincial] = useState(false)
     const [isFuncionarioProvincial, setIsFuncionarioProvincial] = useState(false)
+    const [isFuncionarioMunicipal, setIsFuncionarioMunicipal] = useState(false)
     const [escolaProfile, setEscolaProfile] = useState<EscolaProfile | null>(null)
     const [professorProfile, setProfessorProfile] = useState<ProfessorProfile | null>(null)
     const [alunoProfile, setAlunoProfile] = useState<AlunoProfile | null>(null)
@@ -87,6 +92,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [direcaoMunicipalProfile, setDirecaoMunicipalProfile] = useState<DirecaoMunicipalProfile | null>(null)
     const [direcaoProvincialProfile, setDirecaoProvincialProfile] = useState<DirecaoProvincialProfile | null>(null)
     const [pessoalDirecaoProvincialProfile, setPessoalDirecaoProvincialProfile] = useState<PessoalDirecaoProvincialProfile | null>(null)
+    const [pessoalDirecaoMunicipalProfile, setPessoalDirecaoMunicipalProfile] = useState<PessoalDirecaoMunicipalProfile | null>(null)
 
     // Blocked school modal state
     const [showBlockedModal, setShowBlockedModal] = useState(false)
@@ -161,6 +167,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             direcaoMunicipal?: DirecaoMunicipal
             direcaoProvincial?: DirecaoProvincial
             pessoal?: PessoalDirecaoProvincial
+            pessoalMunicipal?: PessoalDirecaoMunicipal
             aluno?: Aluno & { turma?: Turma; escola?: Escola }
             alunos?: Array<Aluno & { turma?: Turma; escola?: Escola }>
         }
@@ -181,6 +188,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setIsDirecaoMunicipal(profile.tipo_perfil === 'DIRECAO_MUNICIPAL')
         setIsDirecaoProvincial(profile.tipo_perfil === 'DIRECAO_PROVINCIAL')
         setIsFuncionarioProvincial(profile.tipo_perfil === 'FUNCIONARIO_PROVINCIAL')
+        setIsFuncionarioMunicipal(profile.tipo_perfil === 'FUNCIONARIO_MUNICIPAL')
 
         if (profile.tipo_perfil === 'SUPERADMIN') {
             setUser({ id: authUser.id, email: authUser.email || '', profile })
@@ -339,6 +347,37 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 profile,
                 direcaoProvincial: direcaoProfile,
                 pessoalDirecaoProvincial: pessoalProfile,
+            })
+            isLoadingProfileRef.current = false
+            setLoading(false)
+            return true
+        }
+
+        if (profile.tipo_perfil === 'FUNCIONARIO_MUNICIPAL') {
+            const pessoal = result.pessoalMunicipal
+            const direcao = result.direcaoMunicipal
+            if (!pessoal || !direcao) {
+                await finishBlocked('O seu registo de funcionário municipal foi removido do sistema.', 'deleted', 'direcao_municipal')
+                return true
+            }
+            if (!direcao.ativo) {
+                await finishBlocked(
+                    'A Direção Municipal a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Municipal estiver activa.',
+                    'blocked',
+                    'direcao_municipal',
+                )
+                return true
+            }
+            const pessoalProfile: PessoalDirecaoMunicipalProfile = { ...pessoal, user_profile: profile }
+            const direcaoProfile: DirecaoMunicipalProfile = { ...direcao, user_profile: profile }
+            setPessoalDirecaoMunicipalProfile(pessoalProfile)
+            setDirecaoMunicipalProfile(direcaoProfile)
+            setUser({
+                id: authUser.id,
+                email: pessoal.email || '',
+                profile,
+                direcaoMunicipal: direcaoProfile,
+                pessoalDirecaoMunicipal: pessoalProfile,
             })
             isLoadingProfileRef.current = false
             setLoading(false)
@@ -849,6 +888,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             setIsDirecaoMunicipal(profile.tipo_perfil === 'DIRECAO_MUNICIPAL')
             setIsDirecaoProvincial(profile.tipo_perfil === 'DIRECAO_PROVINCIAL')
             setIsFuncionarioProvincial(profile.tipo_perfil === 'FUNCIONARIO_PROVINCIAL')
+            setIsFuncionarioMunicipal(profile.tipo_perfil === 'FUNCIONARIO_MUNICIPAL')
 
             // Handle SUPERADMIN separately (no escola_id required)
             if (profile.tipo_perfil === 'SUPERADMIN') {
@@ -889,6 +929,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             } else if (profile.tipo_perfil === 'FUNCIONARIO_PROVINCIAL') {
                 console.log('🏛️ AuthContext: Loading funcionário provincial profile...')
                 await loadFuncionarioProvincialProfile(authUser.id, profile)
+            } else if (profile.tipo_perfil === 'FUNCIONARIO_MUNICIPAL') {
+                console.log('🏛️ AuthContext: Loading funcionário municipal profile...')
+                await loadFuncionarioMunicipalProfile(authUser.id, profile)
             }
 
             // CRITICAL: Always set loading to false, even if profile loading fails
@@ -1809,6 +1852,162 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     }
 
+    const loadFuncionarioMunicipalProfile = async (userId: string, profile: UserProfile) => {
+        try {
+            const { data: rpcData, error: rpcError } = await supabase.rpc(
+                'get_funcionario_municipal_login_context',
+            )
+
+            if (!rpcError && rpcData) {
+                const result = rpcData as {
+                    success?: boolean
+                    error?: string
+                    pessoal?: PessoalDirecaoMunicipal
+                    direcao?: DirecaoMunicipal
+                }
+
+                if (result.error === 'direcao_inactive') {
+                    setBlockedModalData({
+                        reason: 'A Direção Municipal a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Municipal estiver activa.',
+                        type: 'blocked',
+                        entityType: 'direcao_municipal',
+                    })
+                    setShowBlockedModal(true)
+                    await supabase.auth.signOut()
+                    setUser(null)
+                    return
+                }
+
+                if (result.error === 'pessoal_not_found' || result.error === 'direcao_missing') {
+                    setBlockedModalData({
+                        reason: 'O seu registo como funcionário municipal não foi encontrado ou a Direção Municipal associada não existe. Peça à Direção Municipal para reactivar o convite.',
+                        type: 'deleted',
+                        entityType: 'direcao_municipal',
+                    })
+                    setShowBlockedModal(true)
+                    await supabase.auth.signOut()
+                    setUser(null)
+                    return
+                }
+
+                if (result.success && result.pessoal && result.direcao) {
+                    const pessoal = result.pessoal
+                    const direcao = result.direcao
+                    const pessoalProfile: PessoalDirecaoMunicipalProfile = {
+                        ...pessoal,
+                        user_profile: profile,
+                        direcao_municipal: direcao,
+                    }
+                    const direcaoProfile: DirecaoMunicipalProfile = {
+                        ...direcao,
+                        user_profile: profile,
+                    }
+                    setPessoalDirecaoMunicipalProfile(pessoalProfile)
+                    setDirecaoMunicipalProfile(direcaoProfile)
+                    setUser({
+                        id: userId,
+                        email: pessoal.email || profile.user_id || '',
+                        profile,
+                        direcaoMunicipal: direcaoProfile,
+                        pessoalDirecaoMunicipal: pessoalProfile,
+                    })
+                    console.log('✅ AuthContext: Funcionário municipal profile set (RPC):', pessoal.departamento)
+                    return
+                }
+            } else if (rpcError) {
+                console.warn('⚠️ AuthContext: RPC login context DM unavailable, falling back:', rpcError.message)
+            }
+
+            const { data: pessoalData, error: pessoalError } = await supabase
+                .from('pessoal_direcao_municipal')
+                .select('*, direcoes_municipais(*)')
+                .eq('user_id', userId)
+                .eq('ativo', true)
+                .maybeSingle()
+
+            if (pessoalError) {
+                console.error('❌ AuthContext: Error loading funcionário municipal:', pessoalError)
+                setUser({ id: userId, email: profile.user_id || '', profile })
+                return
+            }
+
+            if (!pessoalData) {
+                setBlockedModalData({
+                    reason: 'O seu registo como funcionário municipal não foi encontrado ou está inactivo. Peça à Direção Municipal para reactivar o convite.',
+                    type: 'deleted',
+                    entityType: 'direcao_municipal',
+                })
+                setShowBlockedModal(true)
+                await supabase.auth.signOut()
+                setUser(null)
+                return
+            }
+
+            const row = pessoalData as PessoalDirecaoMunicipal & {
+                direcoes_municipais?: DirecaoMunicipal | DirecaoMunicipal[] | null
+            }
+            const { direcoes_municipais: dmJoin, ...pessoalRest } = row
+            const pessoal = pessoalRest as PessoalDirecaoMunicipal
+            let direcao = Array.isArray(dmJoin) ? dmJoin[0] : dmJoin
+
+            if (!direcao && pessoal.direcao_municipal_id) {
+                const { data: dmData } = await supabase
+                    .from('direcoes_municipais')
+                    .select('*')
+                    .eq('id', pessoal.direcao_municipal_id)
+                    .maybeSingle()
+                direcao = dmData as DirecaoMunicipal | null
+            }
+
+            if (direcao && direcao.ativo === false) {
+                setBlockedModalData({
+                    reason: 'A Direção Municipal a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Municipal estiver activa.',
+                    type: 'blocked',
+                    entityType: 'direcao_municipal',
+                })
+                setShowBlockedModal(true)
+                await supabase.auth.signOut()
+                setUser(null)
+                return
+            }
+
+            if (!direcao) {
+                setBlockedModalData({
+                    reason: 'Não foi possível carregar a Direção Municipal associada. Aplique a migração 20261105_pessoal_direcao_municipal.sql e tente novamente.',
+                    type: 'inactive',
+                    entityType: 'direcao_municipal',
+                })
+                setShowBlockedModal(true)
+                await supabase.auth.signOut()
+                setUser(null)
+                return
+            }
+
+            const pessoalProfile: PessoalDirecaoMunicipalProfile = {
+                ...pessoal,
+                user_profile: profile,
+                direcao_municipal: direcao,
+            }
+            const direcaoProfile: DirecaoMunicipalProfile = {
+                ...direcao,
+                user_profile: profile,
+            }
+            setPessoalDirecaoMunicipalProfile(pessoalProfile)
+            setDirecaoMunicipalProfile(direcaoProfile)
+            setUser({
+                id: userId,
+                email: pessoal.email || profile.user_id || '',
+                profile,
+                direcaoMunicipal: direcaoProfile,
+                pessoalDirecaoMunicipal: pessoalProfile,
+            })
+            console.log('✅ AuthContext: Funcionário municipal profile set:', pessoal.departamento)
+        } catch (error) {
+            console.error('❌ AuthContext: Unexpected error in loadFuncionarioMunicipalProfile:', error)
+            setUser({ id: userId, email: profile.user_id || '', profile })
+        }
+    }
+
     const refreshProfile = async () => {
         const { data: { user: authUser } } = await supabase.auth.getUser()
         if (authUser) {
@@ -1826,6 +2025,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setIsDirecaoMunicipal(cached.isDirecaoMunicipal)
         setIsDirecaoProvincial(cached.isDirecaoProvincial)
         setIsFuncionarioProvincial(cached.isFuncionarioProvincial)
+        setIsFuncionarioMunicipal(cached.isFuncionarioMunicipal ?? false)
         setEscolaProfile(cached.escolaProfile)
         setProfessorProfile(cached.professorProfile)
         setAlunoProfile(cached.alunoProfile)
@@ -1834,6 +2034,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setDirecaoMunicipalProfile(cached.direcaoMunicipalProfile)
         setDirecaoProvincialProfile(cached.direcaoProvincialProfile)
         setPessoalDirecaoProvincialProfile(cached.pessoalDirecaoProvincialProfile)
+        setPessoalDirecaoMunicipalProfile(cached.pessoalDirecaoMunicipalProfile ?? null)
     }
 
     const signOut = async () => {
@@ -1848,6 +2049,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setIsDirecaoMunicipal(false)
         setIsDirecaoProvincial(false)
         setIsFuncionarioProvincial(false)
+        setIsFuncionarioMunicipal(false)
         setEscolaProfile(null)
         setProfessorProfile(null)
         setAlunoProfile(null)
@@ -1856,6 +2058,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setDirecaoMunicipalProfile(null)
         setDirecaoProvincialProfile(null)
         setPessoalDirecaoProvincialProfile(null)
+        setPessoalDirecaoMunicipalProfile(null)
     }
 
     // Persist auth snapshot so the next refresh paints instantly
@@ -1872,6 +2075,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             isDirecaoMunicipal,
             isDirecaoProvincial,
             isFuncionarioProvincial,
+            isFuncionarioMunicipal,
             escolaProfile,
             professorProfile,
             alunoProfile,
@@ -1880,6 +2084,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             direcaoMunicipalProfile,
             direcaoProvincialProfile,
             pessoalDirecaoProvincialProfile,
+            pessoalDirecaoMunicipalProfile,
         })
     }, [
         loading,
@@ -1892,6 +2097,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         isDirecaoMunicipal,
         isDirecaoProvincial,
         isFuncionarioProvincial,
+        isFuncionarioMunicipal,
         escolaProfile,
         professorProfile,
         alunoProfile,
@@ -1900,6 +2106,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         direcaoMunicipalProfile,
         direcaoProvincialProfile,
         pessoalDirecaoProvincialProfile,
+        pessoalDirecaoMunicipalProfile,
     ])
 
     useEffect(() => {
@@ -1998,6 +2205,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         isDirecaoMunicipal,
         isDirecaoProvincial,
         isFuncionarioProvincial,
+        isFuncionarioMunicipal,
         escolaProfile,
         professorProfile,
         alunoProfile,
@@ -2006,6 +2214,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         direcaoMunicipalProfile,
         direcaoProvincialProfile,
         pessoalDirecaoProvincialProfile,
+        pessoalDirecaoMunicipalProfile,
         profile: user?.profile || null,  // Expose profile for SUPERADMIN checks
         signOut,
         refreshProfile

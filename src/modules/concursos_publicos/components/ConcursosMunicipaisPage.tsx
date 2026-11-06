@@ -13,6 +13,13 @@ import {
     LABELS_ESTADO_ABERTURA,
     LABELS_ESTADO_INSCRICAO,
 } from '../types'
+import {
+    DmPage,
+    DmHeader,
+    DmContent,
+    DmAlert,
+    DmChip,
+} from '../../municipal_education/components/MunicipalChrome'
 
 export function ConcursosMunicipaisPage() {
     const {
@@ -137,40 +144,31 @@ export function ConcursosMunicipaisPage() {
 
     if (loading && aberturas.length === 0 && disponiveis.length === 0) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-            </div>
+            <DmPage className="pb-24 md:pb-0">
+                <DmContent>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16">
+                        <Icons.Spinner className="w-8 h-8 text-emerald-600" />
+                        <p className="text-sm font-medium text-slate-500">A carregar concursos...</p>
+                    </div>
+                </DmContent>
+            </DmPage>
         )
     }
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            <div className="relative overflow-hidden bg-gradient-to-br from-emerald-800 via-slate-900 to-slate-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="relative z-10">
-                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Concursos Públicos</h1>
-                    <p className="text-white/80 mt-1">
-                        Abra inscrições no município de {perfil?.municipio || '—'} e gira apenas as candidaturas desta instituição
-                    </p>
-                </div>
-            </div>
+        <DmPage className="pb-24 md:pb-0">
+            <DmHeader
+                title="Concursos Públicos"
+                subtitle={`Abra inscrições no município de ${perfil?.municipio || '—'} e gira as candidaturas desta instituição`}
+                icon={<Icons.ClipboardList className="w-6 h-6" />}
+                accent="emerald"
+            />
+            <DmContent>
+            {error && <DmAlert tone="error">{error}</DmAlert>}
 
-            {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>
-            )}
-
-            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
-                <button
-                    onClick={() => setTab('aberturas')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'aberturas' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-                >
-                    Aberturas
-                </button>
-                <button
-                    onClick={() => setTab('inscricoes')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'inscricoes' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-                >
-                    Inscrições ({inscricoes.length})
-                </button>
+            <div className="flex flex-wrap gap-2">
+                <DmChip label="Aberturas" active={tab === 'aberturas'} onClick={() => setTab('aberturas')} />
+                <DmChip label={`Inscrições (${inscricoes.length})`} active={tab === 'inscricoes'} onClick={() => setTab('inscricoes')} />
             </div>
 
             {tab === 'aberturas' && (
@@ -487,7 +485,8 @@ export function ConcursosMunicipaisPage() {
                     </div>
                 </div>
             )}
-        </div>
+            </DmContent>
+        </DmPage>
     )
 }
 

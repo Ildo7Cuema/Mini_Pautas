@@ -6,6 +6,12 @@ import { generatePDF, defaultTemplate, fetchEmployeeDataForDocument, type Docume
 import { createNotification } from '../utils/notificationApi'
 import { supabase } from '../lib/supabaseClient'
 import type { SolicitacaoDocumento, SolicitacaoStats, EstadoSolicitacao } from '../types'
+import { Icons } from './ui/Icons'
+import {
+    DmPage,
+    DmHeader,
+    DmContent,
+} from '../modules/municipal_education/components/MunicipalChrome'
 
 interface SolicitacoesPageProps {
     onNavigate?: (page: string, params?: Record<string, any>) => void
@@ -289,37 +295,23 @@ export default function SolicitacoesPage({ onNavigate }: SolicitacoesPageProps) 
     })
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            {/* Modern Header */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-                <div className="relative z-10">
-                    <div className="flex items-center gap-2 text-sm text-white/60 mb-3">
-                        <button
-                            onClick={() => onNavigate?.('dashboard')}
-                            className="hover:text-white transition-colors"
-                        >
-                            Dashboard
-                        </button>
-                        <span>→</span>
-                        <span className="text-white/90">Solicitações</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20">
-                            <span className="text-3xl">📋</span>
-                        </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
-                                Solicitações de Documentos
-                            </h1>
-                            <p className="text-white/80 font-medium mt-1">
-                                Gestão de pedidos de funcionários e professores
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+        <DmPage className="pb-24 md:pb-0">
+            <DmHeader
+                title="Solicitações de Documentos"
+                subtitle="Gestão de pedidos de funcionários e professores"
+                icon={<Icons.ClipboardList className="w-6 h-6" />}
+                accent="amber"
+                meta={
+                    <button
+                        type="button"
+                        onClick={() => onNavigate?.('dashboard')}
+                        className="text-sm text-white/70 hover:text-white transition-colors inline-flex items-center gap-1"
+                    >
+                        Dashboard <Icons.ChevronRight className="w-3.5 h-3.5" /> Solicitações
+                    </button>
+                }
+            />
+            <DmContent className="space-y-5">
             {/* Stats Cards */}
             {stats && (
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
@@ -536,7 +528,8 @@ export default function SolicitacoesPage({ onNavigate }: SolicitacoesPageProps) 
                     onUpdateStatus={handleUpdateStatus}
                 />
             )}
-        </div>
+            </DmContent>
+        </DmPage>
     )
 }
 

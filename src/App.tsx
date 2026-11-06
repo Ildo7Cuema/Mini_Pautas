@@ -5,6 +5,7 @@ import { DashboardLayout } from './components/DashboardLayout'
 import { PageSkeleton } from './components/ui/PageSkeleton'
 import { isSuperAdmin } from './utils/permissions'
 import { provincialStaffCanOpenPage } from './utils/provincialStaffAccess'
+import { municipalStaffCanOpenPage } from './utils/municipalStaffAccess'
 import { PWAInstallPrompt } from './components/PWAInstallPrompt'
 import { SystemUpdateAlert } from './components/SystemUpdateAlert'
 import { EscolaProfileSetupModal } from './components/EscolaProfileSetupModal'
@@ -29,6 +30,7 @@ const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'
 const EscolaManagement = lazy(() => import('./components/EscolaManagement').then(m => ({ default: m.EscolaManagement })))
 const SuperAdminAuditLog = lazy(() => import('./components/SuperAdminAuditLog').then(m => ({ default: m.SuperAdminAuditLog })))
 const SystemAccessLog = lazy(() => import('./components/SystemAccessLog').then(m => ({ default: m.SystemAccessLog })))
+const SuperAdminUsageStats = lazy(() => import('./components/SuperAdminUsageStats').then(m => ({ default: m.SuperAdminUsageStats })))
 const LicenseManagement = lazy(() => import('./components/LicenseManagement').then(m => ({ default: m.LicenseManagement })))
 const AlunoNotasPage = lazy(() => import('./components/AlunoNotasPage').then(m => ({ default: m.AlunoNotasPage })))
 const EncarregadoNotasPage = lazy(() => import('./components/EncarregadoNotasPage').then(m => ({ default: m.EncarregadoNotasPage })))
@@ -68,6 +70,8 @@ const ContratacaoEmpresasProvinciaisPage = lazy(() => import('./modules/provinci
 const ProjectosProvinciaisPage = lazy(() => import('./modules/provincial_education/components/ProjectosProvinciaisPage').then(m => ({ default: m.ProjectosProvinciaisPage })))
 const DirecaoProvincialRegistration = lazy(() => import('./components/DirecaoProvincialRegistration').then(m => ({ default: m.DirecaoProvincialRegistration })))
 const FuncionarioProvincialRegistration = lazy(() => import('./components/FuncionarioProvincialRegistration').then(m => ({ default: m.FuncionarioProvincialRegistration })))
+const FuncionarioMunicipalRegistration = lazy(() => import('./components/FuncionarioMunicipalRegistration').then(m => ({ default: m.FuncionarioMunicipalRegistration })))
+const PessoalMunicipalPage = lazy(() => import('./modules/municipal_education/components/PessoalMunicipalPage').then(m => ({ default: m.PessoalMunicipalPage })))
 const ConfiguracaoDocumentos = lazy(() => import('./components/ConfiguracaoDocumentos').then(m => ({ default: m.ConfiguracaoDocumentos })))
 const TemplatesManagement = lazy(() => import('./components/TemplatesManagement').then(m => ({ default: m.TemplatesManagement })))
 const ConcursosProvinciaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosProvinciaisPage').then(m => ({ default: m.ConcursosProvinciaisPage })))
@@ -75,7 +79,7 @@ const ConcursosMunicipaisPage = lazy(() => import('./modules/concursos_publicos/
 const InscricaoConcursoPublicaPage = lazy(() => import('./modules/concursos_publicos/components/InscricaoConcursoPublicaPage').then(m => ({ default: m.InscricaoConcursoPublicaPage })))
 
 function App() {
-    const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, isFuncionarioProvincial, escolaProfile, profile, secretarioProfile, pessoalDirecaoProvincialProfile } = useAuth()
+    const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, isFuncionarioProvincial, isFuncionarioMunicipal, escolaProfile, profile, secretarioProfile, pessoalDirecaoProvincialProfile, pessoalDirecaoMunicipalProfile } = useAuth()
     const [currentPage, setCurrentPage] = useState('dashboard')
     const [navigationParams, setNavigationParams] = useState<{ turmaId?: string; filter?: string }>({})
     const [searchQuery, setSearchQuery] = useState('')
@@ -176,6 +180,14 @@ function App() {
         )
     }
 
+    if (window.location.pathname === '/register-funcionario-dm') {
+        return (
+            <Suspense fallback={<PageSkeleton />}>
+                <FuncionarioMunicipalRegistration />
+            </Suspense>
+        )
+    }
+
     if (window.location.pathname === '/register-direcao-municipal') {
         return (
             <Suspense fallback={<PageSkeleton />}>
@@ -253,6 +265,8 @@ function App() {
                     return <DirecoesProvinciaisManagement onNavigate={handleNavigate} initialFilter={navigationParams.filter as any} />
                 case 'superadmin-acessos':
                     return <SystemAccessLog />
+                case 'superadmin-uso':
+                    return <SuperAdminUsageStats />
                 case 'settings':
                     return <SettingsPage />
                 default:
@@ -260,8 +274,18 @@ function App() {
             }
         }
 
-        // DIREÇÃO MUNICIPAL routes
-        if (isDirecaoMunicipal) {
+        // DIREÇÃO MUNICIPAL + FUNCIONÁRIO MUNICIPAL routes
+        if (isDirecaoMunicipal || isFuncionarioMunicipal) {
+            if (
+                isFuncionarioMunicipal &&
+                !municipalStaffCanOpenPage(
+                    pessoalDirecaoMunicipalProfile?.departamento,
+                    currentPage,
+                )
+            ) {
+                return <DirecaoMunicipalDashboard onNavigate={handleNavigate} />
+            }
+
             switch (currentPage) {
                 case 'dashboard':
                     return <DirecaoMunicipalDashboard onNavigate={handleNavigate} />
@@ -279,6 +303,8 @@ function App() {
                     return <SolicitacoesPage onNavigate={handleNavigate} />
                 case 'concursos-publicos':
                     return <ConcursosMunicipaisPage />
+                case 'municipal-pessoal':
+                    return <PessoalMunicipalPage />
                 case 'config-documentos':
                     return <ConfiguracaoDocumentos />
                 case 'reports':

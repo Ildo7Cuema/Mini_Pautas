@@ -18,6 +18,10 @@ import {
     getDepartamentoProvincialLabel,
     provincialStaffAllowedPages,
 } from '../utils/provincialStaffAccess'
+import {
+    getDepartamentoMunicipalLabel,
+    municipalStaffAllowedPages,
+} from '../utils/municipalStaffAccess'
 
 interface SidebarProps {
     children: ReactNode
@@ -38,7 +42,7 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
     const [sidebarOpen, setSidebarOpen] = useState(true)
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
-    const { user, isEscola, isProfessor, isAluno: isAlunoRole, isEncarregado: isEncarregadoRole, isSecretario: isSecretarioRole, isDirecaoMunicipal: isDirecaoMunicipalRole, isDirecaoProvincial: isDirecaoProvincialRole, isFuncionarioProvincial: isFuncionarioProvincialRole, escolaProfile, professorProfile, alunoProfile, encarregadoProfile, secretarioProfile, direcaoMunicipalProfile, direcaoProvincialProfile, pessoalDirecaoProvincialProfile, profile, signOut } = useAuth()
+    const { user, isEscola, isProfessor, isAluno: isAlunoRole, isEncarregado: isEncarregadoRole, isSecretario: isSecretarioRole, isDirecaoMunicipal: isDirecaoMunicipalRole, isDirecaoProvincial: isDirecaoProvincialRole, isFuncionarioProvincial: isFuncionarioProvincialRole, isFuncionarioMunicipal: isFuncionarioMunicipalRole, escolaProfile, professorProfile, alunoProfile, encarregadoProfile, secretarioProfile, direcaoMunicipalProfile, direcaoProvincialProfile, pessoalDirecaoProvincialProfile, pessoalDirecaoMunicipalProfile, profile, signOut } = useAuth()
 
     const isSuperAdminUser = profile ? isSuperAdmin(profile) : false
 
@@ -62,6 +66,8 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             return primeiroEducando?.nome_encarregado || 'Encarregado'
         } else if (isSecretarioRole && secretarioProfile) {
             return secretarioProfile.nome_completo || 'Funcionário'
+        } else if (isFuncionarioMunicipalRole && pessoalDirecaoMunicipalProfile) {
+            return pessoalDirecaoMunicipalProfile.nome || 'Funcionário Municipal'
         } else if (isDirecaoMunicipalRole && direcaoMunicipalProfile) {
             return direcaoMunicipalProfile.nome || 'Direção Municipal'
         } else if (isFuncionarioProvincialRole && pessoalDirecaoProvincialProfile) {
@@ -162,6 +168,13 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                 null
             )
         }
+        if (isFuncionarioMunicipalRole) {
+            return (
+                pessoalDirecaoMunicipalProfile?.direcao_municipal?.nome ||
+                direcaoMunicipalProfile?.nome ||
+                null
+            )
+        }
         if (isSecretarioRole && secretarioProfile?.escola?.nome) {
             return secretarioProfile.escola.nome
         }
@@ -182,6 +195,13 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             const cargo = pessoalDirecaoProvincialProfile?.cargo?.trim()
             return cargo ? `${cargo} · ${dep}` : dep
         }
+        if (isFuncionarioMunicipalRole) {
+            const dep = getDepartamentoMunicipalLabel(
+                pessoalDirecaoMunicipalProfile?.departamento,
+            )
+            const cargo = pessoalDirecaoMunicipalProfile?.cargo?.trim()
+            return cargo ? `${cargo} · ${dep}` : dep
+        }
         if (isDirecaoProvincialRole) {
             return direcaoProvincialProfile?.provincia
                 ? `Direção Provincial · ${direcaoProvincialProfile.provincia}`
@@ -194,8 +214,8 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
         if (isEncarregadoRole) return 'Encarregado'
         if (isSecretarioRole) {
             const cargo = secretarioProfile?.cargo
-            if (cargo === 'DIRECTOR_PEDAGOGICO') return 'Director Pedagógico · Área Pedagógica'
-            if (cargo === 'DIRECTOR_ADMINISTRATIVO') return 'Director Administrativo · Área Administrativa'
+            if (cargo === 'DIRECTOR_PEDAGOGICO') return 'Subdirector Pedagógico · Área Pedagógica'
+            if (cargo === 'DIRECTOR_ADMINISTRATIVO') return 'Subdirector Administrativo · Área Administrativa'
             return 'Técnico de Secretaria · Área de Secretaria'
         }
         return 'Usuário'
@@ -252,6 +272,17 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                 </svg>
             ),
             path: 'superadmin-acessos',
+            showInMobile: true,
+        },
+        {
+            name: 'Uso do Sistema',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                </svg>
+            ),
+            path: 'superadmin-uso',
             showInMobile: true,
         },
         {
@@ -620,6 +651,16 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             showInMobile: true,
         },
         {
+            name: 'Pessoal',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            ),
+            path: 'municipal-pessoal',
+            showInMobile: false,
+        },
+        {
             name: 'Configurações',
             icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -777,6 +818,12 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             return direcaoProvincialNavItems.filter((item) => allowed.has(item.path))
         }
         if (isDirecaoProvincialRole) return direcaoProvincialNavItems
+        if (isFuncionarioMunicipalRole) {
+            const allowed = new Set(
+                municipalStaffAllowedPages(pessoalDirecaoMunicipalProfile?.departamento),
+            )
+            return direcaoMunicipalNavItems.filter((item) => allowed.has(item.path))
+        }
         if (isDirecaoMunicipalRole) return direcaoMunicipalNavItems
         if (isAlunoRole) return alunoNavItems
         if (isEncarregadoRole) return encarregadoNavItems

@@ -1,5 +1,13 @@
 import { supabase } from '../lib/supabaseClient'
-import type { SuperAdminStats, SuperAdminAction, Escola, EscolaBackup, SystemVisit, SystemVisitStats } from '../types'
+import type {
+    SuperAdminStats,
+    SuperAdminAction,
+    SuperAdminUsageStats,
+    Escola,
+    EscolaBackup,
+    SystemVisit,
+    SystemVisitStats,
+} from '../types'
 
 /**
  * SUPERADMIN Utility Functions
@@ -162,6 +170,388 @@ export async function fetchSystemVisits(filters?: {
         console.error('Error fetching system visits:', error)
         throw error
     }
+}
+
+function normalizeUsageStatsPayload(data: unknown): SuperAdminUsageStats {
+    const payload = (data || {}) as Partial<SuperAdminUsageStats>
+    return {
+        resumo: {
+            total_escolas: Number(payload.resumo?.total_escolas ?? 0),
+            escolas_com_professores: Number(payload.resumo?.escolas_com_professores ?? 0),
+            escolas_com_alunos: Number(payload.resumo?.escolas_com_alunos ?? 0),
+            escolas_com_notas: Number(payload.resumo?.escolas_com_notas ?? 0),
+            escolas_activas_7d: Number(payload.resumo?.escolas_activas_7d ?? 0),
+            escolas_sem_uso: Number(payload.resumo?.escolas_sem_uso ?? 0),
+            total_professores: Number(payload.resumo?.total_professores ?? 0),
+            total_alunos: Number(payload.resumo?.total_alunos ?? 0),
+            total_turmas: Number(payload.resumo?.total_turmas ?? 0),
+            total_notas: Number(payload.resumo?.total_notas ?? 0),
+            professores_7d: Number(payload.resumo?.professores_7d ?? 0),
+            professores_30d: Number(payload.resumo?.professores_30d ?? 0),
+            alunos_7d: Number(payload.resumo?.alunos_7d ?? 0),
+            alunos_30d: Number(payload.resumo?.alunos_30d ?? 0),
+            notas_7d: Number(payload.resumo?.notas_7d ?? 0),
+            notas_30d: Number(payload.resumo?.notas_30d ?? 0),
+            acessos_hoje: Number(payload.resumo?.acessos_hoje ?? 0),
+            acessos_7d: Number(payload.resumo?.acessos_7d ?? 0),
+            utilizadores_unicos_7d: Number(payload.resumo?.utilizadores_unicos_7d ?? 0),
+            gerado_em: payload.resumo?.gerado_em,
+        },
+        actividade_diaria: Array.isArray(payload.actividade_diaria)
+            ? payload.actividade_diaria.map((p) => ({
+                dia: String(p.dia),
+                professores: Number(p.professores ?? 0),
+                alunos: Number(p.alunos ?? 0),
+                notas: Number(p.notas ?? 0),
+                acessos: Number(p.acessos ?? 0),
+            }))
+            : [],
+        escolas: Array.isArray(payload.escolas)
+            ? payload.escolas.map((e) => ({
+                ...e,
+                professores: Number(e.professores ?? 0),
+                alunos: Number(e.alunos ?? 0),
+                turmas: Number(e.turmas ?? 0),
+                notas: Number(e.notas ?? 0),
+                professores_7d: Number(e.professores_7d ?? 0),
+                alunos_7d: Number(e.alunos_7d ?? 0),
+                notas_7d: Number(e.notas_7d ?? 0),
+                acessos_7d: Number(e.acessos_7d ?? 0),
+                acessos_30d: Number(e.acessos_30d ?? 0),
+                estado_uso: e.estado_uso || 'inactivo',
+            }))
+            : [],
+        parametros: payload.parametros,
+    }
+}
+
+function toDayKey(value: string | Date): string {
+    const d = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(d.getTime())) return ''
+    return d.toISOString().slice(0, 10)
+}
+
+function maxIso(...values: Array<string | null | undefined>): string | null {
+    let best: string | null = null
+    for (const v of values) {
+        if (!v) continue
+        if (!best || v > best) best = v
+    }
+    return best
+}
+
+/**
+ * Client-side fallback when get_system_usage_stats RPC is not yet applied.
+ * Relies on existing SUPERADMIN SELECT policies.
+ */
+async function fetchSuperAdminUsageStatsClientFallback(options?: {
+    diasActividade?: number
+    limiteEscolas?: number
+}): Promise<SuperAdminUsageStats> {
+    const dias = Math.max(options?.diasActividade ?? 14, 1)
+    const limite = Math.min(Math.max(options?.limiteEscolas ?? 200, 1), 500)
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const d7 = new Date(now.getTime() - 7 * 86400000)
+    const d30 = new Date(now.getTime() - 30 * 86400000)
+    const seriesStart = new Date(now.getTime() - (dias - 1) * 86400000)
+    seriesStart.setHours(0, 0, 0, 0)
+    const seriesStartIso = seriesStart.toISOString()
+    const d7Iso = d7.toISOString()
+    const d30Iso = d30.toISOString()
+    const todayIso = startOfToday.toISOString()
+
+    const [
+        escolasRes,
+        professoresRes,
+        turmasRes,
+        alunosRes,
+        notasTotalRes,
+        notasRecentesRes,
+        visitasRes,
+    ] = await Promise.all([
+        supabase.from('escolas').select('id, nome, codigo_escola, provincia, municipio, ativo, bloqueado'),
+        supabase.from('professores').select('escola_id, created_at, ativo'),
+        supabase.from('turmas').select('id, escola_id'),
+        supabase.from('alunos').select('turma_id, created_at, ativo'),
+        supabase.from('notas').select('id', { count: 'exact', head: true }),
+        supabase
+            .from('notas')
+            .select('turma_id, created_at, data_lancamento')
+            .or(`created_at.gte.${seriesStartIso},data_lancamento.gte.${seriesStartIso}`),
+        supabase
+            .from('system_visits')
+            .select('escola_id, user_id, created_at')
+            .gte('created_at', d30Iso),
+    ])
+
+    if (escolasRes.error) throw escolasRes.error
+    if (professoresRes.error) throw professoresRes.error
+    if (turmasRes.error) throw turmasRes.error
+    if (alunosRes.error) throw alunosRes.error
+    if (notasTotalRes.error) throw notasTotalRes.error
+    if (notasRecentesRes.error) throw notasRecentesRes.error
+    if (visitasRes.error) console.warn('Usage visits fallback:', visitasRes.error.message)
+
+    const escolas = escolasRes.data || []
+    const professores = professoresRes.data || []
+    const turmas = turmasRes.data || []
+    const alunos = alunosRes.data || []
+    const notasRecentes = notasRecentesRes.data || []
+    const visitas = visitasRes.data || []
+
+    const turmaToEscola = new Map<string, string>()
+    for (const t of turmas) turmaToEscola.set(t.id, t.escola_id)
+
+    // Totals of notes per school require a broader fetch; use recent window + presence flag
+    const notasAllLight = await supabase.from('notas').select('turma_id')
+    if (notasAllLight.error) console.warn('Usage notas totals fallback:', notasAllLight.error.message)
+    const notasAll = notasAllLight.data || []
+
+    type Acc = {
+        professores: number
+        alunos: number
+        turmas: number
+        notas: number
+        professores_7d: number
+        alunos_7d: number
+        notas_7d: number
+        acessos_7d: number
+        acessos_30d: number
+        ultimo_acesso?: string | null
+        ultimo_prof?: string | null
+        ultimo_aluno?: string | null
+        ultimo_nota?: string | null
+    }
+
+    const byEscola = new Map<string, Acc>()
+    const ensure = (id: string): Acc => {
+        let row = byEscola.get(id)
+        if (!row) {
+            row = {
+                professores: 0,
+                alunos: 0,
+                turmas: 0,
+                notas: 0,
+                professores_7d: 0,
+                alunos_7d: 0,
+                notas_7d: 0,
+                acessos_7d: 0,
+                acessos_30d: 0,
+            }
+            byEscola.set(id, row)
+        }
+        return row
+    }
+
+    for (const t of turmas) ensure(t.escola_id).turmas += 1
+
+    for (const p of professores) {
+        if (p.ativo === false) continue
+        const row = ensure(p.escola_id)
+        row.professores += 1
+        if (p.created_at && p.created_at >= d7Iso) row.professores_7d += 1
+        row.ultimo_prof = maxIso(row.ultimo_prof, p.created_at)
+    }
+
+    for (const a of alunos) {
+        if (a.ativo === false) continue
+        const escolaId = turmaToEscola.get(a.turma_id)
+        if (!escolaId) continue
+        const row = ensure(escolaId)
+        row.alunos += 1
+        if (a.created_at && a.created_at >= d7Iso) row.alunos_7d += 1
+        row.ultimo_aluno = maxIso(row.ultimo_aluno, a.created_at)
+    }
+
+    for (const n of notasAll) {
+        const escolaId = turmaToEscola.get(n.turma_id)
+        if (!escolaId) continue
+        ensure(escolaId).notas += 1
+    }
+
+    for (const n of notasRecentes) {
+        const escolaId = turmaToEscola.get(n.turma_id)
+        if (!escolaId) continue
+        const when = n.data_lancamento || n.created_at
+        if (!when) continue
+        const row = ensure(escolaId)
+        if (when >= d7Iso) row.notas_7d += 1
+        row.ultimo_nota = maxIso(row.ultimo_nota, when)
+    }
+
+    for (const v of visitas) {
+        if (!v.escola_id || !v.created_at) continue
+        const row = ensure(v.escola_id)
+        if (v.created_at >= d7Iso) row.acessos_7d += 1
+        if (v.created_at >= d30Iso) row.acessos_30d += 1
+        row.ultimo_acesso = maxIso(row.ultimo_acesso, v.created_at)
+    }
+
+    const escolasRows = escolas.map((e) => {
+        const acc = byEscola.get(e.id) || ensure(e.id)
+        const ultima = maxIso(acc.ultimo_acesso, acc.ultimo_prof, acc.ultimo_aluno, acc.ultimo_nota)
+        const estado_uso =
+            acc.acessos_7d > 0 || acc.notas_7d > 0
+                ? 'activo'
+                : acc.professores > 0 && acc.alunos > 0
+                    ? 'parcial'
+                    : 'inactivo'
+        return {
+            escola_id: e.id,
+            nome: e.nome,
+            codigo_escola: e.codigo_escola,
+            provincia: e.provincia,
+            municipio: e.municipio,
+            ativo: Boolean(e.ativo),
+            bloqueado: Boolean(e.bloqueado),
+            professores: acc.professores,
+            alunos: acc.alunos,
+            turmas: acc.turmas,
+            notas: acc.notas,
+            professores_7d: acc.professores_7d,
+            alunos_7d: acc.alunos_7d,
+            notas_7d: acc.notas_7d,
+            acessos_7d: acc.acessos_7d,
+            acessos_30d: acc.acessos_30d,
+            ultimo_acesso: acc.ultimo_acesso || null,
+            ultima_actividade: ultima,
+            estado_uso: estado_uso as 'activo' | 'parcial' | 'inactivo',
+        }
+    })
+
+    escolasRows.sort((a, b) => {
+        const rank = { activo: 0, parcial: 1, inactivo: 2 } as const
+        const ra = rank[a.estado_uso] - rank[b.estado_uso]
+        if (ra !== 0) return ra
+        return (b.ultima_actividade || '').localeCompare(a.ultima_actividade || '')
+    })
+
+    const dailyMap = new Map<string, { professores: number; alunos: number; notas: number; acessos: number }>()
+    for (let i = 0; i < dias; i++) {
+        const d = new Date(seriesStart.getTime() + i * 86400000)
+        dailyMap.set(toDayKey(d), { professores: 0, alunos: 0, notas: 0, acessos: 0 })
+    }
+    for (const p of professores) {
+        const key = toDayKey(p.created_at)
+        const bucket = dailyMap.get(key)
+        if (bucket) bucket.professores += 1
+    }
+    for (const a of alunos) {
+        const key = toDayKey(a.created_at)
+        const bucket = dailyMap.get(key)
+        if (bucket) bucket.alunos += 1
+    }
+    for (const n of notasRecentes) {
+        const key = toDayKey(n.data_lancamento || n.created_at)
+        const bucket = dailyMap.get(key)
+        if (bucket) bucket.notas += 1
+    }
+    for (const v of visitas) {
+        const key = toDayKey(v.created_at)
+        const bucket = dailyMap.get(key)
+        if (bucket) bucket.acessos += 1
+    }
+
+    const activeProf = professores.filter((p) => p.ativo !== false)
+    const activeAlunos = alunos.filter((a) => a.ativo !== false)
+    const notas7d = notasRecentes.filter((n) => (n.data_lancamento || n.created_at || '') >= d7Iso).length
+    const notas30d = notasRecentes.filter((n) => (n.data_lancamento || n.created_at || '') >= d30Iso).length
+    const acessosHoje = visitas.filter((v) => (v.created_at || '') >= todayIso).length
+    const acessos7d = visitas.filter((v) => (v.created_at || '') >= d7Iso).length
+    const users7d = new Set(
+        visitas.filter((v) => (v.created_at || '') >= d7Iso && v.user_id).map((v) => v.user_id as string),
+    ).size
+
+    const escolas_com_professores = escolasRows.filter((e) => e.professores > 0).length
+    const escolas_com_alunos = escolasRows.filter((e) => e.alunos > 0).length
+    const escolas_com_notas = escolasRows.filter((e) => e.notas > 0).length
+    const escolas_activas_7d = escolasRows.filter((e) => e.estado_uso === 'activo').length
+    const escolas_sem_uso = escolasRows.filter(
+        (e) => e.professores === 0 && e.alunos === 0 && e.notas === 0 && e.acessos_7d === 0,
+    ).length
+
+    return {
+        resumo: {
+            total_escolas: escolas.length,
+            escolas_com_professores,
+            escolas_com_alunos,
+            escolas_com_notas,
+            escolas_activas_7d,
+            escolas_sem_uso,
+            total_professores: activeProf.length,
+            total_alunos: activeAlunos.length,
+            total_turmas: turmas.length,
+            total_notas: notasTotalRes.count || notasAll.length,
+            professores_7d: activeProf.filter((p) => (p.created_at || '') >= d7Iso).length,
+            professores_30d: activeProf.filter((p) => (p.created_at || '') >= d30Iso).length,
+            alunos_7d: activeAlunos.filter((a) => (a.created_at || '') >= d7Iso).length,
+            alunos_30d: activeAlunos.filter((a) => (a.created_at || '') >= d30Iso).length,
+            notas_7d: notas7d,
+            notas_30d: notas30d,
+            acessos_hoje: acessosHoje,
+            acessos_7d: acessos7d,
+            utilizadores_unicos_7d: users7d,
+            gerado_em: now.toISOString(),
+        },
+        actividade_diaria: Array.from(dailyMap.entries()).map(([dia, vals]) => ({ dia, ...vals })),
+        escolas: escolasRows.slice(0, limite),
+        parametros: { dias_actividade: dias, limite_escolas: limite },
+    }
+}
+
+/**
+ * Fetch pedagogical + access usage statistics (SUPERADMIN observability)
+ */
+export async function fetchSuperAdminUsageStats(options?: {
+    diasActividade?: number
+    limiteEscolas?: number
+}): Promise<SuperAdminUsageStats> {
+    const diasActividade = options?.diasActividade ?? 14
+    const limiteEscolas = options?.limiteEscolas ?? 200
+
+    const { data, error } = await supabase.rpc('get_system_usage_stats', {
+        p_dias_actividade: diasActividade,
+        p_limite_escolas: limiteEscolas,
+    })
+
+    if (!error && data) {
+        return normalizeUsageStatsPayload(data)
+    }
+
+    if (error) {
+        console.warn('get_system_usage_stats unavailable:', error.message)
+    }
+
+    // Dev API (Vite middleware) — service role after SUPERADMIN auth check
+    try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const accessToken = sessionData.session?.access_token
+        if (accessToken) {
+            const localRes = await fetch('/api/superadmin-usage-stats', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({
+                    dias_actividade: diasActividade,
+                    limite_escolas: limiteEscolas,
+                }),
+            })
+            if (localRes.ok) {
+                const payload = await localRes.json()
+                if (payload?.success !== false && payload?.resumo) {
+                    return normalizeUsageStatsPayload(payload)
+                }
+            }
+        }
+    } catch {
+        // Not running behind Vite middleware — continue
+    }
+
+    console.warn('Using limited client fallback for usage stats (RLS may hide turmas/alunos/notas)')
+    return fetchSuperAdminUsageStatsClientFallback(options)
 }
 
 /**

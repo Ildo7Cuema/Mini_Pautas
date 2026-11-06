@@ -459,7 +459,7 @@ export interface ImportError {
 // USER ROLES AND PROFILES
 // ============================================
 
-export type UserRole = 'ESCOLA' | 'PROFESSOR' | 'SUPERADMIN' | 'ALUNO' | 'ENCARREGADO' | 'SECRETARIO' | 'DIRECAO_MUNICIPAL' | 'DIRECAO_PROVINCIAL' | 'FUNCIONARIO_PROVINCIAL';
+export type UserRole = 'ESCOLA' | 'PROFESSOR' | 'SUPERADMIN' | 'ALUNO' | 'ENCARREGADO' | 'SECRETARIO' | 'DIRECAO_MUNICIPAL' | 'DIRECAO_PROVINCIAL' | 'FUNCIONARIO_PROVINCIAL' | 'FUNCIONARIO_MUNICIPAL';
 
 export interface UserProfile {
     id: string;
@@ -593,6 +593,32 @@ export interface PessoalDirecaoProvincial {
 export interface PessoalDirecaoProvincialProfile extends PessoalDirecaoProvincial {
     user_profile: UserProfile;
     direcao_provincial?: DirecaoProvincial;
+}
+
+export type DepartamentoMunicipal =
+    | 'EDUCACAO_ENSINO'
+    | 'PLANEAMENTO_RH'
+    | 'INSPECCAO_SUPERVISAO'
+    | 'CIENCIA_TECNOLOGIA';
+
+export interface PessoalDirecaoMunicipal {
+    id: string;
+    direcao_municipal_id: string;
+    user_id?: string | null;
+    nome: string;
+    email: string;
+    telefone?: string | null;
+    numero_funcionario?: string | null;
+    departamento: DepartamentoMunicipal | string;
+    cargo?: string | null;
+    ativo: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface PessoalDirecaoMunicipalProfile extends PessoalDirecaoMunicipal {
+    user_profile: UserProfile;
+    direcao_municipal?: DirecaoMunicipal;
 }
 
 export type EstadoProcessoProvincial = 'rascunho' | 'em_curso' | 'concluido' | 'suspenso';
@@ -776,6 +802,7 @@ export interface AuthUser {
     direcaoMunicipal?: DirecaoMunicipalProfile;
     direcaoProvincial?: DirecaoProvincialProfile;
     pessoalDirecaoProvincial?: PessoalDirecaoProvincialProfile;
+    pessoalDirecaoMunicipal?: PessoalDirecaoMunicipalProfile;
 }
 
 // ALUNO Profile - Student with turma and escola info
@@ -974,6 +1001,72 @@ export interface SystemVisitStats {
     tablet_visits: number;
     desktop_visits: number;
     visits_by_profile: Array<{ tipo: string; count: number }>;
+}
+
+/** Estado de utilização concreta de uma escola (SUPERADMIN) */
+export type EscolaUsoEstado = 'activo' | 'parcial' | 'inactivo';
+
+export interface SuperAdminUsageResumo {
+    total_escolas: number;
+    escolas_com_professores: number;
+    escolas_com_alunos: number;
+    escolas_com_notas: number;
+    escolas_activas_7d: number;
+    escolas_sem_uso: number;
+    total_professores: number;
+    total_alunos: number;
+    total_turmas: number;
+    total_notas: number;
+    professores_7d: number;
+    professores_30d: number;
+    alunos_7d: number;
+    alunos_30d: number;
+    notas_7d: number;
+    notas_30d: number;
+    acessos_hoje: number;
+    acessos_7d: number;
+    utilizadores_unicos_7d: number;
+    gerado_em?: string;
+}
+
+export interface SuperAdminUsageDailyPoint {
+    dia: string;
+    professores: number;
+    alunos: number;
+    notas: number;
+    acessos: number;
+}
+
+export interface SuperAdminEscolaUso {
+    escola_id: string;
+    nome: string;
+    codigo_escola?: string | null;
+    provincia?: string | null;
+    municipio?: string | null;
+    ativo: boolean;
+    bloqueado: boolean;
+    professores: number;
+    alunos: number;
+    turmas: number;
+    notas: number;
+    professores_7d: number;
+    alunos_7d: number;
+    notas_7d: number;
+    acessos_7d: number;
+    acessos_30d: number;
+    ultimo_acesso?: string | null;
+    ultima_actividade?: string | null;
+    estado_uso: EscolaUsoEstado;
+}
+
+export interface SuperAdminUsageStats {
+    resumo: SuperAdminUsageResumo;
+    actividade_diaria: SuperAdminUsageDailyPoint[];
+    escolas: SuperAdminEscolaUso[];
+    parametros?: {
+        dias_actividade: number;
+        limite_escolas: number;
+    };
 }
 
 // ============================================

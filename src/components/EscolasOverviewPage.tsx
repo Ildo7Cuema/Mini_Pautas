@@ -2,6 +2,18 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { fetchEscolasDoMunicipio, fetchEscolaStats, updateEscolaInfo } from '../utils/direcaoMunicipal'
 import type { Escola, EscolaStats } from '../types'
+import { Icons } from './ui/Icons'
+import {
+    DmPage,
+    DmHeader,
+    DmContent,
+    DmPanel,
+    DmSearch,
+    DmBadge,
+    DmButton,
+    DmEmpty,
+    DmStatCard,
+} from '../modules/municipal_education/components/MunicipalChrome'
 
 interface EscolasOverviewPageProps {
     onNavigate?: (page: string, params?: Record<string, any>) => void
@@ -73,187 +85,153 @@ export default function EscolasOverviewPage({ onNavigate }: EscolasOverviewPageP
     )
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            {/* Modern Header */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 via-slate-900 to-blue-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-                <div className="relative z-10">
-                    <div className="flex items-center gap-2 text-sm text-white/60 mb-3">
-                        <button
-                            onClick={() => onNavigate?.('dashboard')}
-                            className="hover:text-white transition-colors"
-                        >
-                            Dashboard
-                        </button>
-                        <span>→</span>
-                        <span className="text-white/90">Escolas</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20">
-                            <span className="text-3xl">🏫</span>
-                        </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
-                                Escolas do Município
-                            </h1>
-                            <p className="text-white/80 font-medium mt-1">
-                                Gestão e supervisão de {municipio}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Search and Stats */}
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1">
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Pesquisar escola por nome ou código..."
+        <DmPage className="pb-24 md:pb-0">
+            <DmHeader
+                title="Escolas do Município"
+                subtitle={`Gestão e supervisão de ${municipio}`}
+                icon={<Icons.School className="w-6 h-6" />}
+                accent="blue"
+                meta={
+                    <button
+                        type="button"
+                        onClick={() => onNavigate?.('dashboard')}
+                        className="text-sm text-white/70 hover:text-white transition-colors inline-flex items-center gap-1"
+                    >
+                        Dashboard <Icons.ChevronRight className="w-3.5 h-3.5" /> Escolas
+                    </button>
+                }
+            />
+            <DmContent>
+                <div className="flex flex-col lg:flex-row gap-3.5 lg:items-stretch">
+                    <div className="flex-1">
+                        <DmSearch
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-shadow hover:shadow-md"
+                            onChange={setSearchQuery}
+                            placeholder="Pesquisar escola por nome ou código..."
                         />
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                            🔍
-                        </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 lg:w-64">
+                        <DmStatCard
+                            title="Total"
+                            value={escolas.length}
+                            icon={<Icons.School className="w-5 h-5" />}
+                            iconTone="from-blue-50 to-blue-100 text-blue-600"
+                        />
+                        <DmStatCard
+                            title="Activas"
+                            value={escolas.filter((e) => e.ativo).length}
+                            icon={<Icons.CheckCircle className="w-5 h-5" />}
+                            iconTone="from-emerald-50 to-emerald-100 text-emerald-600"
+                        />
                     </div>
                 </div>
-                <div className="flex gap-3">
-                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 px-5 py-3 rounded-xl shadow-lg">
-                        <div className="text-2xl font-bold text-white">{escolas.length}</div>
-                        <div className="text-xs text-blue-100 font-medium">Total</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 px-5 py-3 rounded-xl shadow-lg">
-                        <div className="text-2xl font-bold text-white">
-                            {escolas.filter(e => e.ativo).length}
-                        </div>
-                        <div className="text-xs text-emerald-100 font-medium">Activas</div>
-                    </div>
-                </div>
-            </div>
 
-            {/* Escolas Grid */}
-            {loading ? (
-                <div className="flex items-center justify-center py-20">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-                </div>
-            ) : filteredEscolas.length === 0 ? (
-                <div className="text-center py-20">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                        <span className="text-4xl">🏫</span>
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center gap-3 py-16">
+                        <Icons.Spinner className="w-8 h-8 text-blue-600" />
+                        <p className="text-sm font-medium text-slate-500">A carregar escolas...</p>
                     </div>
-                    <p className="text-slate-500">Nenhuma escola encontrada</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredEscolas.map((escola) => {
-                        const stats = escolaStats[escola.id]
-                        return (
-                            <div
-                                key={escola.id}
-                                className={`bg-white rounded-2xl border overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${escola.bloqueado ? 'border-red-300 bg-red-50/50' :
-                                    !escola.ativo ? 'border-slate-200 bg-slate-50/50 opacity-75' :
-                                        'border-slate-200'
+                ) : filteredEscolas.length === 0 ? (
+                    <DmEmpty
+                        title="Nenhuma escola encontrada"
+                        description="Ajuste a pesquisa ou verifique se há escolas no município."
+                        icon={<Icons.School className="w-8 h-8" />}
+                    />
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {filteredEscolas.map((escola) => {
+                            const stats = escolaStats[escola.id]
+                            return (
+                                <DmPanel
+                                    key={escola.id}
+                                    className={`!p-0 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg ${
+                                        escola.bloqueado
+                                            ? 'border-red-300 bg-red-50/40'
+                                            : !escola.ativo
+                                              ? 'opacity-80'
+                                              : ''
                                     }`}
-                            >
-                                {/* Card Header */}
-                                <div className="p-4 border-b border-slate-100">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="font-semibold text-slate-900 truncate">
-                                                {escola.nome}
-                                            </h3>
-                                            <p className="text-sm text-slate-500">
-                                                {escola.codigo_escola || 'Sem código'}
-                                            </p>
-                                        </div>
-                                        <div className="flex gap-1">
-                                            {escola.bloqueado && (
-                                                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">Bloqueada</span>
-                                            )}
-                                            {!escola.ativo && !escola.bloqueado && (
-                                                <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">Inactiva</span>
-                                            )}
-                                            {escola.ativo && !escola.bloqueado && (
-                                                <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">Activa</span>
+                                >
+                                    <div className="p-4 border-b border-slate-100">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-semibold text-slate-900 truncate">{escola.nome}</h3>
+                                                <p className="text-sm text-slate-500">
+                                                    {escola.codigo_escola || 'Sem código'}
+                                                </p>
+                                            </div>
+                                            {escola.bloqueado ? (
+                                                <DmBadge tone="danger">Bloqueada</DmBadge>
+                                            ) : !escola.ativo ? (
+                                                <DmBadge tone="neutral">Inactiva</DmBadge>
+                                            ) : (
+                                                <DmBadge tone="success">Activa</DmBadge>
                                             )}
                                         </div>
                                     </div>
-                                </div>
-
-                                {/* Card Stats */}
-                                <div className="p-4 grid grid-cols-3 gap-3 text-center bg-slate-50/50">
-                                    <div>
-                                        <div className="font-bold text-slate-900">
-                                            {stats?.total_turmas || 0}
+                                    <div className="p-4 grid grid-cols-3 gap-3 text-center bg-slate-50/60">
+                                        <div>
+                                            <div className="font-bold text-slate-900">{stats?.total_turmas || 0}</div>
+                                            <div className="text-xs text-slate-500">Turmas</div>
                                         </div>
-                                        <div className="text-xs text-slate-500">Turmas</div>
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-slate-900">
-                                            {stats?.total_alunos || 0}
+                                        <div>
+                                            <div className="font-bold text-slate-900">{stats?.total_alunos || 0}</div>
+                                            <div className="text-xs text-slate-500">Alunos</div>
                                         </div>
-                                        <div className="text-xs text-slate-500">Alunos</div>
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-slate-900">
-                                            {stats?.total_professores || 0}
+                                        <div>
+                                            <div className="font-bold text-slate-900">{stats?.total_professores || 0}</div>
+                                            <div className="text-xs text-slate-500">Prof.</div>
                                         </div>
-                                        <div className="text-xs text-slate-500">Prof.</div>
                                     </div>
-                                </div>
-
-                                {/* Card Performance */}
-                                <div className="px-4 py-3 flex items-center justify-between text-sm border-t border-slate-100">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="w-6 h-6 bg-indigo-100 rounded flex items-center justify-center text-xs">📊</span>
-                                        <span className="text-slate-600">
-                                            Média: <strong className="text-indigo-600">{stats?.media_geral?.toFixed(1) || '0.0'}</strong>
+                                    <div className="px-4 py-3 flex items-center justify-between text-sm border-t border-slate-100">
+                                        <span className="inline-flex items-center gap-1.5 text-slate-600">
+                                            <Icons.BarChart className="w-4 h-4 text-indigo-500" />
+                                            Média:{' '}
+                                            <strong className="text-indigo-600">
+                                                {stats?.media_geral?.toFixed(1) || '0.0'}
+                                            </strong>
                                         </span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="w-6 h-6 bg-emerald-100 rounded flex items-center justify-center text-xs">✅</span>
-                                        <span className="text-slate-600">
+                                        <span className="inline-flex items-center gap-1.5 text-slate-600">
+                                            <Icons.CheckCircle className="w-4 h-4 text-emerald-500" />
                                             <strong className="text-emerald-600">{stats?.taxa_aprovacao || 0}%</strong>
                                         </span>
                                     </div>
-                                </div>
+                                    <div className="px-4 pb-4 flex gap-2">
+                                        <DmButton
+                                            variant="secondary"
+                                            className="flex-1 !bg-indigo-50 !text-indigo-700 !border-indigo-100"
+                                            onClick={() => handleEditEscola(escola)}
+                                            icon={<Icons.Edit className="w-4 h-4" />}
+                                        >
+                                            Editar
+                                        </DmButton>
+                                        <DmButton
+                                            variant="ghost"
+                                            className="flex-1"
+                                            onClick={() => onNavigate?.('escola-detail', { escolaId: escola.id })}
+                                            icon={<Icons.EyeOpen className="w-4 h-4" />}
+                                        >
+                                            Detalhes
+                                        </DmButton>
+                                    </div>
+                                </DmPanel>
+                            )
+                        })}
+                    </div>
+                )}
 
-                                {/* Card Actions */}
-                                <div className="px-4 pb-4 flex gap-2">
-                                    <button
-                                        onClick={() => handleEditEscola(escola)}
-                                        className="flex-1 px-3 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-medium"
-                                    >
-                                        ✏️ Editar
-                                    </button>
-                                    <button
-                                        onClick={() => onNavigate?.('escola-detail', { escolaId: escola.id })}
-                                        className="flex-1 px-3 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors text-sm font-medium"
-                                    >
-                                        👁️ Detalhes
-                                    </button>
-                                </div>
-                            </div>
-                        )
-                    })}
-                </div>
-            )}
-
-            {/* Edit Modal */}
-            {showEditModal && selectedEscola && (
-                <EscolaEditModal
-                    escola={selectedEscola}
-                    onClose={() => {
-                        setShowEditModal(false)
-                        setSelectedEscola(null)
-                    }}
-                    onSave={handleSaveEscolaEdit}
-                />
-            )}
-        </div>
+                {showEditModal && selectedEscola && (
+                    <EscolaEditModal
+                        escola={selectedEscola}
+                        onClose={() => {
+                            setShowEditModal(false)
+                            setSelectedEscola(null)
+                        }}
+                        onSave={handleSaveEscolaEdit}
+                    />
+                )}
+            </DmContent>
+        </DmPage>
     )
 }
 

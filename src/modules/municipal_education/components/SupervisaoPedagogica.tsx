@@ -6,6 +6,16 @@
 import { useState } from 'react';
 import { usePedagogicData } from '../hooks/usePedagogicData';
 import type { IndicadoresPedagogicos } from '../types';
+import { Icons } from '../../../components/ui/Icons';
+import {
+    DmPage,
+    DmHeader,
+    DmContent,
+    DmButton,
+    DmStatCard,
+    DmPanel,
+    DmBadge,
+} from './MunicipalChrome';
 
 interface SupervisaoPedagogicaProps {
     onNavigate?: (page: string, params?: Record<string, any>) => void;
@@ -46,49 +56,38 @@ export function SupervisaoPedagogica({ onNavigate }: SupervisaoPedagogicaProps) 
 
     if (loading && indicadores.length === 0) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            </div>
+            <DmPage className="pb-24 md:pb-0">
+                <DmContent>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16">
+                        <Icons.Spinner className="w-8 h-8 text-violet-600" />
+                        <p className="text-sm font-medium text-slate-500">A carregar supervisão...</p>
+                    </div>
+                </DmContent>
+            </DmPage>
         );
     }
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            {/* Modern Header with Gradient */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-                <div className="relative z-10">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20">
-                                <span className="text-3xl">📊</span>
-                            </div>
-                            <div>
-                                <div className="flex items-center gap-3 mb-1">
-                                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
-                                        Supervisão Pedagógica
-                                    </h1>
-                                    <span className="px-3 py-1 bg-white/20 text-white text-xs font-medium rounded-full backdrop-blur-sm">
-                                        🔒 LEITURA
-                                    </span>
-                                </div>
-                                <p className="text-white/80 font-medium">
-                                    Visualização de pautas e indicadores das escolas
-                                </p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={refresh}
-                            className="px-5 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-all font-medium backdrop-blur-sm border border-white/20 flex items-center gap-2"
-                        >
-                            🔄 Actualizar
-                        </button>
-                    </div>
-                </div>
-            </div>
-
+        <DmPage className="pb-24 md:pb-0">
+            <DmHeader
+                title="Supervisão Pedagógica"
+                subtitle="Visualização de pautas e indicadores das escolas"
+                icon={<Icons.BarChart className="w-6 h-6" />}
+                accent="violet"
+                meta={<DmBadge tone="neutral">Leitura</DmBadge>}
+                actions={
+                    <DmButton
+                        onClick={refresh}
+                        icon={<Icons.Refresh className="w-4 h-4" />}
+                        className="!bg-white/15 !text-white !border !border-white/20 hover:!bg-white/25"
+                    >
+                        Actualizar
+                    </DmButton>
+                }
+            />
+            <DmContent>
             {/* Filters Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <DmPanel>
                 <div className="flex flex-wrap gap-4">
                     <div className="flex-1 min-w-[150px]">
                         <label className="block text-sm font-medium text-slate-700 mb-2">Ano Lectivo</label>
@@ -117,52 +116,40 @@ export function SupervisaoPedagogica({ onNavigate }: SupervisaoPedagogicaProps) 
                         </select>
                     </div>
                 </div>
-            </div>
+            </DmPanel>
 
             {/* Consolidated Stats */}
             {estatisticasConsolidadas && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-xl text-white">
-                        <div className="text-3xl font-bold">{estatisticasConsolidadas.total_escolas}</div>
-                        <div className="text-blue-100">Escolas</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-xl text-white">
-                        <div className="text-3xl font-bold">{estatisticasConsolidadas.total_alunos.toLocaleString()}</div>
-                        <div className="text-purple-100">Alunos</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-green-500 to-green-600 p-4 rounded-xl text-white">
-                        <div className="text-3xl font-bold">{estatisticasConsolidadas.media_municipal}</div>
-                        <div className="text-green-100">Média Municipal</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4 rounded-xl text-white">
-                        <div className="text-3xl font-bold">{estatisticasConsolidadas.taxa_aprovacao_municipal}%</div>
-                        <div className="text-orange-100">Taxa Aprovação</div>
-                    </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+                    <DmStatCard title="Escolas" value={estatisticasConsolidadas.total_escolas} icon={<Icons.School className="w-5 h-5" />} iconTone="from-blue-50 to-blue-100 text-blue-600" />
+                    <DmStatCard title="Alunos" value={estatisticasConsolidadas.total_alunos.toLocaleString()} icon={<Icons.AcademicCap className="w-5 h-5" />} iconTone="from-violet-50 to-violet-100 text-violet-600" />
+                    <DmStatCard title="Média Municipal" value={estatisticasConsolidadas.media_municipal} icon={<Icons.BarChart className="w-5 h-5" />} iconTone="from-emerald-50 to-emerald-100 text-emerald-600" />
+                    <DmStatCard title="Aprovação" value={`${estatisticasConsolidadas.taxa_aprovacao_municipal}%`} icon={<Icons.TrendingUp className="w-5 h-5" />} iconTone="from-amber-50 to-amber-100 text-amber-600" />
                 </div>
             )}
 
             {/* Best/Worst Schools */}
             {estatisticasConsolidadas && (estatisticasConsolidadas.melhor_escola || estatisticasConsolidadas.pior_escola) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                     {estatisticasConsolidadas.melhor_escola && (
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-green-200">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-2xl">🏆</span>
-                                <span className="font-semibold text-green-800">Melhor Desempenho</span>
+                        <DmPanel className="!border-emerald-200">
+                            <div className="flex items-center gap-2 mb-2 text-emerald-800 font-semibold">
+                                <Icons.Award className="w-5 h-5" />
+                                Melhor Desempenho
                             </div>
-                            <div className="text-lg font-medium text-gray-900">{estatisticasConsolidadas.melhor_escola.nome}</div>
-                            <div className="text-green-600 font-bold">Média: {estatisticasConsolidadas.melhor_escola.media}</div>
-                        </div>
+                            <div className="text-lg font-medium text-slate-900">{estatisticasConsolidadas.melhor_escola.nome}</div>
+                            <div className="text-emerald-600 font-bold">Média: {estatisticasConsolidadas.melhor_escola.media}</div>
+                        </DmPanel>
                     )}
                     {estatisticasConsolidadas.pior_escola && (
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-200">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-2xl">⚠️</span>
-                                <span className="font-semibold text-red-800">Requer Atenção</span>
+                        <DmPanel className="!border-red-200">
+                            <div className="flex items-center gap-2 mb-2 text-red-800 font-semibold">
+                                <Icons.ExclamationTriangle className="w-5 h-5" />
+                                Requer Atenção
                             </div>
-                            <div className="text-lg font-medium text-gray-900">{estatisticasConsolidadas.pior_escola.nome}</div>
+                            <div className="text-lg font-medium text-slate-900">{estatisticasConsolidadas.pior_escola.nome}</div>
                             <div className="text-red-600 font-bold">Média: {estatisticasConsolidadas.pior_escola.media}</div>
-                        </div>
+                        </DmPanel>
                     )}
                 </div>
             )}
@@ -170,7 +157,7 @@ export function SupervisaoPedagogica({ onNavigate }: SupervisaoPedagogicaProps) 
             {/* Schools Indicators Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100">
-                    <h3 className="font-semibold text-gray-900">📊 Indicadores por Escola</h3>
+                    <h3 className="font-semibold text-gray-900 inline-flex items-center gap-2"><Icons.BarChart className="w-4 h-4" /> Indicadores por Escola</h3>
                 </div>
                 <table className="w-full">
                     <thead className="bg-gray-50">
@@ -318,7 +305,8 @@ export function SupervisaoPedagogica({ onNavigate }: SupervisaoPedagogicaProps) 
                     </div>
                 </div>
             )}
-        </div>
+            </DmContent>
+        </DmPage>
     );
 }
 

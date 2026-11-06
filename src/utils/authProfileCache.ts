@@ -13,6 +13,7 @@ import type {
     DirecaoMunicipalProfile,
     DirecaoProvincialProfile,
     PessoalDirecaoProvincialProfile,
+    PessoalDirecaoMunicipalProfile,
 } from '../types'
 
 const CACHE_KEY = 'edugest_auth_profile_v1'
@@ -30,6 +31,7 @@ export interface CachedAuthSnapshot {
     isDirecaoMunicipal: boolean
     isDirecaoProvincial: boolean
     isFuncionarioProvincial: boolean
+    isFuncionarioMunicipal: boolean
     escolaProfile: EscolaProfile | null
     professorProfile: ProfessorProfile | null
     alunoProfile: AlunoProfile | null
@@ -38,6 +40,7 @@ export interface CachedAuthSnapshot {
     direcaoMunicipalProfile: DirecaoMunicipalProfile | null
     direcaoProvincialProfile: DirecaoProvincialProfile | null
     pessoalDirecaoProvincialProfile: PessoalDirecaoProvincialProfile | null
+    pessoalDirecaoMunicipalProfile: PessoalDirecaoMunicipalProfile | null
 }
 
 export function readAuthProfileCache(userId: string): CachedAuthSnapshot | null {

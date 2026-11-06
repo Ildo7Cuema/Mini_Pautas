@@ -440,6 +440,58 @@ export const LoginScreen: React.FC = () => {
                     return
                 }
 
+                // FUNCIONARIO_MUNICIPAL: sem escola; só bloqueia se a DM associada estiver inactiva
+                if (profileData.tipo_perfil === 'FUNCIONARIO_MUNICIPAL') {
+                    if (!profileData.ativo) {
+                        await supabase.auth.signOut()
+                        setSchoolStatusType('inactive')
+                        setSchoolStatusReason('A sua conta de funcionário municipal está inactiva. Contacte a Direção Municipal.')
+                        setEntityType('direcao_municipal')
+                        setShowSchoolStatusModal(true)
+                        return
+                    }
+
+                    const { data: pessoalDm } = await supabase
+                        .from('pessoal_direcao_municipal')
+                        .select('id, ativo, direcao_municipal_id, direcoes_municipais(id, ativo, nome)')
+                        .eq('user_id', userId)
+                        .eq('ativo', true)
+                        .maybeSingle()
+
+                    const dmJoin = pessoalDm?.direcoes_municipais as
+                        | { id: string; ativo: boolean; nome?: string }
+                        | { id: string; ativo: boolean; nome?: string }[]
+                        | null
+                        | undefined
+                    const direcaoDm = Array.isArray(dmJoin) ? dmJoin[0] : dmJoin
+
+                    if (!pessoalDm) {
+                        await supabase.auth.signOut()
+                        setSchoolStatusType('deleted')
+                        setSchoolStatusReason(
+                            'O seu registo como funcionário municipal não foi encontrado ou está inactivo. Peça à Direção Municipal para reactivar o convite.',
+                        )
+                        setEntityType('direcao_municipal')
+                        setShowSchoolStatusModal(true)
+                        return
+                    }
+
+                    if (direcaoDm && direcaoDm.ativo === false) {
+                        await supabase.auth.signOut()
+                        setSchoolStatusType('blocked')
+                        setSchoolStatusReason(
+                            'A Direção Municipal a que pertence está bloqueada ou inactiva. O acesso do pessoal só é permitido enquanto a Direção Municipal estiver activa.',
+                        )
+                        setEntityType('direcao_municipal')
+                        if (direcaoDm.nome) setSchoolInfo({ nome: direcaoDm.nome, codigo: '' })
+                        setShowSchoolStatusModal(true)
+                        return
+                    }
+
+                    logSystemVisit(undefined, 'FUNCIONARIO_MUNICIPAL')
+                    return
+                }
+
                 // FUNCIONARIO_PROVINCIAL: sem escola; só bloqueia se a DP associada estiver inactiva
                 if (profileData.tipo_perfil === 'FUNCIONARIO_PROVINCIAL') {
                     if (!profileData.ativo) {

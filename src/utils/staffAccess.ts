@@ -1,9 +1,11 @@
 /**
  * School staff access profiles (login via secretarios + tipo_perfil SECRETARIO).
  * Aligned with Angolan school organisation:
- * - Director Pedagógico → Área Pedagógica
- * - Director Administrativo → Área Administrativa
+ * - Subdirector Pedagógico → Área Pedagógica
+ * - Subdirector Administrativo → Área Administrativa
  * - Técnico de Secretaria → Área de Secretaria
+ *
+ * Internal codes keep DIRECTOR_* for compatibility with DB / RLS / invites.
  */
 
 export type StaffLoginCargo =
@@ -13,8 +15,8 @@ export type StaffLoginCargo =
 
 export const STAFF_CARGO_LABELS: Record<StaffLoginCargo, string> = {
     TECNICO_SECRETARIA: 'Técnico de Secretaria',
-    DIRECTOR_PEDAGOGICO: 'Director Pedagógico',
-    DIRECTOR_ADMINISTRATIVO: 'Director Administrativo',
+    DIRECTOR_PEDAGOGICO: 'Subdirector Pedagógico',
+    DIRECTOR_ADMINISTRATIVO: 'Subdirector Administrativo',
 }
 
 /** Named functional areas each login profile accesses */
@@ -178,9 +180,11 @@ export function resolveStaffCargoFromInvite(
     ) {
         return field
     }
-    // Human labels stored in funcionarios_escola.cargo
-    if (/pedag[oó]gico/i.test(cargoField || '')) return 'DIRECTOR_PEDAGOGICO'
-    if (/administrativo/i.test(cargoField || '') && /director|diretor/i.test(cargoField || '')) {
+    // Human labels stored in funcionarios_escola.cargo (Director / Subdirector)
+    if (/pedag[oó]gico/i.test(cargoField || '') && /director|diretor|subdirector|subdiretor/i.test(cargoField || '')) {
+        return 'DIRECTOR_PEDAGOGICO'
+    }
+    if (/administrativo/i.test(cargoField || '') && /director|diretor|subdirector|subdiretor/i.test(cargoField || '')) {
         return 'DIRECTOR_ADMINISTRATIVO'
     }
     if (/t[eé]cnico.*secretaria|secretaria/i.test(cargoField || '')) return 'TECNICO_SECRETARIA'

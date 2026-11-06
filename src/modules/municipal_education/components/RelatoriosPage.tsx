@@ -2,9 +2,16 @@
  * Relatórios Page - Consolidated reports for Municipal Education Direction
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useRelatoriosMunicipais } from '../hooks/useRelatoriosMunicipais';
 import { exportRelatorio } from '../utils/exportRelatorio';
+import { Icons } from '../../../components/ui/Icons';
+import {
+    DmPage,
+    DmHeader,
+    DmContent,
+    DmStatCard,
+} from './MunicipalChrome';
 
 type TipoRelatorio = 'escolas' | 'aprovacao' | 'funcionarios' | 'solicitacoes';
 
@@ -15,7 +22,7 @@ interface RelatoriosPageProps {
 // Card configurations with unique colors per report type
 const REPORT_CARDS: Array<{
     tipo: TipoRelatorio;
-    icon: string;
+    icon: ReactNode;
     label: string;
     desc: string;
     gradient: string;
@@ -25,7 +32,7 @@ const REPORT_CARDS: Array<{
 }> = [
         {
             tipo: 'escolas',
-            icon: '🏫',
+            icon: <Icons.School className="w-7 h-7 text-white" />,
             label: 'Relatório de Escolas',
             desc: 'Estado e estatísticas das escolas',
             gradient: 'from-blue-500/10 via-blue-400/5 to-transparent',
@@ -35,7 +42,7 @@ const REPORT_CARDS: Array<{
         },
         {
             tipo: 'aprovacao',
-            icon: '📊',
+            icon: <Icons.TrendingUp className="w-7 h-7 text-white" />,
             label: 'Aproveitamento Escolar',
             desc: 'Taxas de aprovação e médias',
             gradient: 'from-emerald-500/10 via-emerald-400/5 to-transparent',
@@ -45,7 +52,7 @@ const REPORT_CARDS: Array<{
         },
         {
             tipo: 'funcionarios',
-            icon: '👥',
+            icon: <Icons.Users className="w-7 h-7 text-white" />,
             label: 'Funcionários',
             desc: 'Professores e administrativos',
             gradient: 'from-violet-500/10 via-violet-400/5 to-transparent',
@@ -55,7 +62,7 @@ const REPORT_CARDS: Array<{
         },
         {
             tipo: 'solicitacoes',
-            icon: '📋',
+            icon: <Icons.ClipboardList className="w-7 h-7 text-white" />,
             label: 'Solicitações',
             desc: 'Pedidos de documentos',
             gradient: 'from-amber-500/10 via-amber-400/5 to-transparent',
@@ -83,36 +90,34 @@ export function RelatoriosPage({ onNavigate }: RelatoriosPageProps) {
 
     const formatDate = (date: string) => new Date(date).toLocaleDateString('pt-AO');
 
-    if (loading && !estatisticas) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (loading && !estatisticas) {
+        return (
+            <DmPage className="pb-24 md:pb-0">
+                <DmContent>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16">
+                        <Icons.Spinner className="w-8 h-8 text-indigo-600" />
+                        <p className="text-sm font-medium text-slate-500">A carregar relatórios...</p>
+                    </div>
+                </DmContent>
+            </DmPage>
+        );
+    }
 
     return (
-        <div className="space-y-6 pb-24 md:pb-6 animate-fade-in">
-            {/* Modern Header with Gradient */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 rounded-2xl p-6 md:p-8 text-white shadow-xl">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-                <div className="relative z-10">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20">
-                            <span className="text-3xl">📈</span>
-                        </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
-                                Relatórios Municipais
-                            </h1>
-                            <p className="text-white/80 font-medium mt-1">
-                                Relatórios consolidados do município
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+        <DmPage className="pb-24 md:pb-0">
+            <DmHeader
+                title="Relatórios Municipais"
+                subtitle="Relatórios consolidados do município"
+                icon={<Icons.TrendingUp className="w-6 h-6" />}
+                accent="indigo"
+            />
+            <DmContent>
             {estatisticas && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-xl text-white"><div className="text-3xl font-bold">{estatisticas.total_escolas}</div><div className="text-blue-100">Escolas</div></div>
-                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-xl text-white"><div className="text-3xl font-bold">{estatisticas.total_alunos.toLocaleString()}</div><div className="text-purple-100">Alunos</div></div>
-                    <div className="bg-gradient-to-br from-green-500 to-green-600 p-4 rounded-xl text-white"><div className="text-3xl font-bold">{estatisticas.total_professores}</div><div className="text-green-100">Professores</div></div>
-                    <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4 rounded-xl text-white"><div className="text-3xl font-bold">{estatisticas.taxa_aprovacao}%</div><div className="text-orange-100">Aprovação</div></div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+                    <DmStatCard title="Escolas" value={estatisticas.total_escolas} icon={<Icons.School className="w-5 h-5" />} iconTone="from-blue-50 to-blue-100 text-blue-600" />
+                    <DmStatCard title="Alunos" value={estatisticas.total_alunos.toLocaleString()} icon={<Icons.AcademicCap className="w-5 h-5" />} iconTone="from-violet-50 to-violet-100 text-violet-600" />
+                    <DmStatCard title="Professores" value={estatisticas.total_professores} icon={<Icons.Users className="w-5 h-5" />} iconTone="from-emerald-50 to-emerald-100 text-emerald-600" />
+                    <DmStatCard title="Aprovação" value={`${estatisticas.taxa_aprovacao}%`} icon={<Icons.TrendingUp className="w-5 h-5" />} iconTone="from-amber-50 to-amber-100 text-amber-600" />
                 </div>
             )}
 
@@ -157,7 +162,7 @@ export function RelatoriosPage({ onNavigate }: RelatoriosPageProps) {
                                     shadow-lg shadow-${r.tipo === 'escolas' ? 'blue' : r.tipo === 'aprovacao' ? 'emerald' : r.tipo === 'funcionarios' ? 'violet' : 'amber'}-500/25
                                     group-hover:scale-110 transition-transform duration-300
                                 `}>
-                                    <span className="text-2xl filter drop-shadow-sm">{r.icon}</span>
+                                    {r.icon}
                                 </div>
 
                                 {/* Title and description */}
@@ -192,7 +197,7 @@ export function RelatoriosPage({ onNavigate }: RelatoriosPageProps) {
                                         </>
                                     ) : (
                                         <>
-                                            <span>📄</span>
+                                            <Icons.DocumentText className="w-4 h-4" />
                                             <span>Gerar Relatório</span>
                                         </>
                                     )}
@@ -208,27 +213,27 @@ export function RelatoriosPage({ onNavigate }: RelatoriosPageProps) {
                     <div className="px-6 py-4 border-b flex justify-between items-center">
                         <div><h3 className="font-semibold">{relatorioActual.titulo}</h3><p className="text-sm text-gray-500">Gerado em {formatDate(relatorioActual.data_geracao)}</p></div>
                         <div className="flex gap-2">
-                            <button onClick={clearRelatorio} className="px-4 py-2 border rounded-lg hover:bg-gray-50 transition-colors">✕ Fechar</button>
+                            <button onClick={clearRelatorio} className="px-4 py-2 border rounded-lg hover:bg-gray-50 transition-colors inline-flex items-center gap-1.5">
+                                <Icons.X className="w-4 h-4" /> Fechar
+                            </button>
                             <div className="relative group">
                                 <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all shadow-md flex items-center gap-2">
-                                    <span>📥</span>
+                                    <Icons.Download className="w-4 h-4" />
                                     <span>Exportar</span>
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
+                                    <Icons.ChevronDown className="w-4 h-4" />
                                 </button>
                                 <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                                     <button
                                         onClick={() => tipoRelatorioActual && exportRelatorio(relatorioActual, tipoRelatorioActual, 'pdf')}
                                         className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2 rounded-t-lg"
                                     >
-                                        <span className="text-red-500">📄</span> Exportar PDF
+                                        <Icons.DocumentText className="w-4 h-4 text-red-500" /> Exportar PDF
                                     </button>
                                     <button
                                         onClick={() => tipoRelatorioActual && exportRelatorio(relatorioActual, tipoRelatorioActual, 'csv')}
                                         className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2 rounded-b-lg border-t"
                                     >
-                                        <span className="text-green-500">📊</span> Exportar CSV
+                                        <Icons.TrendingUp className="w-4 h-4 text-green-500" /> Exportar CSV
                                     </button>
                                 </div>
                             </div>
@@ -451,7 +456,8 @@ export function RelatoriosPage({ onNavigate }: RelatoriosPageProps) {
                     </div>
                 </div>
             )}
-        </div>
+            </DmContent>
+        </DmPage>
     );
 }
 
