@@ -77,6 +77,7 @@ const TemplatesManagement = lazy(() => import('./components/TemplatesManagement'
 const ConcursosProvinciaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosProvinciaisPage').then(m => ({ default: m.ConcursosProvinciaisPage })))
 const ConcursosMunicipaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosMunicipaisPage').then(m => ({ default: m.ConcursosMunicipaisPage })))
 const InscricaoConcursoPublicaPage = lazy(() => import('./modules/concursos_publicos/components/InscricaoConcursoPublicaPage').then(m => ({ default: m.InscricaoConcursoPublicaPage })))
+const ConselhoConvitePage = lazy(() => import('./components/ConselhoConvitePage').then(m => ({ default: m.ConselhoConvitePage })))
 
 function App() {
     const { user, loading, isProfessor, isAluno, isEncarregado, isSecretario, isEscola, isDirecaoMunicipal, isDirecaoProvincial, isFuncionarioProvincial, isFuncionarioMunicipal, escolaProfile, profile, secretarioProfile, pessoalDirecaoProvincialProfile, pessoalDirecaoMunicipalProfile } = useAuth()
@@ -84,6 +85,8 @@ function App() {
     const [navigationParams, setNavigationParams] = useState<{ turmaId?: string; filter?: string }>({})
     const [searchQuery, setSearchQuery] = useState('')
     const [showEscolaSetup, setShowEscolaSetup] = useState(false)
+    const [reportsInitialTab, setReportsInitialTab] = useState<'conselho-notas' | undefined>()
+    const [reportsInitialTurmaId, setReportsInitialTurmaId] = useState<string | undefined>()
 
     // Check if escola needs to complete profile setup
     useEffect(() => {
@@ -94,6 +97,30 @@ function App() {
             }
         }
     }, [user, isEscola, escolaProfile])
+
+    // Deep-link após aceitar convite do Conselho de Notas
+    useEffect(() => {
+        if (!user) return
+        const params = new URLSearchParams(window.location.search)
+        const open = params.get('open')
+        const tab = params.get('tab')
+        let turmaId: string | undefined
+        try {
+            const raw = sessionStorage.getItem('conselho_invite_pending')
+            if (raw) {
+                const parsed = JSON.parse(raw) as { turmaId?: string }
+                turmaId = parsed.turmaId
+            }
+        } catch {
+            /* ignore */
+        }
+        if (open === 'reports' || tab === 'conselho-notas' || turmaId) {
+            setCurrentPage('reports')
+            if (tab === 'conselho-notas') setReportsInitialTab('conselho-notas')
+            if (turmaId) setReportsInitialTurmaId(turmaId)
+            window.history.replaceState(null, '', '/')
+        }
+    }, [user])
 
     const isSuperAdminUser = profile ? isSuperAdmin(profile) : false
 
@@ -172,6 +199,14 @@ function App() {
         )
     }
 
+    if (window.location.pathname === '/conselho-convite') {
+        return (
+            <Suspense fallback={<PageSkeleton />}>
+                <ConselhoConvitePage />
+            </Suspense>
+        )
+    }
+
     if (window.location.pathname === '/register-funcionario-dp') {
         return (
             <Suspense fallback={<PageSkeleton />}>
@@ -234,13 +269,33 @@ function App() {
         return <LoginScreen />
     }
 
-    const handleNavigate = (page: string, params?: { turmaId?: string; filter?: string }) => {
+    const handleNavigate = (
+        page: string,
+        params?: { turmaId?: string; filter?: string; conselhoToken?: string }
+    ) => {
         setCurrentPage(page)
         setSearchQuery('') // Clear search when navigating
         if (params) {
             setNavigationParams(params)
         } else {
             setNavigationParams({})
+        }
+        if (page === 'reports' && params?.filter === 'conselho-notas') {
+            setReportsInitialTab('conselho-notas')
+            if (params.turmaId) setReportsInitialTurmaId(params.turmaId)
+            if (params.conselhoToken) {
+                try {
+                    sessionStorage.setItem(
+                        'conselho_invite_pending',
+                        JSON.stringify({
+                            turmaId: params.turmaId,
+                            token: params.conselhoToken,
+                        })
+                    )
+                } catch {
+                    /* ignore */
+                }
+            }
         }
     }
 
@@ -308,7 +363,13 @@ function App() {
                 case 'config-documentos':
                     return <ConfiguracaoDocumentos />
                 case 'reports':
-                    return <ReportsPage searchQuery={searchQuery} />
+                    return (
+                        <ReportsPage
+                            searchQuery={searchQuery}
+                            initialTab={reportsInitialTab}
+                            initialConselhoTurmaId={reportsInitialTurmaId}
+                        />
+                    )
                 case 'settings':
                     return <SettingsPage />
                 default:
@@ -415,14 +476,30 @@ function App() {
                     }
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
                 case 'reports':
-                    if (isDirPed) return <ReportsPage searchQuery={searchQuery} />
+                    if (isDirPed) {
+                        return (
+                            <ReportsPage
+                                searchQuery={searchQuery}
+                                initialTab={reportsInitialTab}
+                                initialConselhoTurmaId={reportsInitialTurmaId}
+                            />
+                        )
+                    }
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
                 case 'matriculas':
                     if (isDirPed || isDirAdm) return <MatriculasPage />
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
                 case 'grades':
                     // Supervisão pedagógica: consulta via Relatórios; lançamento permanece com professores/escola
-                    if (isDirPed) return <ReportsPage searchQuery={searchQuery} />
+                    if (isDirPed) {
+                        return (
+                            <ReportsPage
+                                searchQuery={searchQuery}
+                                initialTab={reportsInitialTab}
+                                initialConselhoTurmaId={reportsInitialTurmaId}
+                            />
+                        )
+                    }
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
                 default:
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
@@ -446,7 +523,13 @@ function App() {
             case 'grades':
                 return <GradesPage searchQuery={searchQuery} />
             case 'reports':
-                return <ReportsPage searchQuery={searchQuery} />
+                    return (
+                        <ReportsPage
+                            searchQuery={searchQuery}
+                            initialTab={reportsInitialTab}
+                            initialConselhoTurmaId={reportsInitialTurmaId}
+                        />
+                    )
             case 'settings':
                 return <SettingsPage />
             case 'teachers':

@@ -1,4 +1,13 @@
 import * as XLSX from 'xlsx'
+import {
+    formatComponentePautaLabel,
+    formatObservacaoPautaLabel,
+    buildPautaGeralLegendaTableRows,
+} from './pautaGeralFieldUtils'
+import {
+    DEFAULT_PAUTA_GERAL_EXPORT_CONFIG,
+    type PautaGeralExportConfig,
+} from './pautaGeralExportUtils'
 
 interface TrimestreData {
     notas: Record<string, number>
@@ -586,6 +595,8 @@ interface ComponenteAvaliacao {
     peso_percentual: number
     trimestre: number
     is_calculated?: boolean
+    formula_expression?: string | null
+    tipo_calculo?: 'trimestral' | 'anual' | string | null
 }
 
 interface DisciplinaComComponentes {
@@ -611,6 +622,8 @@ interface PautaGeralData {
         nome_completo: string
         genero?: 'M' | 'F'
         notas_por_disciplina: Record<string, Record<string, number>>
+        media_geral?: number
+        observacao?: 'Transita' | 'Não Transita' | 'Condicional' | 'AguardandoNotas' | string
     }>
     disciplinas: DisciplinaComComponentes[]
     estatisticas?: {
@@ -619,87 +632,134 @@ interface PautaGeralData {
     }
 }
 
-export function generatePautaGeralExcel(data: PautaGeralData): void {
+export function generatePautaGeralExcel(
+    data: PautaGeralData,
+    exportConfig: PautaGeralExportConfig = DEFAULT_PAUTA_GERAL_EXPORT_CONFIG,
+    metricSourceComponentes: ComponenteAvaliacao[] = []
+): void {
+    const cfg = { ...DEFAULT_PAUTA_GERAL_EXPORT_CONFIG, ...exportConfig }
+    const disciplinas = data.disciplinas.filter((d) => d.componentes.length > 0)
     const workbook = XLSX.utils.book_new()
 
-    // Build headers - two rows
-    // Row 1: Discipline names (merged across their components)
-    const disciplineHeaderRow = ['Nº', 'Nome do Aluno', 'GÊN']
-    const componentHeaderRow = ['', '', ''] // Empty for Nº, Nome, GÊN
+    const disciplineHeaderRow: any[] = []
+    const componentHeaderRow: any[] = []
 
-    data.disciplinas.forEach(disc => {
-        // Add discipline name
+    if (cfg.showNumeroProcesso) {
+        disciplineHeaderRow.push('Nº')
+        componentHeaderRow.push('')
+    }
+    if (cfg.showNomeCompleto) {
+        disciplineHeaderRow.push('Nome do Aluno')
+        componentHeaderRow.push('')
+    }
+    disciplineHeaderRow.push('GÊN')
+    componentHeaderRow.push('')
+
+    disciplinas.forEach((disc) => {
         disciplineHeaderRow.push(disc.nome)
-        // Add empty cells for the span
         for (let i = 1; i < disc.componentes.length; i++) {
             disciplineHeaderRow.push('')
         }
-        // Add component codes
-        disc.componentes.forEach(comp => {
-            componentHeaderRow.push(comp.codigo_componente)
+        disc.componentes.forEach((comp) => {
+            componentHeaderRow.push(formatComponentePautaLabel(comp))
         })
     })
 
-    // Build data rows
-    const dataRows = data.alunos.map((aluno, index) => {
-        const row: any[] = [
-            index + 1,
-            aluno.nome_completo,
-            aluno.genero || '-'
-        ]
+    if (cfg.showMediaGeral) {
+        disciplineHeaderRow.push('MG')
+        componentHeaderRow.push('')
+    }
+    if (cfg.showObservacao) {
+        disciplineHeaderRow.push('Observação')
+        componentHeaderRow.push('')
+    }
 
-        data.disciplinas.forEach(disc => {
+    const dataRows = data.alunos.map((aluno, index) => {
+        const row: any[] = []
+        if (cfg.showNumeroProcesso) row.push(index + 1)
+        if (cfg.showNomeCompleto) row.push(aluno.nome_completo)
+        row.push(aluno.genero || '-')
+
+        disciplinas.forEach((disc) => {
             const notasDisciplina = aluno.notas_por_disciplina[disc.id] || {}
-            disc.componentes.forEach(comp => {
+            disc.componentes.forEach((comp) => {
                 const nota = notasDisciplina[comp.id]
                 row.push(nota !== undefined ? nota : '')
             })
         })
 
+        if (cfg.showMediaGeral) {
+            row.push(aluno.media_geral !== undefined ? aluno.media_geral : '')
+        }
+        if (cfg.showObservacao) {
+            row.push(formatObservacaoPautaLabel(aluno.observacao))
+        }
+
         return row
     })
 
-    // Create header rows
     const infoRows = [
         ['PAUTA-GERAL'],
         [`Turma: ${data.turma.nome}`, '', `Ano Lectivo: ${data.turma.ano_lectivo}`],
         [`Trimestre: ${data.trimestre}º`],
-        [] // Empty row
+        []
     ]
 
     const headerRows = [...infoRows, disciplineHeaderRow, componentHeaderRow]
 
-    // Statistics rows
     const statsRows: any[][] = []
-    if (data.estatisticas) {
+    if (cfg.showStatistics && data.estatisticas) {
         statsRows.push(
-            [], // Empty row
-            ['ESTATÍSTICAS GERAIS'],
-            ['Total de Alunos:', data.estatisticas.geral.total_alunos],
-            ['Aprovados:', data.estatisticas.geral.aprovados],
-            ['Reprovados:', data.estatisticas.geral.reprovados],
-            ['Média Geral:', data.estatisticas.geral.media_turma?.toFixed(2) || 'N/A'],
-            ['Nota Mínima:', data.estatisticas.geral.nota_minima?.toFixed(2) || 'N/A'],
-            ['Nota Máxima:', data.estatisticas.geral.nota_maxima?.toFixed(2) || 'N/A']
+            [],
+            ['ESTATÍSTICAS GERAIS', '', '', ''],
+            ['Total', 'Aprovados', 'Reprovados', 'Média'],
+            [
+                data.estatisticas.geral.total_alunos,
+                data.estatisticas.geral.aprovados,
+                data.estatisticas.geral.reprovados,
+                data.estatisticas.geral.media_turma?.toFixed(2) || 'N/A',
+            ]
         )
     }
 
-    // Combine all rows
-    const allRows = [...headerRows, ...dataRows, ...statsRows]
+    const legendTable = buildPautaGeralLegendaTableRows(
+        disciplinas.flatMap((d) => d.componentes),
+        {
+            nivelEnsino: data.nivel_ensino || data.turma.nivel_ensino,
+            classe: data.classe,
+            showMediaGeral: cfg.showMediaGeral,
+            showObservacao: cfg.showObservacao,
+            componenteParaMediaGeral: cfg.componenteParaMediaGeral,
+            metricSourceComponentes,
+        }
+    )
+    const legendRows: any[][] = [
+        [],
+        ['LEGENDA — conforme configuração desta pauta', ''],
+        ['Item', 'Detalhe / Fórmula'],
+        ...legendTable.map((r) => [r.item, r.detalhe]),
+    ]
 
-    // Create worksheet
+    const allRows = [...headerRows, ...dataRows, ...statsRows, ...legendRows]
     const worksheet = XLSX.utils.aoa_to_sheet(allRows)
 
-    // Add merges for discipline headers
-    const headerRowIndex = 4 // 0-indexed row where discipline headers are
-    const startCol = 3 // After Nº, Nome, GÊN
+    const headerRowIndex = 4
+    const merges: Array<{ s: { r: number; c: number }; e: { r: number; c: number } }> = []
+    let currentCol = 0
 
-    const merges = []
-    let currentCol = startCol
+    if (cfg.showNumeroProcesso) {
+        merges.push({ s: { r: headerRowIndex, c: currentCol }, e: { r: headerRowIndex + 1, c: currentCol } })
+        currentCol++
+    }
+    if (cfg.showNomeCompleto) {
+        merges.push({ s: { r: headerRowIndex, c: currentCol }, e: { r: headerRowIndex + 1, c: currentCol } })
+        currentCol++
+    }
+    merges.push({ s: { r: headerRowIndex, c: currentCol }, e: { r: headerRowIndex + 1, c: currentCol } })
+    currentCol++
 
-    data.disciplinas.forEach(disc => {
+    disciplinas.forEach((disc) => {
         if (disc.componentes.length > 1) {
-            // Merge cells for discipline name spanning its components
             merges.push({
                 s: { r: headerRowIndex, c: currentCol },
                 e: { r: headerRowIndex, c: currentCol + disc.componentes.length - 1 }
@@ -708,64 +768,100 @@ export function generatePautaGeralExcel(data: PautaGeralData): void {
         currentCol += disc.componentes.length
     })
 
-    // Also merge Nº, Nome, and GÊN cells vertically (rows 4 and 5)
-    merges.push(
-        { s: { r: headerRowIndex, c: 0 }, e: { r: headerRowIndex + 1, c: 0 } }, // Nº
-        { s: { r: headerRowIndex, c: 1 }, e: { r: headerRowIndex + 1, c: 1 } }, // Nome
-        { s: { r: headerRowIndex, c: 2 }, e: { r: headerRowIndex + 1, c: 2 } }  // GÊN
-    )
+    if (cfg.showMediaGeral) {
+        merges.push({ s: { r: headerRowIndex, c: currentCol }, e: { r: headerRowIndex + 1, c: currentCol } })
+        currentCol++
+    }
+    if (cfg.showObservacao) {
+        merges.push({ s: { r: headerRowIndex, c: currentCol }, e: { r: headerRowIndex + 1, c: currentCol } })
+    }
 
     worksheet['!merges'] = merges
-
-    // Set column widths
-    const columnWidths = [
-        { wch: 5 },  // Nº
-        { wch: 30 }, // Nome
-        { wch: 5 },  // GÊN
-        ...data.disciplinas.flatMap(disc => disc.componentes.map(() => ({ wch: 10 })))
+    worksheet['!cols'] = [
+        ...(cfg.showNumeroProcesso ? [{ wch: 5 }] : []),
+        ...(cfg.showNomeCompleto ? [{ wch: 30 }] : []),
+        { wch: 5 },
+        ...disciplinas.flatMap((disc) => disc.componentes.map(() => ({ wch: 10 }))),
+        ...(cfg.showMediaGeral ? [{ wch: 8 }] : []),
+        ...(cfg.showObservacao ? [{ wch: 16 }] : []),
     ]
-    worksheet['!cols'] = columnWidths
 
-    // Add worksheet to workbook
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Pauta-Geral')
-
-    // Generate filename and download
-    const filename = `pauta-geral_${data.turma.codigo_turma}_${data.trimestre}trim.xlsx`
-    XLSX.writeFile(workbook, filename)
+    XLSX.writeFile(workbook, `pauta-geral_${data.turma.codigo_turma}_${data.trimestre}trim.xlsx`)
 }
 
-export function generatePautaGeralCSV(data: PautaGeralData): void {
-    // Build headers
-    const headers = ['Nº', 'Nome do Aluno', 'GÊN']
+export function generatePautaGeralCSV(
+    data: PautaGeralData,
+    exportConfig: PautaGeralExportConfig = DEFAULT_PAUTA_GERAL_EXPORT_CONFIG,
+    metricSourceComponentes: ComponenteAvaliacao[] = []
+): void {
+    const cfg = { ...DEFAULT_PAUTA_GERAL_EXPORT_CONFIG, ...exportConfig }
+    const disciplinas = data.disciplinas.filter((d) => d.componentes.length > 0)
 
-    data.disciplinas.forEach(disc => {
-        disc.componentes.forEach(comp => {
-            headers.push(`${disc.nome} - ${comp.codigo_componente}`)
+    const headers: string[] = []
+    if (cfg.showNumeroProcesso) headers.push('Nº')
+    if (cfg.showNomeCompleto) headers.push('Nome do Aluno')
+    headers.push('GÊN')
+
+    disciplinas.forEach((disc) => {
+        disc.componentes.forEach((comp) => {
+            headers.push(`${disc.nome} - ${formatComponentePautaLabel(comp)}`)
         })
     })
+    if (cfg.showMediaGeral) headers.push('MG')
+    if (cfg.showObservacao) headers.push('Observação')
 
-    // Build data rows
     const rows = data.alunos.map((aluno, index) => {
-        const row: any[] = [
-            index + 1,
-            aluno.nome_completo,
-            aluno.genero || '-'
-        ]
+        const row: any[] = []
+        if (cfg.showNumeroProcesso) row.push(index + 1)
+        if (cfg.showNomeCompleto) row.push(aluno.nome_completo)
+        row.push(aluno.genero || '-')
 
-        data.disciplinas.forEach(disc => {
+        disciplinas.forEach((disc) => {
             const notasDisciplina = aluno.notas_por_disciplina[disc.id] || {}
-            disc.componentes.forEach(comp => {
+            disc.componentes.forEach((comp) => {
                 const nota = notasDisciplina[comp.id]
                 row.push(nota !== undefined ? nota : '')
             })
         })
 
+        if (cfg.showMediaGeral) {
+            row.push(aluno.media_geral !== undefined ? aluno.media_geral : '')
+        }
+        if (cfg.showObservacao) {
+            row.push(formatObservacaoPautaLabel(aluno.observacao))
+        }
+
         return row
     })
 
+    const legendTable = buildPautaGeralLegendaTableRows(
+        disciplinas.flatMap((d) => d.componentes),
+        {
+            nivelEnsino: data.nivel_ensino || data.turma.nivel_ensino,
+            classe: data.classe,
+            showMediaGeral: cfg.showMediaGeral,
+            showObservacao: cfg.showObservacao,
+            componenteParaMediaGeral: cfg.componenteParaMediaGeral,
+            metricSourceComponentes,
+        }
+    )
+
+    const escapeCsv = (v: any) => {
+        const s = String(v ?? '')
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+            return `"${s.replace(/"/g, '""')}"`
+        }
+        return s
+    }
+
     const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
+        headers.map(escapeCsv).join(','),
+        ...rows.map((row) => row.map(escapeCsv).join(',')),
+        '',
+        ['LEGENDA — conforme configuração desta pauta', ''].map(escapeCsv).join(','),
+        ['Item', 'Detalhe / Fórmula'].map(escapeCsv).join(','),
+        ...legendTable.map((r) => [r.item, r.detalhe].map(escapeCsv).join(',')),
     ].join('\n')
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })

@@ -3,13 +3,16 @@
  * Seed de testes EduGest Angola
  *
  * Cria 3 escolas (primária, secundária, complexo) com administradores,
- * professores autenticáveis, templates, turmas, disciplinas e ≥20 alunos cada,
+ * professores autenticáveis, templates, turmas, disciplinas,
+ * ≥12 alunos por turma/classe/curso, notas nos 3 trimestres + MF,
  * mais Direções Municipais e Provinciais com circulares, histórico e solicitações.
  *
  * Uso:
  *   npm run seed:test
  *   node scripts/seed-test-data.mjs
  *   node scripts/seed-test-data.mjs --force   # apaga seed anterior e recria
+ *   node scripts/seed-test-data.mjs --resume  # completa escolas/notas/direções em falta (sem limpar)
+ *   node scripts/seed-test-data.mjs --notas-only  # só (re)lança notas nas escolas seed
  *   node scripts/seed-test-data.mjs --direcoes-only  # só direções (escolas seed já existentes)
  */
 import {
@@ -24,21 +27,28 @@ import {
     listSeedEscolas,
     log,
     sleep,
+    withRetry,
 } from './seed/_shared.mjs'
 import {
     SCHOOLS,
+    STUDENTS_PER_TURMA,
     buildAdminPlan,
     buildStudentSeed,
     buildTeacherPlan,
     templatesForSchool,
 } from './seed/catalog.mjs'
 import { seedDirecoes } from './seed/seed-direcoes.mjs'
+import { seedNotasForEscola } from './seed/seed-notas.mjs'
 
 const force = process.argv.includes('--force')
+const resume = process.argv.includes('--resume')
+const notasOnly = process.argv.includes('--notas-only')
 const direcoesOnly = process.argv.includes('--direcoes-only')
-const STUDENTS_PER_SCHOOL = 20
+const skipNotas = process.argv.includes('--skip-notas')
 
 async function assertNoExistingSeed(supabase) {
+    if (resume || notasOnly) return
+
     const existing = await listSeedEscolas(supabase)
     const dms = await listSeedDirecoesMunicipais(supabase)
     const dps = await listSeedDirecoesProvinciais(supabase)
@@ -67,7 +77,8 @@ async function assertNoExistingSeed(supabase) {
         for (const d of dps) console.error(`  - DP ${d.provincia} · ${d.email}`)
         for (const d of dms) console.error(`  - DM ${d.municipio} · ${d.email}`)
         console.error('\nExecute: npm run seed:test:clean')
-        console.error('Ou:      npm run seed:test -- --force\n')
+        console.error('Ou:      npm run seed:test -- --force')
+        console.error('Ou retomar: npm run seed:test -- --resume\n')
         process.exit(1)
     }
     log('force', 'A limpar seed existente antes de recriar...')
@@ -115,9 +126,12 @@ async function createTemplates(supabase, escolaId, school) {
         if (error) throw new Error(`disciplinas_template(${t.classe}/${t.codigo_disciplina}): ${error.message}`)
 
         const componentesRows = []
-        for (const trimestre of [1, 2, 3]) {
-            for (const c of t.componentes) {
-                const isCalculated = c.is_calculated === true
+        for (const c of t.componentes) {
+            const trimestres = Array.isArray(c.trimestres) && c.trimestres.length
+                ? c.trimestres
+                : [1, 2, 3]
+            const isCalculated = c.is_calculated === true
+            for (const trimestre of trimestres) {
                 componentesRows.push({
                     disciplina_template_id: disc.id,
                     nome: c.nome,
@@ -130,10 +144,13 @@ async function createTemplates(supabase, escolaId, school) {
                     trimestre,
                     is_calculated: isCalculated,
                     formula_expression: isCalculated ? (c.formula_expression || null) : null,
-                    // Codes in the formula are resolved at evaluation time; keep depends empty in seed.
+                    // UUIDs de depends_on são ligados depois em seed-notas (ensureComponentesAvaliacao).
                     depends_on_components: [],
                     tipo_calculo: c.tipo_calculo || 'trimestral',
-                    descricao: `${c.codigo_componente} · ${trimestre}º Trimestre`,
+                    descricao:
+                        c.tipo_calculo === 'anual'
+                            ? `${c.codigo_componente} · Anual`
+                            : `${c.codigo_componente} · ${trimestre}º Trimestre`,
                 })
             }
         }
@@ -282,32 +299,36 @@ async function seedSchool(supabase, school) {
         const responsible = teachers[turmaDef.teacherIndex]
         const codigo = `${school.codigo_escola}-${turmaDef.nome.replace(/\s+/g, '').slice(0, 12)}-${ANO_LECTIVO}-T1`
 
-        const { data: turma, error: tErr } = await supabase
-            .from('turmas')
-            .insert({
-                escola_id: escola.id,
-                professor_id: responsible.id,
-                nome: turmaDef.nome,
-                codigo_turma: codigo,
-                ano_lectivo: ANO_LECTIVO,
-                trimestre: 1,
-                nivel_ensino: turmaDef.nivel_ensino,
-                turno: turmaDef.turno,
-                capacidade_maxima: 40,
-                sala: turmaDef.teacherIndex + 1,
-            })
-            .select('id, nome, codigo_turma')
-            .single()
-
-        if (tErr) throw new Error(`turmas(${turmaDef.nome}): ${tErr.message}`)
-
-        const { data: applied, error: aErr } = await supabase.rpc('apply_all_class_templates_to_turma', {
-            p_turma_id: turma.id,
-            p_classe: turmaDef.classe,
-            p_professor_id: responsible.id,
+        const turma = await withRetry(`turmas(${turmaDef.nome})`, async () => {
+            const { data, error: tErr } = await supabase
+                .from('turmas')
+                .insert({
+                    escola_id: escola.id,
+                    professor_id: responsible.id,
+                    nome: turmaDef.nome,
+                    codigo_turma: codigo,
+                    ano_lectivo: ANO_LECTIVO,
+                    trimestre: 1,
+                    nivel_ensino: turmaDef.nivel_ensino,
+                    turno: turmaDef.turno,
+                    capacidade_maxima: 40,
+                    sala: turmaDef.teacherIndex + 1,
+                })
+                .select('id, nome, codigo_turma')
+                .single()
+            if (tErr) throw new Error(tErr.message)
+            return data
         })
 
-        if (aErr) throw new Error(`apply_templates(${turmaDef.nome}): ${aErr.message}`)
+        const applied = await withRetry(`apply_templates(${turmaDef.nome})`, async () => {
+            const { data, error: aErr } = await supabase.rpc('apply_all_class_templates_to_turma', {
+                p_turma_id: turma.id,
+                p_classe: turmaDef.classe,
+                p_professor_id: responsible.id,
+            })
+            if (aErr) throw new Error(aErr.message)
+            return data
+        })
 
         if (school.kind !== 'primario' || turmaDef.classe.startsWith('5') || turmaDef.classe.startsWith('6')) {
             await redistributeDisciplinas(
@@ -317,30 +338,57 @@ async function seedSchool(supabase, school) {
             )
         }
 
-        turmas.push({ ...turma, classe: turmaDef.classe, nivel_ensino: turmaDef.nivel_ensino })
+        turmas.push({
+            ...turma,
+            classe: turmaDef.classe,
+            nivel_ensino: turmaDef.nivel_ensino,
+            curso: turmaDef.curso || null,
+            turmaDef,
+        })
         log(school.key, `Turma ${turma.nome} · templates aplicados: ${applied ?? '?'}`)
     }
 
-    // ≥20 alunos distribuídos pelas turmas (4 por turma nas 5 turmas = 20)
-    const baseIndex = school.key === 'primaria' ? 0 : school.key === 'secundaria' ? 100 : 200
+    // ≥12 alunos por cada turma / classe / curso (batch insert, números determinísticos)
+    const baseIndex = school.key === 'primaria' ? 0 : school.key === 'secundaria' ? 500 : 1500
     let studentCount = 0
+    const schoolPrefix = school.key === 'primaria' ? '1' : school.key === 'secundaria' ? '2' : '3'
 
-    for (let n = 0; n < STUDENTS_PER_SCHOOL; n++) {
-        const turma = turmas[n % turmas.length]
-        const seedStudent = buildStudentSeed(school, turma, baseIndex + n)
-        const numero = await generateProcesso(supabase, turma.id)
+    for (let tIdx = 0; tIdx < turmas.length; tIdx++) {
+        const turma = turmas[tIdx]
+        const alunosRows = []
+        for (let n = 0; n < STUDENTS_PER_TURMA; n++) {
+            const globalIndex = baseIndex + tIdx * STUDENTS_PER_TURMA + n
+            const seedStudent = buildStudentSeed(school, turma.turmaDef || turma, globalIndex)
+            // 5 dígitos únicos: [escola 1-3][turma 0-9][aluno 00-99] → ex. 10105
+            const numero = `${schoolPrefix}${tIdx}${String(n).padStart(3, '0')}`
+            alunosRows.push({
+                turma_id: turma.id,
+                numero_processo: numero,
+                ...seedStudent,
+            })
+        }
 
-        const { error: alErr } = await supabase.from('alunos').insert({
-            turma_id: turma.id,
-            numero_processo: numero,
-            ...seedStudent,
+        await withRetry(`alunos(${turma.nome})`, async () => {
+            const { error: alErr } = await supabase.from('alunos').insert(alunosRows)
+            if (alErr) throw new Error(alErr.message)
         })
-
-        if (alErr) throw new Error(`alunos(${seedStudent.nome_completo}): ${alErr.message}`)
-        studentCount += 1
+        studentCount += alunosRows.length
+        log(school.key, `Alunos ${turma.nome}: ${STUDENTS_PER_TURMA}`)
+        await sleep(80)
     }
 
-    log(school.key, `Alunos: ${studentCount}`)
+    log(school.key, `Alunos total: ${studentCount}`)
+
+    let notasSummary = { notas: 0, notasFinais: 0, turmas: 0 }
+    if (!skipNotas) {
+        notasSummary = await seedNotasForEscola(supabase, escola.id, school.key)
+        log(
+            school.key,
+            `Notas: ${notasSummary.notas} lançamentos · ${notasSummary.notasFinais} notas finais`
+        )
+    } else {
+        log(school.key, 'Notas: ignoradas (--skip-notas)')
+    }
 
     return {
         escola,
@@ -350,10 +398,158 @@ async function seedSchool(supabase, school) {
             nome: t.nome_completo,
             especialidade: t.plan.especialidade,
         })),
-        turmas: turmas.map((t) => ({ nome: t.nome, classe: t.classe, nivel: t.nivel_ensino })),
+        turmas: turmas.map((t) => ({
+            nome: t.nome,
+            classe: t.classe,
+            nivel: t.nivel_ensino,
+            curso: t.curso,
+            alunos: STUDENTS_PER_TURMA,
+        })),
         alunos: studentCount,
         templates: templateCount,
+        notas: notasSummary.notas,
+        notasFinais: notasSummary.notasFinais,
     }
+}
+
+/** Completa alunos em falta nas turmas de uma escola seed já existente. */
+async function ensureStudentsForSchool(supabase, school, escolaId) {
+    const { data: turmas, error } = await withRetry(`turmas(${school.key})`, async () => {
+        const res = await supabase
+            .from('turmas')
+            .select('id, nome')
+            .eq('escola_id', escolaId)
+            .order('nome')
+        if (res.error) throw new Error(res.error.message)
+        return res
+    })
+    if (error) throw new Error(error.message)
+
+    const baseIndex = school.key === 'primaria' ? 0 : school.key === 'secundaria' ? 500 : 1500
+    const schoolPrefix = school.key === 'primaria' ? '1' : school.key === 'secundaria' ? '2' : '3'
+    let added = 0
+
+    for (let tIdx = 0; tIdx < (turmas || []).length; tIdx++) {
+        const turma = turmas[tIdx]
+        const turmaDef =
+            school.turmas.find((t) => t.nome === turma.nome) ||
+            school.turmas[tIdx] ||
+            { nome: turma.nome, classe: turma.nome, curso: null }
+
+        const { data: existingAlunos, error: aErr } = await withRetry(
+            `count-alunos(${turma.nome})`,
+            async () => {
+                const res = await supabase
+                    .from('alunos')
+                    .select('id, numero_processo')
+                    .eq('turma_id', turma.id)
+                    .eq('ativo', true)
+                if (res.error) throw new Error(res.error.message)
+                return res
+            }
+        )
+        if (aErr) throw new Error(aErr.message)
+
+        const have = existingAlunos?.length || 0
+        if (have >= STUDENTS_PER_TURMA) continue
+
+        const usedNums = new Set((existingAlunos || []).map((a) => a.numero_processo))
+        const toAdd = []
+        for (let n = have; n < STUDENTS_PER_TURMA; n++) {
+            const globalIndex = baseIndex + tIdx * STUDENTS_PER_TURMA + n
+            let numero = `${schoolPrefix}${tIdx}${String(n).padStart(3, '0')}`
+            // Evitar colisão se o número já existir noutro sítio
+            let suffix = 0
+            while (usedNums.has(numero)) {
+                suffix += 1
+                numero = `${schoolPrefix}${tIdx}${String((n + suffix) % 1000).padStart(3, '0')}`
+            }
+            usedNums.add(numero)
+            toAdd.push({
+                turma_id: turma.id,
+                numero_processo: numero,
+                ...buildStudentSeed(school, turmaDef, globalIndex),
+            })
+        }
+
+        if (!toAdd.length) continue
+
+        await withRetry(`fill-alunos(${turma.nome})`, async () => {
+            const { error: iErr } = await supabase.from('alunos').insert(toAdd)
+            if (iErr) throw new Error(iErr.message)
+        })
+        added += toAdd.length
+        log(school.key, `Alunos em falta em ${turma.nome}: +${toAdd.length} (agora ${have + toAdd.length})`)
+        await sleep(80)
+    }
+
+    return added
+}
+
+async function resumeSeed(supabase) {
+    log('resume', 'A completar seed sem limpar dados existentes…')
+    const existing = await listSeedEscolas(supabase)
+    const byCodigo = new Map(existing.map((e) => [e.codigo_escola, e]))
+    const summary = []
+
+    for (const school of SCHOOLS) {
+        const found = byCodigo.get(school.codigo_escola)
+        if (!found) {
+            log('resume', `Escola em falta → criar ${school.codigo_escola}`)
+            summary.push(await seedSchool(supabase, school))
+            await sleep(300)
+            continue
+        }
+
+        log('resume', `Escola já existe → completar alunos/notas ${school.codigo_escola}`)
+        const alunosAdded = await ensureStudentsForSchool(supabase, school, found.id)
+        let notasSummary = { notas: 0, notasFinais: 0 }
+        if (!skipNotas) {
+            notasSummary = await seedNotasForEscola(supabase, found.id, school.key)
+        }
+        const admin = buildAdminPlan(school)
+        summary.push({
+            escola: found,
+            admin,
+            teachers: [],
+            turmas: [],
+            alunos: alunosAdded ? `+${alunosAdded}` : '—',
+            templates: '—',
+            notas: notasSummary.notas,
+            notasFinais: notasSummary.notasFinais,
+            resumed: true,
+        })
+        await sleep(300)
+    }
+
+    return summary
+}
+
+async function seedNotasOnly(supabase) {
+    log('notas', 'Modo --notas-only: a (re)lançar notas nas escolas seed')
+    const existing = await listSeedEscolas(supabase)
+    if (!existing.length) {
+        throw new Error('Nenhuma escola seed encontrada. Execute npm run seed:test primeiro.')
+    }
+    const summary = []
+    for (const escola of existing) {
+        const key =
+            SCHOOLS.find((s) => s.codigo_escola === escola.codigo_escola)?.key || escola.codigo_escola
+        const notasSummary = await seedNotasForEscola(supabase, escola.id, key)
+        summary.push({
+            escola,
+            admin: { email: escola.email || '—' },
+            teachers: [],
+            turmas: [],
+            alunos: '—',
+            templates: '—',
+            notas: notasSummary.notas,
+            notasFinais: notasSummary.notasFinais,
+            resumed: true,
+        })
+        await sleep(300)
+    }
+    return summary
 }
 
 async function main() {
@@ -362,7 +558,11 @@ async function main() {
     await assertNoExistingSeed(supabase)
 
     const summary = []
-    if (!direcoesOnly) {
+    if (notasOnly) {
+        summary.push(...(await seedNotasOnly(supabase)))
+    } else if (resume) {
+        summary.push(...(await resumeSeed(supabase)))
+    } else if (!direcoesOnly) {
         for (const school of SCHOOLS) {
             summary.push(await seedSchool(supabase, school))
             await sleep(200)
@@ -380,32 +580,62 @@ async function main() {
               }))
             : undefined
 
-    const direcoesSummary = await seedDirecoes(supabase, { escolas: escolasForDirecoes })
+    let direcoesSummary = { provincials: [], municipals: [], counts: { circularesProvinciais: 0, circularesMunicipais: 0, solicitacoes: 0 } }
+    if (!notasOnly) {
+        const dms = await listSeedDirecoesMunicipais(supabase)
+        const dps = await listSeedDirecoesProvinciais(supabase)
+        if (resume && (dms.length > 0 || dps.length > 0) && !force) {
+            log('resume', `Direções seed já existem (${dps.length} DP · ${dms.length} DM) — a saltar`)
+            direcoesSummary = {
+                provincials: dps.map((d) => ({ provincia: d.provincia, email: d.email, ativo: d.ativo })),
+                municipals: dms.map((d) => ({
+                    municipio: d.municipio,
+                    provincia: d.provincia,
+                    email: d.email,
+                    ativo: d.ativo,
+                    bloqueado: d.bloqueado,
+                })),
+                counts: { circularesProvinciais: 0, circularesMunicipais: 0, solicitacoes: 0 },
+            }
+        } else {
+            direcoesSummary = await seedDirecoes(supabase, { escolas: escolasForDirecoes })
+        }
+    }
 
     console.log('\n✅ Seed concluída\n')
     console.log(`Palavra-passe comum: ${SEED_PASSWORD}`)
     console.log('Documento de credenciais: docs/SEED_TEST_CREDENTIALS.md\n')
 
     for (const s of summary) {
-        console.log(`• ${s.escola.nome} (${s.escola.codigo_escola})`)
+        console.log(`• ${s.escola.nome} (${s.escola.codigo_escola})${s.resumed ? ' [resume]' : ''}`)
         console.log(`  Admin: ${s.admin.email}`)
-        console.log(`  Professores: ${s.teachers.length} · Turmas: ${s.turmas.length} · Alunos: ${s.alunos} · Templates: ${s.templates}`)
+        console.log(
+            `  Professores: ${s.teachers.length || '—'} · Turmas: ${s.turmas.length || '—'} · Alunos: ${s.alunos}` +
+                ` · Templates: ${s.templates}` +
+                ` · Notas: ${s.notas || 0} · Finais: ${s.notasFinais || 0}`
+        )
+        for (const t of s.turmas || []) {
+            const curso = t.curso ? ` · ${t.curso}` : ''
+            console.log(`    – ${t.nome}${curso}`)
+        }
     }
 
-    console.log('\n• Direções Provinciais')
-    for (const p of direcoesSummary.provincials) {
-        console.log(`  ${p.provincia}: ${p.email}${p.ativo ? '' : ' (pendente)'}`)
+    if (!notasOnly) {
+        console.log('\n• Direções Provinciais')
+        for (const p of direcoesSummary.provincials) {
+            console.log(`  ${p.provincia}: ${p.email}${p.ativo ? '' : ' (pendente)'}`)
+        }
+        console.log('• Direções Municipais')
+        for (const m of direcoesSummary.municipals) {
+            const flags = [m.ativo ? null : 'pendente', m.bloqueado ? 'bloqueada' : null].filter(Boolean)
+            console.log(`  ${m.municipio}/${m.provincia}: ${m.email}${flags.length ? ` (${flags.join(', ')})` : ''}`)
+        }
+        console.log(
+            `\n  Dados extra: ${direcoesSummary.counts.circularesProvinciais} circ. prov. · ` +
+                `${direcoesSummary.counts.circularesMunicipais} circ. mun. · ` +
+                `${direcoesSummary.counts.solicitacoes} solicitações\n`
+        )
     }
-    console.log('• Direções Municipais')
-    for (const m of direcoesSummary.municipals) {
-        const flags = [m.ativo ? null : 'pendente', m.bloqueado ? 'bloqueada' : null].filter(Boolean)
-        console.log(`  ${m.municipio}/${m.provincia}: ${m.email}${flags.length ? ` (${flags.join(', ')})` : ''}`)
-    }
-    console.log(
-        `\n  Dados extra: ${direcoesSummary.counts.circularesProvinciais} circ. prov. · ` +
-            `${direcoesSummary.counts.circularesMunicipais} circ. mun. · ` +
-            `${direcoesSummary.counts.solicitacoes} solicitações\n`
-    )
 }
 
 const isDirectRun = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('seed-test-data.mjs')

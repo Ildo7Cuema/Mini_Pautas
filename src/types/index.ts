@@ -1327,6 +1327,84 @@ export type EstadoMatricula = 'pendente' | 'confirmada' | 'cancelada' | 'aguarda
 export type ResultadoExame = 'aprovado' | 'reprovado';
 export type EstadoAnoLectivo = 'aberto' | 'em_encerramento' | 'fechado' | 'inexistente';
 
+/** Conselho de Notas (antes da publicação da Pauta-Geral) */
+export type ConselhoNotasStatus = 'rascunho' | 'aprovado' | 'anulado';
+
+export interface ConselhoNotas {
+    id: string;
+    escola_id: string;
+    turma_id: string;
+    ano_lectivo: string;
+    data_reuniao?: string | null;
+    local_reuniao?: string | null;
+    coordenador_nome?: string | null;
+    secretario_nome?: string | null;
+    membro_2_nome?: string | null;
+    status: ConselhoNotasStatus;
+    parecer_geral?: string | null;
+    aprovado_em?: string | null;
+    aprovado_por?: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface ConselhoNotasDeliberacao {
+    id: string;
+    conselho_id: string;
+    aluno_id: string;
+    situacao_sistema: StatusTransicao;
+    situacao_deliberada: StatusTransicao;
+    motivo?: string | null;
+    is_caso_critico: boolean;
+    media_geral?: number | null;
+    frequencia_anual?: number | null;
+    created_at?: string;
+    updated_at?: string;
+    aluno?: {
+        id: string;
+        numero_processo: string;
+        nome_completo: string;
+        genero?: 'M' | 'F' | null;
+    };
+}
+
+export type ConselhoMembroPapel = 'coordenador' | 'secretario' | 'membro';
+export type ConselhoMembroStatus = 'pendente' | 'aceite' | 'expirado' | 'revogado';
+export type ConselhoPropostaStatus = 'pendente' | 'aplicada' | 'descartada';
+
+export interface ConselhoNotasMembro {
+    id: string;
+    conselho_id: string;
+    user_id: string;
+    papel: ConselhoMembroPapel;
+    status: ConselhoMembroStatus;
+    token: string;
+    prazo_dias: number;
+    expires_at: string;
+    convidado_por?: string | null;
+    convidado_em?: string;
+    aceite_em?: string | null;
+    nome_exibicao?: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface ConselhoNotasProposta {
+    id: string;
+    conselho_id: string;
+    aluno_id: string;
+    disciplina_id: string;
+    componente_id: string;
+    valor_atual: number;
+    valor_proposto: number;
+    motivo: string;
+    proposto_por?: string | null;
+    status: ConselhoPropostaStatus;
+    aplicada_em?: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+
 export interface AnoLectivo {
     id: string;
     escola_id: string;

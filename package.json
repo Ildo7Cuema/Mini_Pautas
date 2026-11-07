@@ -20,6 +20,8 @@
         "db:apply-perf-auth": "node scripts/apply-perf-auth-bootstrap.mjs",
         "db:apply-notify-concurso": "node scripts/apply-notify-dm-concurso.mjs",
         "db:apply-usage-stats": "node scripts/apply-system-usage-stats.mjs",
+        "db:apply-conselho-membros": "node scripts/apply-conselho-membros-propostas.mjs",
+        "db:apply-conselho-notif": "node scripts/apply-conselho-notificacoes.mjs",
         "verify:delete-escola": "node scripts/verify-delete-escola-responsavel.mjs"
     },
     "dependencies": {

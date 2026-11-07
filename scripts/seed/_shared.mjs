@@ -67,6 +67,27 @@ export function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms))
 }
 
+/** Retries transient network / gateway errors against Supabase. */
+export async function withRetry(label, fn, { attempts = 8, baseDelayMs = 800 } = {}) {
+    let lastErr
+    for (let i = 1; i <= attempts; i++) {
+        try {
+            return await fn()
+        } catch (err) {
+            lastErr = err
+            const msg = String(err?.message || err || '')
+            const retryable = /fetch failed|network|ECONN|ETIMEDOUT|timeout|502|503|504|429|AbortError/i.test(
+                msg
+            )
+            if (!retryable || i === attempts) break
+            const wait = Math.min(15000, baseDelayMs * 2 ** (i - 1)) + Math.floor(Math.random() * 250)
+            console.warn(`  ! retry ${i}/${attempts} ${label}: ${msg} (aguarda ${wait}ms)`)
+            await sleep(wait)
+        }
+    }
+    throw lastErr
+}
+
 export async function createAuthUser(supabase, { email, password, fullName, role }) {
     const { data, error } = await supabase.auth.admin.createUser({
         email,

@@ -25,6 +25,7 @@ import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
 import { ConfiguracaoCoresModal } from './ConfiguracaoCoresModal'
 import { PautaGeralPage } from './PautaGeralPage'
+import { ConselhoNotasPage } from './ConselhoNotasPage'
 import { useAuth } from '../contexts/AuthContext'
 import { TermoFrequenciaPreview } from './TermoFrequenciaPreview'
 import { BoletimNotasPreview, BoletimNotasData } from './BoletimNotasPreview'
@@ -108,9 +109,15 @@ interface MiniPautaData {
 
 interface ReportsPageProps {
     searchQuery?: string
+    initialTab?: 'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas' | 'conselho-notas'
+    initialConselhoTurmaId?: string
 }
 
-export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) => {
+export const ReportsPage: React.FC<ReportsPageProps> = ({
+    searchQuery = '',
+    initialTab,
+    initialConselhoTurmaId,
+}) => {
     const { isProfessor, professorProfile, escolaProfile, secretarioProfile, isDirecaoMunicipal, direcaoMunicipalProfile } = useAuth()
     const [turmas, setTurmas] = useState<Turma[]>([])
     const [disciplinas, setDisciplinas] = useState<Disciplina[]>([])
@@ -130,7 +137,18 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
     const [showColorConfigModal, setShowColorConfigModal] = useState(false)
 
     // Tab state
-    const [activeTab, setActiveTab] = useState<'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas'>('mini-pauta')
+    const [activeTab, setActiveTab] = useState<'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas' | 'conselho-notas'>(
+        initialTab || 'mini-pauta'
+    )
+
+    useEffect(() => {
+        if (initialTab) setActiveTab(initialTab)
+    }, [initialTab])
+
+    // Deep-link from notification: force Conselho tab when turma arrives
+    useEffect(() => {
+        if (initialConselhoTurmaId) setActiveTab('conselho-notas')
+    }, [initialConselhoTurmaId])
 
     // Mapa de Aproveitamento state
     const [mapaData, setMapaData] = useState<MapaAproveitamentoData | null>(null)
@@ -2775,6 +2793,21 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                                     </svg>
                                     Mapa de Aproveitamento
                                 </button>
+                                <button
+                                    onClick={() => setActiveTab('conselho-notas')}
+                                    className={`
+                                        flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 whitespace-nowrap touch-feedback min-h-touch
+                                        ${activeTab === 'conselho-notas'
+                                            ? 'bg-gradient-to-r from-slate-700 to-blue-800 text-white shadow-md shadow-slate-500/25'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-95'
+                                        }
+                                    `}
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    Conselho de Notas
+                                </button>
                             </>
                         )}
                     </nav>
@@ -3079,7 +3112,9 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ searchQuery = '' }) =>
                     />
                 </div>
             ) : activeTab === 'pauta-geral' ? (
-                <PautaGeralPage />
+                <PautaGeralPage onGoToConselho={() => setActiveTab('conselho-notas')} />
+            ) : activeTab === 'conselho-notas' ? (
+                <ConselhoNotasPage initialTurmaId={initialConselhoTurmaId} />
             ) : activeTab === 'mapa-aproveitamento' ? (
                 // ── Mapa de Aproveitamento Tab ─────────────────────────────────────────
                 <div className="space-y-4 md:space-y-6">

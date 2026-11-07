@@ -21,6 +21,18 @@ import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
 import { classifyStudent, DisciplinaGrade } from '../utils/studentClassification'
 import { useAuth } from '../contexts/AuthContext'
+import { getDefaultPautaComponenteIds } from '../utils/pautaGeralFieldUtils'
+import {
+    applyExportMetricsToAlunos,
+    type PautaGeralExportConfig,
+} from '../utils/pautaGeralExportUtils'
+import { getConselhoNotasStatus } from '../utils/conselhoNotasData'
+import type { ConselhoNotasSignatureNames } from '../utils/pdfGenerator'
+import { ConfirmModal } from './ui/ConfirmModal'
+
+interface PautaGeralPageProps {
+    onGoToConselho?: () => void
+}
 
 interface Turma {
     id: string
@@ -85,8 +97,10 @@ interface PautaGeralData {
 interface FieldSelection {
     disciplinas: string[] // IDs of selected disciplines
     includeAllDisciplinas: boolean
-    componentes: string[] // IDs of selected components
+    componentes: string[] // IDs of selected components (columns on the pauta)
     includeAllComponentes: boolean
+    /** When true, MAC/NPT etc. can be selected; default false (MED-style averages only). */
+    includeLancamentoComponentes: boolean
     showStatistics: boolean
     showNumeroProcesso: boolean
     showNomeCompleto: boolean
@@ -95,11 +109,10 @@ interface FieldSelection {
     componenteParaMediaGeral: string // Component code to use for média geral (e.g., 'MF', 'MT', 'NF')
 }
 
-export const PautaGeralPage: React.FC = () => {
+export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({ onGoToConselho }) => {
     const { escolaProfile, professorProfile, secretarioProfile } = useAuth()
     const [turmas, setTurmas] = useState<Turma[]>([])
     const [selectedTurma, setSelectedTurma] = useState<string>('')
-    const trimestre = 3 // Fixed to 3rd trimester for Pauta-Geral
     const [loadingData, setLoadingData] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
@@ -112,17 +125,23 @@ export const PautaGeralPage: React.FC = () => {
         disciplinas: [],
         includeAllDisciplinas: true,
         componentes: [],
+        // Default: only MED-style result columns (MT/MF), not every MAC/NPT
         includeAllComponentes: true,
+        includeLancamentoComponentes: false,
         showStatistics: true,
         showNumeroProcesso: true,
         showNomeCompleto: true,
         showMediaGeral: true,
         showObservacao: true,
-        componenteParaMediaGeral: 'MF' // Default to MF (Média Final)
+        componenteParaMediaGeral: 'MF', // Default to MF (Média Final)
     })
 
     // Disciplinas obrigatórias state
     const [disciplinasObrigatorias, setDisciplinasObrigatorias] = useState<string[]>([])
+    const [conselhoAprovado, setConselhoAprovado] = useState(false)
+    const [conselhoMembers, setConselhoMembers] = useState<ConselhoNotasSignatureNames | null>(null)
+    const [showConselhoGateModal, setShowConselhoGateModal] = useState(false)
+    const [blockedExportFormat, setBlockedExportFormat] = useState<'PDF' | 'Excel' | 'CSV' | null>(null)
 
     useEffect(() => {
         loadTurmas()
@@ -132,9 +151,12 @@ export const PautaGeralPage: React.FC = () => {
         if (selectedTurma) {
             loadPautaGeralData(true)
             loadDisciplinasObrigatorias()
+            loadConselhoGate()
         } else {
             setPautaGeralData(null)
             setDisciplinasObrigatorias([])
+            setConselhoAprovado(false)
+            setConselhoMembers(null)
         }
     }, [selectedTurma]) // trimestre is now fixed at 3
 
@@ -321,23 +343,43 @@ export const PautaGeralPage: React.FC = () => {
                 componentes: componentesData?.filter(comp => comp.disciplina_id === disc.id) || []
             }))
 
-            // Initialize field selection with all disciplines and components
-            // Update field selection (reset if requested, or ensure consistency if "include all" is active)
-            // This handles cases where data is reloaded (e.g. switching turmas) to properly update valid IDs
-            setFieldSelection(prev => {
+            // Default columns = result components (MT/MF…), not raw lançamento (MAC/NPT)
+            const defaultComponenteIds = getDefaultPautaComponenteIds(disciplinasComComponentes)
+            const allDisciplinaIds = disciplinasComComponentes.map((d) => d.id)
+
+            setFieldSelection((prev) => {
                 const shouldIncludeAllDisciplinas = resetSelection || prev.includeAllDisciplinas
-                const shouldIncludeAllComponentes = resetSelection || prev.includeAllComponentes
+                const includeLancamento = resetSelection
+                    ? false
+                    : prev.includeLancamentoComponentes === true
+
+                // On reset / first load: select all result columns.
+                // If user had "all components" but without lançamento, keep result-only set.
+                let nextComponentes: string[]
+                if (resetSelection || prev.componentes.length === 0) {
+                    nextComponentes = defaultComponenteIds
+                } else if (prev.includeAllComponentes && !includeLancamento) {
+                    nextComponentes = defaultComponenteIds
+                } else {
+                    // Keep prior selection but drop IDs that no longer exist
+                    const validIds = new Set(
+                        disciplinasComComponentes.flatMap((d) => d.componentes.map((c) => c.id))
+                    )
+                    nextComponentes = prev.componentes.filter((id) => validIds.has(id))
+                    if (nextComponentes.length === 0) nextComponentes = defaultComponenteIds
+                }
 
                 return {
                     ...prev,
+                    includeLancamentoComponentes: includeLancamento,
                     includeAllDisciplinas: shouldIncludeAllDisciplinas,
-                    includeAllComponentes: shouldIncludeAllComponentes,
+                    includeAllComponentes:
+                        nextComponentes.length === defaultComponenteIds.length &&
+                        defaultComponenteIds.every((id) => nextComponentes.includes(id)),
                     disciplinas: shouldIncludeAllDisciplinas
-                        ? disciplinasComComponentes.map(d => d.id)
-                        : prev.disciplinas, // Keep existing selection if not "All"
-                    componentes: shouldIncludeAllComponentes
-                        ? disciplinasComComponentes.flatMap(d => d.componentes.map(c => c.id))
-                        : prev.componentes // Keep existing selection if not "All"
+                        ? allDisciplinaIds
+                        : prev.disciplinas.filter((id) => allDisciplinaIds.includes(id)),
+                    componentes: nextComponentes,
                 }
             })
 
@@ -629,19 +671,22 @@ export const PautaGeralPage: React.FC = () => {
             ? pautaGeralData.disciplinas.map(d => d.id)
             : fieldSelection.disciplinas
 
+        const selectedComponenteIds = new Set(fieldSelection.componentes)
+
         const filteredDisciplinas = pautaGeralData.disciplinas
-            .filter(d => selectedDisciplinaIds.includes(d.id))
-            .map(disc => {
-                // Filter components if needed
-                const filteredComponentes = fieldSelection.includeAllComponentes
-                    ? disc.componentes
-                    : disc.componentes.filter(c => fieldSelection.componentes.includes(c.id))
+            .filter((d) => selectedDisciplinaIds.includes(d.id))
+            .map((disc) => {
+                // Strict: only columns the user selected (never dump all MAC/NPT silently)
+                const filteredComponentes = disc.componentes.filter((c) =>
+                    selectedComponenteIds.has(c.id)
+                )
 
                 return {
                     ...disc,
-                    componentes: filteredComponentes
+                    componentes: filteredComponentes,
                 }
             })
+            .filter((d) => d.componentes.length > 0)
 
         return {
             ...pautaGeralData,
@@ -649,15 +694,139 @@ export const PautaGeralPage: React.FC = () => {
         }
     }
 
+    const loadConselhoGate = async () => {
+        try {
+            const turma = turmas.find((t) => t.id === selectedTurma)
+            const ano = turma?.ano_lectivo
+            if (!selectedTurma || ano == null) {
+                // Turma list may still be loading — fetch ano from DB
+                const { data } = await supabase
+                    .from('turmas')
+                    .select('ano_lectivo')
+                    .eq('id', selectedTurma)
+                    .maybeSingle()
+                if (!data) {
+                    setConselhoAprovado(false)
+                    setConselhoMembers(null)
+                    return
+                }
+                const status = await getConselhoNotasStatus(selectedTurma, String(data.ano_lectivo))
+                setConselhoAprovado(status?.status === 'aprovado')
+                setConselhoMembers(
+                    status?.status === 'aprovado'
+                        ? {
+                            coordenador_nome: status.coordenador_nome,
+                            secretario_nome: status.secretario_nome,
+                            membro_2_nome: status.membro_2_nome,
+                        }
+                        : null
+                )
+                return
+            }
+            const status = await getConselhoNotasStatus(selectedTurma, String(ano))
+            setConselhoAprovado(status?.status === 'aprovado')
+            setConselhoMembers(
+                status?.status === 'aprovado'
+                    ? {
+                        coordenador_nome: status.coordenador_nome,
+                        secretario_nome: status.secretario_nome,
+                        membro_2_nome: status.membro_2_nome,
+                    }
+                    : null
+            )
+        } catch {
+            setConselhoAprovado(false)
+            setConselhoMembers(null)
+        }
+    }
+
+    const assertConselhoAprovado = (format: 'PDF' | 'Excel' | 'CSV'): boolean => {
+        if (conselhoAprovado) return true
+        setBlockedExportFormat(format)
+        setShowConselhoGateModal(true)
+        setShowExportMenu(false)
+        setError(
+            `Exportação ${format} bloqueada: o Conselho de Notas desta turma ainda não foi aprovado.`
+        )
+        return false
+    }
+
+    const getExportConfig = (): PautaGeralExportConfig => ({
+        showNumeroProcesso: fieldSelection.showNumeroProcesso,
+        showNomeCompleto: fieldSelection.showNomeCompleto,
+        showMediaGeral: fieldSelection.showMediaGeral,
+        showObservacao: fieldSelection.showObservacao,
+        showStatistics: fieldSelection.showStatistics,
+        componenteParaMediaGeral: fieldSelection.componenteParaMediaGeral,
+    })
+
+    /** Columns = user selection; MG/OBS recalculated with configured component (even if that column is hidden). */
+    const prepareExportBundle = () => {
+        const filtered = getFilteredData()
+        if (!filtered || !pautaGeralData) return null
+
+        const metricDisciplinas = filtered.disciplinas.map((d) => {
+            const full = pautaGeralData.disciplinas.find((x) => x.id === d.id)
+            return {
+                id: d.id,
+                nome: d.nome,
+                componentes: full?.componentes ?? d.componentes,
+            }
+        })
+
+        const alunos = applyExportMetricsToAlunos(filtered.alunos, metricDisciplinas, {
+            componenteParaMediaGeral: fieldSelection.componenteParaMediaGeral,
+            nivelEnsino: filtered.nivel_ensino || filtered.turma.nivel_ensino,
+            classe: filtered.classe,
+            disciplinasObrigatorias,
+        })
+
+        const medias = alunos.map((a) => a.media_geral).filter((n) => n > 0)
+        const aprovados = alunos.filter((a) => a.observacao === 'Transita').length
+        const reprovados = alunos.length - aprovados
+
+        return {
+            data: {
+                ...filtered,
+                alunos,
+                estatisticas: fieldSelection.showStatistics
+                    ? {
+                        por_disciplina: filtered.estatisticas?.por_disciplina || {},
+                        geral: {
+                            total_alunos: alunos.length,
+                            aprovados,
+                            reprovados,
+                            media_turma: medias.length
+                                ? medias.reduce((s, n) => s + n, 0) / medias.length
+                                : 0,
+                            nota_minima: medias.length ? Math.min(...medias) : 0,
+                            nota_maxima: medias.length ? Math.max(...medias) : 0,
+                        },
+                    }
+                    : undefined,
+            },
+            exportConfig: getExportConfig(),
+            metricSourceComponentes: metricDisciplinas.flatMap((d) => d.componentes),
+        }
+    }
+
     const handleGeneratePDF = async () => {
-        const filteredData = getFilteredData()
-        if (!filteredData) {
+        if (!assertConselhoAprovado('PDF')) return
+        const bundle = prepareExportBundle()
+        if (!bundle) {
             setError('Carregue os dados primeiro')
             return
         }
 
         try {
-            await generatePautaGeralPDF(filteredData, headerConfig, colorConfig)
+            await generatePautaGeralPDF(
+                bundle.data,
+                headerConfig,
+                colorConfig,
+                bundle.exportConfig,
+                bundle.metricSourceComponentes,
+                conselhoMembers
+            )
             setSuccess('PDF gerado com sucesso!')
             setShowExportMenu(false)
             setTimeout(() => setSuccess(null), 3000)
@@ -668,14 +837,19 @@ export const PautaGeralPage: React.FC = () => {
     }
 
     const handleGenerateExcel = () => {
-        const filteredData = getFilteredData()
-        if (!filteredData) {
+        if (!assertConselhoAprovado('Excel')) return
+        const bundle = prepareExportBundle()
+        if (!bundle) {
             setError('Carregue os dados primeiro')
             return
         }
 
         try {
-            generatePautaGeralExcel(filteredData)
+            generatePautaGeralExcel(
+                bundle.data,
+                bundle.exportConfig,
+                bundle.metricSourceComponentes
+            )
             setSuccess('Excel gerado com sucesso!')
             setShowExportMenu(false)
             setTimeout(() => setSuccess(null), 3000)
@@ -686,14 +860,19 @@ export const PautaGeralPage: React.FC = () => {
     }
 
     const handleExportCSV = () => {
-        const filteredData = getFilteredData()
-        if (!filteredData) {
+        if (!assertConselhoAprovado('CSV')) return
+        const bundle = prepareExportBundle()
+        if (!bundle) {
             setError('Carregue os dados primeiro')
             return
         }
 
         try {
-            generatePautaGeralCSV(filteredData)
+            generatePautaGeralCSV(
+                bundle.data,
+                bundle.exportConfig,
+                bundle.metricSourceComponentes
+            )
             setSuccess('CSV exportado com sucesso!')
             setShowExportMenu(false)
             setTimeout(() => setSuccess(null), 3000)
@@ -747,6 +926,19 @@ export const PautaGeralPage: React.FC = () => {
                         </svg>
                     </div>
                     <span className="text-sm flex-1">{success}</span>
+                </div>
+            )}
+
+            {pautaGeralData && !conselhoAprovado && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-sm">
+                    Exportação oficial bloqueada até o <strong>Conselho de Notas</strong> desta turma estar aprovado
+                    (orientação MED — deliberação antes da publicação das pautas). Use a aba «Conselho de Notas».
+                    O preview e a personalização de campos continuam disponíveis.
+                </div>
+            )}
+            {pautaGeralData && conselhoAprovado && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded-xl text-sm">
+                    Conselho de Notas aprovado — exportação da Pauta-Geral liberada.
                 </div>
             )}
 
@@ -859,16 +1051,23 @@ export const PautaGeralPage: React.FC = () => {
                             <h3 className="text-lg font-semibold text-slate-800">Preview da Pauta-Geral</h3>
                         </div>
 
-                        {/* Desktop Action Buttons */}
+                        {/* Desktop Action Buttons — clicáveis mesmo bloqueados, para mostrar feedback do Conselho */}
                         <div className="hidden md:flex items-center gap-2">
                             <Button
                                 variant="primary"
                                 onClick={handleGeneratePDF}
-                                className="shadow-md hover:shadow-lg"
+                                title={conselhoAprovado ? 'Exportar PDF' : 'Bloqueado: aprove o Conselho de Notas'}
+                                className={`shadow-md hover:shadow-lg ${!conselhoAprovado ? 'opacity-70 ring-2 ring-amber-300 ring-offset-1' : ''}`}
                                 icon={
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                    </svg>
+                                    conselhoAprovado ? (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                        </svg>
+                                    )
                                 }
                             >
                                 PDF
@@ -876,10 +1075,18 @@ export const PautaGeralPage: React.FC = () => {
                             <Button
                                 variant="secondary"
                                 onClick={handleGenerateExcel}
+                                title={conselhoAprovado ? 'Exportar Excel' : 'Bloqueado: aprove o Conselho de Notas'}
+                                className={!conselhoAprovado ? 'opacity-70 ring-2 ring-amber-300 ring-offset-1' : undefined}
                                 icon={
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
+                                    conselhoAprovado ? (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                        </svg>
+                                    )
                                 }
                             >
                                 Excel
@@ -887,10 +1094,18 @@ export const PautaGeralPage: React.FC = () => {
                             <Button
                                 variant="secondary"
                                 onClick={handleExportCSV}
+                                title={conselhoAprovado ? 'Exportar CSV' : 'Bloqueado: aprove o Conselho de Notas'}
+                                className={!conselhoAprovado ? 'opacity-70 ring-2 ring-amber-300 ring-offset-1' : undefined}
                                 icon={
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
+                                    conselhoAprovado ? (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                        </svg>
+                                    )
                                 }
                             >
                                 CSV
@@ -900,19 +1115,34 @@ export const PautaGeralPage: React.FC = () => {
                         {/* Mobile Action Menu */}
                         <div className="md:hidden relative">
                             <button
-                                onClick={() => setShowExportMenu(!showExportMenu)}
-                                className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-xl shadow-md flex items-center justify-center gap-2"
+                                onClick={() => {
+                                    if (!conselhoAprovado) {
+                                        setBlockedExportFormat(null)
+                                        setShowConselhoGateModal(true)
+                                        setError('Exportação bloqueada: o Conselho de Notas desta turma ainda não foi aprovado.')
+                                        return
+                                    }
+                                    setShowExportMenu(!showExportMenu)
+                                }}
+                                title={conselhoAprovado ? 'Exportar' : 'Bloqueado: aprove o Conselho de Notas'}
+                                className={`w-full px-4 py-3 font-medium rounded-xl shadow-md flex items-center justify-center gap-2 text-white ${
+                                    conselhoAprovado
+                                        ? 'bg-gradient-to-r from-blue-600 to-blue-700'
+                                        : 'bg-gradient-to-r from-amber-500 to-amber-600'
+                                }`}
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                 </svg>
-                                <span>Exportar</span>
-                                <svg className={`w-4 h-4 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
+                                <span>{conselhoAprovado ? 'Exportar' : 'Exportar (bloqueado)'}</span>
+                                {conselhoAprovado && (
+                                    <svg className={`w-4 h-4 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                )}
                             </button>
 
-                            {showExportMenu && (
+                            {showExportMenu && conselhoAprovado && (
                                 <div className="absolute right-0 left-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-20 animate-scale-in">
                                     <button
                                         onClick={handleGeneratePDF}
@@ -959,6 +1189,7 @@ export const PautaGeralPage: React.FC = () => {
                         colorConfig={colorConfig}
                         fieldSelection={fieldSelection}
                         disciplinasObrigatorias={disciplinasObrigatorias}
+                        disciplinasMetricas={pautaGeralData.disciplinas}
                     />
                 </div>
             )}
@@ -1010,6 +1241,28 @@ export const PautaGeralPage: React.FC = () => {
                     onClick={() => setShowExportMenu(false)}
                 />
             )}
+
+            <ConfirmModal
+                isOpen={showConselhoGateModal}
+                onClose={() => {
+                    setShowConselhoGateModal(false)
+                    setBlockedExportFormat(null)
+                }}
+                onConfirm={() => {
+                    setShowConselhoGateModal(false)
+                    setBlockedExportFormat(null)
+                    onGoToConselho?.()
+                }}
+                title="Exportação bloqueada"
+                message={
+                    blockedExportFormat
+                        ? `Não é possível exportar em ${blockedExportFormat} enquanto o Conselho de Notas desta turma não estiver aprovado. Delibere e aprove o conselho na aba «Conselho de Notas» antes de publicar a Pauta-Geral.`
+                        : 'Não é possível exportar enquanto o Conselho de Notas desta turma não estiver aprovado. Delibere e aprove o conselho na aba «Conselho de Notas» antes de publicar a Pauta-Geral.'
+                }
+                confirmText={onGoToConselho ? 'Ir ao Conselho de Notas' : 'Entendi'}
+                cancelText="Fechar"
+                variant="warning"
+            />
         </div>
     )
 }

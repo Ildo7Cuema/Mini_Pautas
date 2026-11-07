@@ -26,7 +26,10 @@ import {
 interface SidebarProps {
     children: ReactNode
     currentPage: string
-    onNavigate: (page: string, params?: { filter?: string }) => void
+    onNavigate: (
+        page: string,
+        params?: { filter?: string; turmaId?: string; conselhoToken?: string }
+    ) => void
     onSearch?: (query: string) => void
 }
 
@@ -1034,7 +1037,23 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                                 onClose={() => setSelectedNotification(null)}
                                 onDelete={handleDeleteNotification}
                                 onNavigate={(link) => {
+                                    const n = selectedNotification
                                     setSelectedNotification(null)
+                                    if (
+                                        (n?.tipo === 'conselho_notas_convite' ||
+                                            n?.tipo === 'conselho_notas_rascunho' ||
+                                            n?.tipo === 'conselho_notas_aprovado') &&
+                                        n.dados_adicionais?.turma_id
+                                    ) {
+                                        onNavigate('reports', {
+                                            filter: 'conselho-notas',
+                                            turmaId: String(n.dados_adicionais.turma_id),
+                                            conselhoToken: n.dados_adicionais.token
+                                                ? String(n.dados_adicionais.token)
+                                                : undefined,
+                                        })
+                                        return
+                                    }
                                     onNavigate(link)
                                 }}
                             />

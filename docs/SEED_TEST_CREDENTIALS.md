@@ -8,7 +8,7 @@ Dados criados pelos scripts `npm run seed:test` / `npm run seed:test:clean`.
 ## Como executar
 
 ```bash
-# Criar a seed (3 escolas + dados)
+# Criar a seed (3 escolas + notas + direções)
 npm run seed:test
 
 # Apagar a seed
@@ -16,6 +16,15 @@ npm run seed:test:clean
 
 # Recriar do zero
 npm run seed:test -- --force
+
+# Retomar após falha de rede (completa escolas/notas/direções em falta)
+npm run seed:test -- --resume
+
+# Só (re)lançar notas nas escolas seed já existentes
+npm run seed:test -- --notas-only
+
+# Sem lançar notas (mais rápido)
+npm run seed:test -- --force --skip-notas
 ```
 
 Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPABASE_SECRET_KEY` (ou `SUPABASE_SERVICE_ROLE_KEY`).
@@ -30,6 +39,30 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 | Domínio de email | `@seed.edugest.test` |
 | Prefixo códigos de escola | `SEED-` |
 | Ano lectivo das turmas | `2026` |
+| Alunos por turma | **12** (≥10) |
+
+---
+
+## O que a seed cria (visão geral)
+
+Em cada escola:
+
+1. Utilizador auth + perfil **ESCOLA** (administrador)  
+2. Licença **anual activa**  
+3. **Templates** MAC / NPT / MT (3 trimestres) + **MF anual**  
+4. Professores com login activo  
+5. Turmas com templates aplicados (disciplinas + componentes)  
+6. **12 alunos por turma** com dados pessoais, encarregado, morada e académicos  
+7. **Notas lançadas** até ao 3.º trimestre (MAC, NPT, MT) + **MF**  
+8. **notas_finais** preenchidas (Mini-Pauta / supervisão pedagógica)
+
+Documentos prontos para demonstração sem cadastro manual:
+
+- Mini-Pauta  
+- Pauta-Geral  
+- Termo de Frequência  
+- Boletim de Notas  
+- Mapa de Aproveitamento  
 
 ---
 
@@ -42,8 +75,8 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 | Tipo | Ensino Primário |
 | Província / Município | Luanda / Belas |
 | Templates | 1ª–6ª Classe |
-| Turmas | 1ª A, 2ª A, 3ª A, 5ª A, 6ª A |
-| Alunos | 20 |
+| Turmas | 1ª–6ª Classe A (6 turmas) |
+| Alunos | 72 (12 × 6) |
 | Licença | Anual (activa) |
 
 ### Conta administrador
@@ -59,8 +92,9 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 | `prof.primaria.1@seed.edugest.test` | `SeedTest@2026!` | Ensino Primário |
 | `prof.primaria.2@seed.edugest.test` | `SeedTest@2026!` | Ensino Primário |
 | `prof.primaria.3@seed.edugest.test` | `SeedTest@2026!` | Ensino Primário |
-| `prof.primaria.4@seed.edugest.test` | `SeedTest@2026!` | Matemática / Ciências |
-| `prof.primaria.5@seed.edugest.test` | `SeedTest@2026!` | Língua Portuguesa |
+| `prof.primaria.4@seed.edugest.test` | `SeedTest@2026!` | Ensino Primário |
+| `prof.primaria.5@seed.edugest.test` | `SeedTest@2026!` | Matemática / Ciências |
+| `prof.primaria.6@seed.edugest.test` | `SeedTest@2026!` | Língua Portuguesa |
 
 ---
 
@@ -72,9 +106,10 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 | Código | `SEED-SEC-2026` |
 | Tipo | Ensino Secundário |
 | Província / Município | Benguela / Benguela |
-| Templates | 7ª–12ª Classe |
-| Turmas | 7ª A, 8ª A, 9ª A, 10ª A, 11ª A |
-| Alunos | 20 |
+| Templates | 7ª–9ª + Ciências + Humanidades |
+| Turmas | 7ª A, 8ª A, 9ª A, 10ª Ciências A, 11ª Ciências A, 12ª Humanidades A |
+| Alunos | 72 (12 × 6) |
+| Cursos / áreas | Ciências e Humanidades (II ciclo) |
 | Licença | Anual (activa) |
 
 ### Conta administrador
@@ -92,6 +127,7 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 | `prof.secundaria.3@seed.edugest.test` | `SeedTest@2026!` | Química |
 | `prof.secundaria.4@seed.edugest.test` | `SeedTest@2026!` | Língua Portuguesa |
 | `prof.secundaria.5@seed.edugest.test` | `SeedTest@2026!` | Biologia |
+| `prof.secundaria.6@seed.edugest.test` | `SeedTest@2026!` | História / Geografia |
 
 ---
 
@@ -103,9 +139,8 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 | Código | `SEED-CMP-2026` |
 | Tipo | Primário + Secundário |
 | Província / Município | Huambo / Huambo |
-| Templates | 1ª–12ª Classe |
-| Turmas | 4ª B, 6ª B, 7ª B, 9ª B, 12ª B |
-| Alunos | 20 |
+| Turmas | 2ª B, 4ª B, 6ª B, 8ª B, 10ª Ciências B, 12ª Humanidades B |
+| Alunos | 72 (12 × 6) |
 | Licença | Anual (activa) |
 
 ### Conta administrador
@@ -120,20 +155,10 @@ Requisitos: ficheiro `.env` com `SUPABASE_URL` (ou `VITE_SUPABASE_URL`) e `SUPAB
 |--------|----------|----------------|
 | `prof.complexo.1@seed.edugest.test` | `SeedTest@2026!` | Ensino Primário |
 | `prof.complexo.2@seed.edugest.test` | `SeedTest@2026!` | Ensino Primário |
-| `prof.complexo.3@seed.edugest.test` | `SeedTest@2026!` | Matemática |
-| `prof.complexo.4@seed.edugest.test` | `SeedTest@2026!` | História / Geografia |
-| `prof.complexo.5@seed.edugest.test` | `SeedTest@2026!` | Inglês |
-
----
-
-## O que a seed cria em cada escola
-
-1. Utilizador auth + perfil **ESCOLA** (administrador)  
-2. Licença **anual activa**  
-3. **Templates** de disciplinas com componentes **MAC (100%) · NPT (100%) · MT (100%)** nos 3 trimestres  
-4. **5 professores** com login activo  
-5. **5 turmas** com templates aplicados (disciplinas + componentes)  
-6. **20 alunos** com dados pessoais, encarregado, morada e dados académicos  
+| `prof.complexo.3@seed.edugest.test` | `SeedTest@2026!` | Ensino Primário |
+| `prof.complexo.4@seed.edugest.test` | `SeedTest@2026!` | Matemática |
+| `prof.complexo.5@seed.edugest.test` | `SeedTest@2026!` | Física / Química |
+| `prof.complexo.6@seed.edugest.test` | `SeedTest@2026!` | História / Inglês |
 
 ---
 
@@ -143,7 +168,7 @@ Password comum: `SeedTest@2026!`
 
 | Email | Província | Estado | Para testar |
 |--------|-----------|--------|-------------|
-| `dp.luanda@seed.edugest.test` | Luanda | Activa | Dashboard provincial, DMs Belas/Cacuaco/Viana, escola SEED-PRI; menu Pessoal / Planeamento / Estatísticas / Contratação / Projectos (após `npm run db:apply-pessoal-dp` ou SQL `20261105_pessoal_direcao_provincial.sql`) |
+| `dp.luanda@seed.edugest.test` | Luanda | Activa | Dashboard provincial, DMs Belas/Cacuaco/Viana, escola SEED-PRI |
 | `dp.benguela@seed.edugest.test` | Benguela | Activa | DMs Benguela/Lobito, escola SEED-SEC |
 | `dp.huambo@seed.edugest.test` | Huambo | Activa | DMs Huambo/Caála (bloqueada), escola SEED-CMP |
 | `dp.cabinda.pendente@seed.edugest.test` | Cabinda | Pendente | Fluxo de aprovação SUPERADMIN |
@@ -160,7 +185,7 @@ Password comum: `SeedTest@2026!`
 
 | Email | Município / Província | Estado | Escola seed ligada |
 |--------|----------------------|--------|---------------------|
-| `dm.belas@seed.edugest.test` | Belas / Luanda | Activa | `SEED-PRI-2026`; menu **Pessoal** (secções Dec. 35/23) após `npm run db:apply-pessoal-dm` ou SQL `20261105_pessoal_direcao_municipal.sql` |
+| `dm.belas@seed.edugest.test` | Belas / Luanda | Activa | `SEED-PRI-2026` |
 | `dm.cacuaco@seed.edugest.test` | Cacuaco / Luanda | Activa | *(sem escolas — estado vazio)* |
 | `dm.viana.pendente@seed.edugest.test` | Viana / Luanda | Pendente | — |
 | `dm.benguela@seed.edugest.test` | Benguela / Benguela | Activa | `SEED-SEC-2026` |
@@ -171,29 +196,26 @@ Password comum: `SeedTest@2026!`
 ### Dados municipais gerados
 
 - **3 circulares** por DM activa não bloqueada (publicada, urgente, rascunho)  
-- **6 solicitações de documentos** com estados variados: `pendente`, `em_analise`, `aprovado`, `rejeitado`, `concluido`, `pendente_info`  
+- **6 solicitações de documentos** com estados variados  
 - Histórico administrativo das escolas seed  
 
 ---
 
-## Sugestão rápida de testes
+## Sugestão rápida de demonstração
 
-1. Login como `admin.primaria@seed.edugest.test` → ver Dashboard, Turmas, Templates, Professores, Alunos.  
-2. Login como `prof.secundaria.1@seed.edugest.test` → **Notas** → lançar MAC/PP/PT.  
-3. Login como `admin.complexo@seed.edugest.test` → confirmar turmas de primário e secundário.  
-4. Em **Relatórios**, gerar Mini-Pauta / Pauta Geral.  
-5. Login como `dm.belas@seed.edugest.test` → escolas do município, circulares, solicitações, supervisão pedagógica.  
-6. Login como `dm.cacuaco@seed.edugest.test` → estado vazio (sem escolas).  
-7. Login como `dp.luanda@seed.edugest.test` → DMs da província, circulares provinciais, visão agregada.  
-8. Login como `dp.huambo@seed.edugest.test` → ver DM Caála bloqueada + histórico.  
-9. Como SUPERADMIN → aprovar `dm.viana.pendente` / `dp.cabinda.pendente`.  
-10. Quando terminar: `npm run seed:test:clean`.
+1. Login `admin.primaria@seed.edugest.test` → Turmas → abrir **1ª Classe A** (12 alunos).  
+2. **Relatórios** → Mini-Pauta / Pauta-Geral / Mapa (trimestres 1–3).  
+3. Escolher um aluno → **Boletim** e **Termo de Frequência**.  
+4. Login `prof.secundaria.1@seed.edugest.test` → **Notas** já preenchidas (MAC/NPT).  
+5. Login `admin.secundaria@…` → turmas de **Ciências** e **Humanidades**.  
+6. Login `dm.belas@…` / `dp.luanda@…` → supervisão e estatísticas com notas.  
+7. Quando terminar: `npm run seed:test:clean`.
 
 Só direções (se as escolas seed já existirem):
 
 ```bash
 node scripts/seed-test-data.mjs --direcoes-only
-# ou com limpeza prévia das direções/escolas:
+# ou com limpeza prévia:
 npm run seed:test -- --force
 ```
 
@@ -212,4 +234,4 @@ A seed só apaga dados marcados:
 
 Não remove escolas, direções ou utilizadores reais fora destes marcadores.
 
-`sueper admin: superadmin@edugest.ao
+`super admin: superadmin@edugest.ao`

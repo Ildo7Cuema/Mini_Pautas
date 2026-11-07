@@ -5,6 +5,15 @@ import { HeaderConfig, getOrgaoEducacao } from './headerConfigUtils'
 import { imageUrlToBase64, getImageFormat } from './imageUtils'
 import { GradeColorConfig, getGradeColorFromConfig, hexToRGB } from './gradeColorConfigUtils'
 import { drawStandardPdfFooter, APP_DOCUMENT_BRAND_LINE } from './pdfFooter'
+import {
+    formatComponentePautaLabel,
+    formatObservacaoPautaLabel,
+    buildPautaGeralLegendaTableRows,
+} from './pautaGeralFieldUtils'
+import {
+    DEFAULT_PAUTA_GERAL_EXPORT_CONFIG,
+    type PautaGeralExportConfig,
+} from './pautaGeralExportUtils'
 
 interface TrimestreData {
     notas: Record<string, number>
@@ -230,15 +239,26 @@ function addPDFSignatures(doc: jsPDF, finalY: number, pageWidth: number, pageHei
     }
 }
 
+export interface ConselhoNotasSignatureNames {
+    coordenador_nome?: string | null
+    secretario_nome?: string | null
+    membro_2_nome?: string | null
+}
+
 /**
  * Adds Conselho de Notas signature section for Pauta-Geral PDF
  * Shows 3 numbered lines for council members on the left
  * And Director signatures on the right
  */
-function addConselhoNotasSignatures(doc: jsPDF, finalY: number, pageWidth: number, pageHeight: number) {
-    const lineSpacing = 8 // Spacing between each signature line
+function addConselhoNotasSignatures(
+    doc: jsPDF,
+    finalY: number,
+    pageWidth: number,
+    pageHeight: number,
+    members?: ConselhoNotasSignatureNames | null
+) {
+    const lineSpacing = 8
 
-    // Check if there's enough space, otherwise add new page
     if (finalY + 50 > pageHeight) {
         doc.addPage()
         finalY = 20
@@ -246,19 +266,20 @@ function addConselhoNotasSignatures(doc: jsPDF, finalY: number, pageWidth: numbe
 
     const startY = finalY + 8
 
-    // LEFT SIDE: Conselho de Notas
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
     doc.text('CONSELHO DE NOTAS:', 10, startY)
 
-    // Three numbered signature lines
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
 
+    const line = (nome?: string | null) =>
+        nome?.trim() ? `${nome.trim()}` : '_______________________________________'
+
     const signatures = [
-        '1. _______________________________________',
-        '2. _______________________________________',
-        '3. _______________________________________'
+        `1. ${line(members?.coordenador_nome)}  (Coordenador / Dir. Turma)`,
+        `2. ${line(members?.secretario_nome)}  (Secretario)`,
+        `3. ${line(members?.membro_2_nome)}  (Membro)`,
     ]
 
     let currentY = startY + 6
@@ -267,15 +288,13 @@ function addConselhoNotasSignatures(doc: jsPDF, finalY: number, pageWidth: numbe
         currentY += lineSpacing
     })
 
-    // RIGHT SIDE: Director signatures (como antes)
     const rightX = pageWidth - 80
     doc.text('_________________________________', rightX, startY + 6)
-    doc.text('Diretor(a) Pedagógico(a)', rightX, startY + 11)
+    doc.text('Subdirector(a) Pedagogico(a)', rightX, startY + 11)
 
     doc.text('_________________________________', rightX, startY + 22)
-    doc.text('Diretor(a) da Escola', rightX, startY + 27)
+    doc.text('Director(a) da Escola', rightX, startY + 27)
 
-    // Date field at the bottom
     doc.setFontSize(8)
     doc.text('Local e Data: ___________________', 10, currentY + 5)
 }
@@ -884,6 +903,8 @@ interface ComponenteAvaliacaoPG {
     peso_percentual: number
     trimestre: number
     is_calculated?: boolean
+    formula_expression?: string | null
+    tipo_calculo?: 'trimestral' | 'anual' | string | null
 }
 
 interface DisciplinaComComponentesPG {
@@ -934,7 +955,8 @@ async function renderPautaGeralHeader(
     doc: jsPDF,
     data: PautaGeralData,
     headerConfig: HeaderConfig | null | undefined,
-    pageWidth: number
+    pageWidth: number,
+    documentTitle: string = 'PAUTA-GERAL'
 ): Promise<number> {
     let currentY = 10
 
@@ -993,16 +1015,15 @@ async function renderPautaGeralHeader(
         doc.text(headerConfig.nome_escola, pageWidth / 2, currentY, { align: 'center' })
         currentY += fontSize * 0.6
 
-        // Title: PAUTA-GERAL (not MINI-PAUTA)
         const titleFontSize = headerConfig.tamanho_fonte_mini_pauta || 14
         doc.setFontSize(titleFontSize)
         doc.setFont('helvetica', 'bold')
-        doc.text('PAUTA-GERAL', pageWidth / 2, currentY, { align: 'center' })
+        doc.text(documentTitle, pageWidth / 2, currentY, { align: 'center' })
         currentY += titleFontSize * 0.5
     } else {
         doc.setFontSize(14)
         doc.setFont('helvetica', 'bold')
-        doc.text('PAUTA-GERAL', pageWidth / 2, currentY, { align: 'center' })
+        doc.text(documentTitle, pageWidth / 2, currentY, { align: 'center' })
         currentY += 6
 
         if (data.escola) {
@@ -1068,16 +1089,20 @@ function abbreviateDisciplineName(nome: string, maxLength: number = 12): string 
 export async function generatePautaGeralPDF(
     data: PautaGeralData,
     headerConfig: HeaderConfig | null | undefined,
-    colorConfig: GradeColorConfig | null
+    colorConfig: GradeColorConfig | null,
+    exportConfig: PautaGeralExportConfig = DEFAULT_PAUTA_GERAL_EXPORT_CONFIG,
+    metricSourceComponentes: ComponenteAvaliacaoPG[] = [],
+    conselhoMembers?: ConselhoNotasSignatureNames | null
 ): Promise<void> {
+    const cfg = { ...DEFAULT_PAUTA_GERAL_EXPORT_CONFIG, ...exportConfig }
+    const disciplinas = data.disciplinas.filter((d) => d.componentes.length > 0)
+
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' })
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
 
-    // Render Pauta-Geral specific header
     let currentY = await renderPautaGeralHeader(doc, data, headerConfig, pageWidth)
 
-    // Class info - compact layout
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
     doc.text(`Turma: ${data.turma.nome}`, 10, currentY + 3)
@@ -1085,126 +1110,119 @@ export async function generatePautaGeralPDF(
     doc.text(`Nível: ${data.turma.nivel_ensino || 'N/D'}`, pageWidth - 10, currentY + 3, { align: 'right' })
 
     const tableStartY = currentY + 8
+    const totalComponentCols = disciplinas.reduce((sum, d) => sum + d.componentes.length, 0)
+    const availableWidth = pageWidth - 20
 
-    // Calculate total number of component columns
-    const totalComponentCols = data.disciplinas.reduce((sum, d) => sum + d.componentes.length, 0)
-
-    // Fixed columns: Nº (1) + Nome (2) + GÊN (3) + MG (media geral) + OBS (observação)
-    const fixedColsCount = 5
-    const availableWidth = pageWidth - 20 // margins
-
-    // Calculate column widths
-    const numColWidth = 6
+    const numColWidth = cfg.showNumeroProcesso ? 6 : 0
+    const nameColWidthBase = cfg.showNomeCompleto ? 32 : 0
     const genColWidth = 6
-    const mgColWidth = 8
-    const obsColWidth = 18
-    const fixedColsWidth = numColWidth + genColWidth + mgColWidth + obsColWidth
-
-    // Remaining width for Name + component columns
+    const mgColWidth = cfg.showMediaGeral ? 10 : 0
+    const obsColWidth = cfg.showObservacao ? 28 : 0
+    const fixedColsWidth = numColWidth + nameColWidthBase + genColWidth + mgColWidth + obsColWidth
     const remainingWidth = availableWidth - fixedColsWidth
+    const nameColWidth = cfg.showNomeCompleto
+        ? Math.max(25, Math.min(40, remainingWidth * 0.2 + nameColWidthBase * 0.3))
+        : 0
+    const componentAreaWidth = remainingWidth - (cfg.showNomeCompleto ? nameColWidth - nameColWidthBase : 0)
+    const componentColWidth = Math.max(8, componentAreaWidth / Math.max(totalComponentCols, 1))
 
-    // Name column gets proportionally more space
-    const nameColWidth = Math.max(25, Math.min(40, remainingWidth * 0.2))
-    const componentAreaWidth = remainingWidth - nameColWidth
+    const headerRow1: any[] = []
+    if (cfg.showNumeroProcesso) {
+        headerRow1.push({ content: 'Nº', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: numColWidth } })
+    }
+    if (cfg.showNomeCompleto) {
+        headerRow1.push({ content: 'Nome do Aluno', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: nameColWidth } })
+    }
+    headerRow1.push({ content: 'GÊN', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: genColWidth } })
 
-    // Each component column width (flexible)
-    const componentColWidth = Math.max(6, componentAreaWidth / totalComponentCols)
-
-    // Build two-row header
-    // Row 1: Nº (rowSpan 2), Nome (rowSpan 2), GÊN (rowSpan 2), Discipline names (colSpan), MG (rowSpan 2), OBS (rowSpan 2)
-    const headerRow1: any[] = [
-        { content: 'Nº', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: numColWidth } },
-        { content: 'Nome do Aluno', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: nameColWidth } },
-        { content: 'GÊN', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: genColWidth } }
-    ]
-
-    // Add discipline headers with abbreviated names if needed
-    data.disciplinas.forEach((disciplina) => {
-        const displayName = abbreviateDisciplineName(disciplina.nome, 10)
+    disciplinas.forEach((disciplina) => {
         headerRow1.push({
-            content: displayName,
+            content: abbreviateDisciplineName(disciplina.nome, 10),
             colSpan: disciplina.componentes.length,
             styles: {
                 halign: 'center',
                 valign: 'middle',
                 fontStyle: 'bold',
-                fillColor: [30, 64, 175], // Darker blue for discipline headers
+                fillColor: [30, 64, 175],
                 fontSize: 6
             }
         })
     })
 
-    // Add MG and OBS columns
-    headerRow1.push(
-        { content: 'MG', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: mgColWidth, fillColor: [22, 163, 74] } }, // Green
-        { content: 'OBS', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: obsColWidth, fillColor: [147, 51, 234] } }  // Purple
-    )
+    if (cfg.showMediaGeral) {
+        headerRow1.push({
+            content: 'MG',
+            rowSpan: 2,
+            styles: { halign: 'center', valign: 'middle', cellWidth: mgColWidth, fillColor: [22, 163, 74] }
+        })
+    }
+    if (cfg.showObservacao) {
+        headerRow1.push({
+            content: 'Observação',
+            rowSpan: 2,
+            styles: { halign: 'center', valign: 'middle', cellWidth: obsColWidth, fillColor: [147, 51, 234], fontSize: 5.5 }
+        })
+    }
 
-    // Row 2: Component codes only
     const headerRow2: any[] = []
-    data.disciplinas.forEach(disciplina => {
-        disciplina.componentes.forEach(comp => {
+    disciplinas.forEach((disciplina) => {
+        disciplina.componentes.forEach((comp) => {
             headerRow2.push({
-                content: comp.codigo_componente,
+                content: formatComponentePautaLabel(comp),
                 styles: { halign: 'center', valign: 'middle', fontSize: 5, cellWidth: componentColWidth }
             })
         })
     })
 
-    // Build table data
     const tableData = data.alunos.map((aluno, index) => {
-        const row: any[] = [
-            (index + 1).toString(),
-            aluno.nome_completo,
-            aluno.genero || '-'
-        ]
+        const row: any[] = []
+        if (cfg.showNumeroProcesso) row.push((index + 1).toString())
+        if (cfg.showNomeCompleto) row.push(aluno.nome_completo)
+        row.push(aluno.genero || '-')
 
-        data.disciplinas.forEach(disciplina => {
+        disciplinas.forEach((disciplina) => {
             const notasDisciplina = aluno.notas_por_disciplina[disciplina.id] || {}
-            disciplina.componentes.forEach(comp => {
+            disciplina.componentes.forEach((comp) => {
                 const nota = notasDisciplina[comp.id]
                 row.push(nota !== undefined ? nota.toFixed(1) : '-')
             })
         })
 
-        // Add MG (Media Geral)
-        row.push(aluno.media_geral !== undefined ? aluno.media_geral.toFixed(1) : '-')
-
-        // Add OBS (Observação) - abbreviated
-        let obs = '-'
-        if (aluno.observacao) {
-            switch (aluno.observacao) {
-                case 'Transita': obs = 'T'; break
-                case 'Não Transita': obs = 'NT'; break
-                case 'Condicional': obs = 'C'; break
-                case 'AguardandoNotas': obs = 'AG'; break
-                default: obs = aluno.observacao
-            }
+        if (cfg.showMediaGeral) {
+            row.push(aluno.media_geral !== undefined ? aluno.media_geral.toFixed(1) : '-')
         }
-        row.push(obs)
+        if (cfg.showObservacao) {
+            row.push(formatObservacaoPautaLabel(aluno.observacao))
+        }
 
         return row
     })
 
-    // Calculate column styles for all component columns
-    const columnStyles: Record<number, any> = {
-        0: { halign: 'center', cellWidth: numColWidth },   // Nº
-        1: { halign: 'left', cellWidth: nameColWidth, overflow: 'ellipsize' },   // Nome
-        2: { halign: 'center', cellWidth: genColWidth }    // GÊN
+    const columnStyles: Record<number, any> = {}
+    let colPtr = 0
+    if (cfg.showNumeroProcesso) {
+        columnStyles[colPtr++] = { halign: 'center', cellWidth: numColWidth }
     }
+    if (cfg.showNomeCompleto) {
+        columnStyles[colPtr++] = { halign: 'left', cellWidth: nameColWidth, overflow: 'ellipsize' }
+    }
+    columnStyles[colPtr++] = { halign: 'center', cellWidth: genColWidth }
 
-    // Component columns (flexible width)
+    const gradesStartIndex = colPtr
     for (let i = 0; i < totalComponentCols; i++) {
-        columnStyles[3 + i] = { halign: 'center', cellWidth: componentColWidth }
+        columnStyles[colPtr++] = { halign: 'center', cellWidth: componentColWidth }
+    }
+    const gradesEndIndex = colPtr
+
+    const mgColIndex = cfg.showMediaGeral ? colPtr++ : -1
+    if (cfg.showMediaGeral) {
+        columnStyles[mgColIndex] = { halign: 'center', cellWidth: mgColWidth, fontStyle: 'bold' }
+    }
+    const obsColIndex = cfg.showObservacao ? colPtr++ : -1
+    if (cfg.showObservacao) {
+        columnStyles[obsColIndex] = { halign: 'center', cellWidth: obsColWidth, fontStyle: 'bold' }
     }
 
-    // MG and OBS columns
-    const mgColIndex = 3 + totalComponentCols
-    const obsColIndex = mgColIndex + 1
-    columnStyles[mgColIndex] = { halign: 'center', cellWidth: mgColWidth, fontStyle: 'bold' }
-    columnStyles[obsColIndex] = { halign: 'center', cellWidth: obsColWidth, fontStyle: 'bold' }
-
-    // Generate table with autoTable
     autoTable(doc, {
         startY: tableStartY,
         head: [headerRow1, headerRow2],
@@ -1213,11 +1231,11 @@ export async function generatePautaGeralPDF(
         styles: {
             fontSize: 5.5,
             cellPadding: 1,
-            overflow: 'ellipsize', // Avoid text wrapping
+            overflow: 'ellipsize',
             lineWidth: 0.1
         },
         headStyles: {
-            fillColor: [59, 130, 246],  // Blue
+            fillColor: [59, 130, 246],
             textColor: 255,
             fontStyle: 'bold',
             halign: 'center',
@@ -1228,117 +1246,347 @@ export async function generatePautaGeralPDF(
         tableWidth: 'auto',
         margin: { left: 10, right: 10 },
         didParseCell: (hookData: any) => {
-            if (hookData.section === 'body') {
-                const colIndex = hookData.column.index
+            if (hookData.section !== 'body') return
+            const colIndex = hookData.column.index
 
-                // Grade columns (between GÊN and MG)
-                if (colIndex >= 3 && colIndex < mgColIndex) {
-                    hookData.cell.styles.halign = 'center'
-
-                    const cellValue = hookData.cell.raw
-                    if (cellValue && cellValue !== '-') {
-                        const nota = parseFloat(cellValue)
-                        if (!isNaN(nota)) {
-                            const compColIndex = colIndex - 3
-                            let currentIndex = 0
-                            let component: any = null
-
-                            for (const disciplina of data.disciplinas) {
-                                for (const comp of disciplina.componentes) {
-                                    if (currentIndex === compColIndex) {
-                                        component = comp
-                                        break
-                                    }
-                                    currentIndex++
+            if (colIndex >= gradesStartIndex && colIndex < gradesEndIndex) {
+                hookData.cell.styles.halign = 'center'
+                const cellValue = hookData.cell.raw
+                if (cellValue && cellValue !== '-') {
+                    const nota = parseFloat(cellValue)
+                    if (!isNaN(nota)) {
+                        const compColIndex = colIndex - gradesStartIndex
+                        let currentIndex = 0
+                        let component: any = null
+                        for (const disciplina of disciplinas) {
+                            for (const comp of disciplina.componentes) {
+                                if (currentIndex === compColIndex) {
+                                    component = comp
+                                    break
                                 }
-                                if (component) break
+                                currentIndex++
                             }
-
-                            if (component) {
-                                const color = getGradeColorRGB(
-                                    nota,
-                                    data.nivel_ensino,
-                                    data.classe,
-                                    component.is_calculated || false,
-                                    colorConfig
-                                )
-                                hookData.cell.styles.textColor = color
-                            }
+                            if (component) break
+                        }
+                        if (component) {
+                            hookData.cell.styles.textColor = getGradeColorRGB(
+                                nota,
+                                data.nivel_ensino,
+                                data.classe,
+                                component.is_calculated || false,
+                                colorConfig
+                            )
                         }
                     }
                 }
+            }
 
-                // MG column - color based on grade
-                if (colIndex === mgColIndex) {
-                    const cellValue = hookData.cell.raw
-                    if (cellValue && cellValue !== '-') {
-                        const nota = parseFloat(cellValue)
-                        if (!isNaN(nota)) {
-                            const color = getGradeColorRGB(nota, data.nivel_ensino, data.classe, true, colorConfig)
-                            hookData.cell.styles.textColor = color
-                            hookData.cell.styles.fontStyle = 'bold'
-                        }
-                    }
-                }
-
-                // OBS column - color based on status
-                if (colIndex === obsColIndex) {
-                    const obs = hookData.cell.raw
-                    if (obs === 'T') {
-                        hookData.cell.styles.textColor = [22, 163, 74] // Green
-                        hookData.cell.styles.fontStyle = 'bold'
-                    } else if (obs === 'NT') {
-                        hookData.cell.styles.textColor = [220, 38, 38] // Red
-                        hookData.cell.styles.fontStyle = 'bold'
-                    } else if (obs === 'C') {
-                        hookData.cell.styles.textColor = [234, 179, 8] // Yellow/Orange
+            if (colIndex === mgColIndex) {
+                const cellValue = hookData.cell.raw
+                if (cellValue && cellValue !== '-') {
+                    const nota = parseFloat(cellValue)
+                    if (!isNaN(nota)) {
+                        hookData.cell.styles.textColor = getGradeColorRGB(
+                            nota, data.nivel_ensino, data.classe, true, colorConfig
+                        )
                         hookData.cell.styles.fontStyle = 'bold'
                     }
                 }
+            }
+
+            if (colIndex === obsColIndex) {
+                const obs = String(hookData.cell.raw || '')
+                if (obs === 'Transita') {
+                    // Observação Transita: azul (não verde)
+                    hookData.cell.styles.textColor = [37, 99, 235]
+                    hookData.cell.styles.fontStyle = 'bold'
+                } else if (obs === 'Não Transita') {
+                    hookData.cell.styles.textColor = [220, 38, 38]
+                    hookData.cell.styles.fontStyle = 'bold'
+                } else if (obs === 'Condicional') {
+                    hookData.cell.styles.textColor = [180, 120, 0]
+                    hookData.cell.styles.fontStyle = 'bold'
+                } else if (obs === 'Aguardando Notas') {
+                    hookData.cell.styles.textColor = [100, 116, 139]
+                }
+                hookData.cell.styles.fontSize = 5.5
             }
         },
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    // Statistics and signatures
-    const finalY = (doc as any).lastAutoTable.finalY + 5
-
-    // Legend for OBS abbreviations
-    doc.setFontSize(7)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Legenda: T = Transita | NT = Não Transita | C = Condicional | AG = Aguardando Notas | MG = Média Geral', 10, finalY)
-
-    if (data.estatisticas) {
-        const statsY = finalY + 6
-        if (statsY + 20 < pageHeight) {
-            doc.setFontSize(9)
-            doc.setFont('helvetica', 'bold')
-            doc.text('ESTATÍSTICAS GERAIS', 10, statsY)
-
-            doc.setFont('helvetica', 'normal')
-            doc.setFontSize(8)
-
-            const stats = [
-                `Total: ${data.estatisticas.geral.total_alunos}`,
-                `Aprovados: ${data.estatisticas.geral.aprovados}`,
-                `Reprovados: ${data.estatisticas.geral.reprovados}`,
-                `Média: ${data.estatisticas.geral.media_turma?.toFixed(2) || 'N/A'}`
-            ]
-
-            // Display stats in a row
-            let xPos = 10
-            stats.forEach((stat) => {
-                doc.text(stat, xPos, statsY + 5)
-                xPos += 40
-            })
-        }
+    let cursorY = (doc as any).lastAutoTable.finalY + 4
+    const footerBlockHeight = 55
+    if (cursorY + footerBlockHeight > pageHeight - 28) {
+        doc.addPage()
+        cursorY = 12
+        addPDFFooter(doc, pageWidth, pageHeight)
     }
 
-    addConselhoNotasSignatures(doc, finalY + 12, pageWidth, pageHeight)
+    // Compact statistics table
+    if (cfg.showStatistics && data.estatisticas) {
+        autoTable(doc, {
+            startY: cursorY,
+            head: [[
+                { content: 'ESTATÍSTICAS GERAIS', colSpan: 4, styles: { halign: 'left', fillColor: [30, 64, 175], textColor: 255, fontStyle: 'bold', fontSize: 7 } }
+            ]],
+            body: [[
+                { content: `Total\n${data.estatisticas.geral.total_alunos}`, styles: { halign: 'center' } },
+                { content: `Aprovados\n${data.estatisticas.geral.aprovados}`, styles: { halign: 'center', textColor: [37, 99, 235] } },
+                { content: `Reprovados\n${data.estatisticas.geral.reprovados}`, styles: { halign: 'center', textColor: [220, 38, 38] } },
+                { content: `Média\n${data.estatisticas.geral.media_turma?.toFixed(2) || 'N/A'}`, styles: { halign: 'center' } },
+            ]],
+            theme: 'grid',
+            styles: {
+                fontSize: 6,
+                cellPadding: 1.2,
+                lineWidth: 0.1,
+                valign: 'middle',
+            },
+            margin: { left: 10, right: pageWidth - 10 - 120 },
+            tableWidth: 120,
+            didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+        })
+        cursorY = (doc as any).lastAutoTable.finalY + 3
+    }
 
-    // Save PDF with descriptive filename
+    // Compact legend table (conforme configuração)
+    const exposedComponentes = disciplinas.flatMap((d) => d.componentes)
+    const legendRows = buildPautaGeralLegendaTableRows(exposedComponentes, {
+        nivelEnsino: data.nivel_ensino || data.turma.nivel_ensino,
+        classe: data.classe,
+        showMediaGeral: cfg.showMediaGeral,
+        showObservacao: cfg.showObservacao,
+        componenteParaMediaGeral: cfg.componenteParaMediaGeral,
+        metricSourceComponentes,
+    })
+
+    const legendBody = legendRows.map((r) => [r.item, r.detalhe])
+    const legendTableWidth = Math.min(pageWidth - 20, 260)
+
+    autoTable(doc, {
+        startY: cursorY,
+        head: [[
+            { content: 'LEGENDA — conforme configuração desta pauta', colSpan: 2, styles: { halign: 'left', fillColor: [51, 65, 85], textColor: 255, fontStyle: 'bold', fontSize: 6.5 } }
+        ]],
+        body: legendBody,
+        theme: 'grid',
+        styles: {
+            fontSize: 5.5,
+            cellPadding: 1,
+            lineWidth: 0.1,
+            overflow: 'linebreak',
+            valign: 'top',
+        },
+        columnStyles: {
+            0: { cellWidth: 48, fontStyle: 'bold', textColor: [30, 64, 175] },
+            1: { cellWidth: legendTableWidth - 48 },
+        },
+        margin: { left: 10, right: pageWidth - 10 - legendTableWidth },
+        tableWidth: legendTableWidth,
+        didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+    })
+
+    cursorY = (doc as any).lastAutoTable.finalY + 4
+    addConselhoNotasSignatures(doc, cursorY, pageWidth, pageHeight, conselhoMembers)
+
     const filename = `pauta-geral_${data.turma.codigo_turma}_${data.turma.ano_lectivo}.pdf`
     doc.save(filename)
+}
+
+// ============================================================================
+// CONSELHO DE NOTAS — RELATÓRIO / ACTA
+// ============================================================================
+
+export interface ConselhoNotasRelatorioData {
+    escola?: { nome?: string; provincia?: string; municipio?: string }
+    turma: { nome: string; ano_lectivo: string | number; codigo_turma: string; nivel_ensino?: string }
+    data_reuniao?: string | null
+    local_reuniao?: string | null
+    coordenador_nome?: string | null
+    secretario_nome?: string | null
+    membro_2_nome?: string | null
+    parecer_geral?: string | null
+    resumo: {
+        total: number
+        transita: number
+        nao_transita: number
+        condicional: number
+        aguardando: number
+        media_turma: number
+    }
+    deliberacoes: Array<{
+        numero_processo: string
+        nome_completo: string
+        media_geral?: number | null
+        frequencia_anual?: number | null
+        situacao_sistema: string
+        situacao_deliberada: string
+        motivo?: string | null
+        is_caso_critico: boolean
+    }>
+    propostas?: Array<{
+        aluno: string
+        disciplina: string
+        componente: string
+        valor_atual: number
+        valor_proposto: number
+        motivo: string
+        status: string
+    }>
+}
+
+export async function generateConselhoNotasPDF(
+    data: ConselhoNotasRelatorioData,
+    headerConfig: HeaderConfig | null | undefined
+): Promise<void> {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+
+    let currentY = await renderPautaGeralHeader(
+        doc,
+        {
+            turma: {
+                nome: data.turma.nome,
+                ano_lectivo: Number(data.turma.ano_lectivo) || 0,
+                codigo_turma: data.turma.codigo_turma,
+                nivel_ensino: data.turma.nivel_ensino || '',
+            },
+            trimestre: 3,
+            alunos: [],
+            disciplinas: [],
+            escola: data.escola as any,
+        },
+        headerConfig,
+        pageWidth,
+        'RELATORIO DO CONSELHO DE NOTAS'
+    )
+
+    currentY += 2
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Turma: ${data.turma.nome}`, 14, currentY)
+    doc.text(`Ano Lectivo: ${data.turma.ano_lectivo}`, pageWidth / 2, currentY, { align: 'center' })
+    doc.text(`Nivel: ${data.turma.nivel_ensino || 'N/D'}`, pageWidth - 14, currentY, { align: 'right' })
+    currentY += 5
+    doc.text(`Data: ${data.data_reuniao || '____/____/________'}`, 14, currentY)
+    doc.text(`Local: ${data.local_reuniao || '________________'}`, pageWidth / 2, currentY)
+
+    currentY += 6
+    autoTable(doc, {
+        startY: currentY,
+        head: [[{ content: 'COMPOSICAO DO CONSELHO', colSpan: 2, styles: { fillColor: [30, 64, 175], textColor: 255, fontSize: 8 } }]],
+        body: [
+            ['Coordenador (Dir. de Turma)', data.coordenador_nome || '—'],
+            ['Secretario', data.secretario_nome || '—'],
+            ['Membro', data.membro_2_nome || '—'],
+        ],
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 1.5 },
+        columnStyles: { 0: { cellWidth: 55, fontStyle: 'bold' }, 1: { cellWidth: pageWidth - 28 - 55 } },
+        margin: { left: 14, right: 14 },
+        didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+    })
+
+    currentY = (doc as any).lastAutoTable.finalY + 4
+    autoTable(doc, {
+        startY: currentY,
+        head: [[{ content: 'RESUMO ESTATISTICO', colSpan: 5, styles: { fillColor: [51, 65, 85], textColor: 255, fontSize: 8 } }]],
+        body: [[
+            `Total\n${data.resumo.total}`,
+            `Transita\n${data.resumo.transita}`,
+            `Nao Transita\n${data.resumo.nao_transita}`,
+            `Condicional\n${data.resumo.condicional}`,
+            `Media\n${data.resumo.media_turma.toFixed(2)}`,
+        ]],
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
+        margin: { left: 14, right: 14 },
+        didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+    })
+
+    currentY = (doc as any).lastAutoTable.finalY + 4
+    const criticos = data.deliberacoes.filter((d) => d.is_caso_critico)
+    const delibRows = (criticos.length ? criticos : data.deliberacoes.slice(0, 0)).map((d) => [
+        d.numero_processo,
+        d.nome_completo,
+        d.media_geral != null ? Number(d.media_geral).toFixed(1) : '—',
+        d.frequencia_anual != null ? `${Number(d.frequencia_anual).toFixed(1)}%` : '—',
+        d.situacao_sistema,
+        d.situacao_deliberada,
+        d.motivo || '—',
+    ])
+
+    autoTable(doc, {
+        startY: currentY,
+        head: [[
+            { content: criticos.length ? 'CASOS CRITICOS E DELIBERACOES' : 'CASOS CRITICOS E DELIBERACOES (nenhum)', colSpan: 7, styles: { fillColor: [30, 64, 175], textColor: 255, fontSize: 8 } }
+        ], ['N. Proc.', 'Nome', 'MG', 'Freq.', 'Sistema', 'Deliberado', 'Motivo']],
+        body: delibRows.length
+            ? delibRows
+            : [['—', 'Sem casos criticos a deliberar', '—', '—', '—', '—', '—']],
+        theme: 'grid',
+        styles: { fontSize: 6.5, cellPadding: 1, overflow: 'linebreak' },
+        columnStyles: {
+            0: { cellWidth: 18 },
+            1: { cellWidth: 42 },
+            2: { cellWidth: 12, halign: 'center' },
+            3: { cellWidth: 14, halign: 'center' },
+            4: { cellWidth: 22 },
+            5: { cellWidth: 22 },
+            6: { cellWidth: 'auto' as any },
+        },
+        margin: { left: 14, right: 14 },
+        didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+    })
+
+    currentY = (doc as any).lastAutoTable.finalY + 4
+    const propostas = data.propostas || []
+    if (propostas.length > 0) {
+        autoTable(doc, {
+            startY: currentY,
+            head: [[
+                {
+                    content: 'PROPOSTAS DE ALTERACAO DE NOTAS',
+                    colSpan: 6,
+                    styles: { fillColor: [71, 85, 105], textColor: 255, fontSize: 8 },
+                },
+            ], ['Aluno', 'Disciplina', 'Comp.', 'Actual', 'Proposto', 'Estado']],
+            body: propostas.map((p) => [
+                p.aluno,
+                p.disciplina,
+                p.componente,
+                Number(p.valor_atual).toFixed(1),
+                Number(p.valor_proposto).toFixed(1),
+                p.status,
+            ]),
+            theme: 'grid',
+            styles: { fontSize: 6.5, cellPadding: 1, overflow: 'linebreak' },
+            margin: { left: 14, right: 14 },
+            didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+        })
+        currentY = (doc as any).lastAutoTable.finalY + 5
+    } else {
+        currentY += 1
+    }
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Parecer geral:', 14, currentY)
+    doc.setFont('helvetica', 'normal')
+    const parecer = doc.splitTextToSize(data.parecer_geral?.trim() || 'Sem parecer registado.', pageWidth - 28)
+    doc.text(parecer, 14, currentY + 4)
+    currentY += 4 + parecer.length * 4 + 6
+
+    addConselhoNotasSignatures(doc, currentY, pageWidth, pageHeight, {
+        coordenador_nome: data.coordenador_nome,
+        secretario_nome: data.secretario_nome,
+        membro_2_nome: data.membro_2_nome,
+    })
+
+    doc.save(`conselho-notas_${data.turma.codigo_turma}_${data.turma.ano_lectivo}.pdf`)
 }
 
 

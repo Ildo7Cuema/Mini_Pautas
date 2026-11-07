@@ -10,7 +10,8 @@ component-meta:
 import { useState } from 'react'
 import { Card, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
-import { classifyStudent, DisciplinaGrade } from '../utils/studentClassification'
+import { formatComponentePautaLabel } from '../utils/pautaGeralFieldUtils'
+import { computePautaGeralAlunoMetrics } from '../utils/pautaGeralExportUtils'
 
 interface ComponenteAvaliacao {
     id: string
@@ -19,6 +20,7 @@ interface ComponenteAvaliacao {
     peso_percentual: number
     trimestre: number
     is_calculated?: boolean
+    tipo_calculo?: 'trimestral' | 'anual'
 }
 
 interface DisciplinaComComponentes {
@@ -66,6 +68,7 @@ interface FieldSelection {
     includeAllDisciplinas: boolean
     componentes: string[]
     includeAllComponentes: boolean
+    includeLancamentoComponentes?: boolean
     showStatistics: boolean
     showNumeroProcesso: boolean
     showNomeCompleto: boolean
@@ -80,9 +83,18 @@ interface Props {
     colorConfig: GradeColorConfig | null
     fieldSelection: FieldSelection
     disciplinasObrigatorias?: string[]
+    /** Full disciplinas (all components) for MG/OBS — respects componenteParaMediaGeral even if column hidden. */
+    disciplinasMetricas?: DisciplinaComComponentes[]
 }
 
-export const PautaGeralPreview: React.FC<Props> = ({ data, loading, colorConfig, fieldSelection, disciplinasObrigatorias }) => {
+export const PautaGeralPreview: React.FC<Props> = ({
+    data,
+    loading,
+    colorConfig,
+    fieldSelection,
+    disciplinasObrigatorias,
+    disciplinasMetricas,
+}) => {
     const [expandedStudent, setExpandedStudent] = useState<string | null>(null)
 
     if (loading) {
@@ -119,83 +131,42 @@ export const PautaGeralPreview: React.FC<Props> = ({ data, loading, colorConfig,
         return result.color
     }
 
-    // Filter to show only selected disciplines
+    // Filter to show only selected disciplines (columns already filtered in data)
     const visibleDisciplinas = data.disciplinas.filter(d =>
-        fieldSelection.disciplinas.includes(d.id)
+        fieldSelection.includeAllDisciplinas || fieldSelection.disciplinas.includes(d.id)
     )
 
-    // Calculate classification dynamically based on selected disciplines using new rules
-    const calculateClassificationForSelectedDisciplinas = (aluno: any): {
-        media: number;
-        observacao: 'Transita' | 'Não Transita' | 'Condicional' | 'AguardandoNotas'
-        motivos: string[]
-        disciplinas_em_risco: string[]
-        acoes_recomendadas: string[]
-    } => {
-        const notasFinaisDisciplinas: number[] = []
-        const disciplinaGrades: DisciplinaGrade[] = []
-
-        // Only calculate for selected/visible disciplines
-        visibleDisciplinas.forEach(disc => {
-            const notasDisciplina = aluno.notas_por_disciplina[disc.id] || {}
-
-            // Find the specific component to use for média geral (e.g., 'MF', 'MT', 'NF')
-            const componenteParaMedia = disc.componentes.find(
-                comp => comp.codigo_componente === fieldSelection.componenteParaMediaGeral
-            )
-
-            if (componenteParaMedia) {
-                const nota = notasDisciplina[componenteParaMedia.id]
-
-                if (nota !== undefined) {
-                    // Use the nota directly from the selected component
-                    let notaFinalDisciplina = nota
-
-                    // CAP at 10: If discipline average > 10, set it to 10
-                    if (notaFinalDisciplina > 10) {
-                        notaFinalDisciplina = 10
-                    }
-
-                    notasFinaisDisciplinas.push(notaFinalDisciplina)
-
-                    // Add to disciplinaGrades for classification
-                    disciplinaGrades.push({
-                        id: disc.id,
-                        nome: disc.nome,
-                        nota: notaFinalDisciplina
-                    })
-                }
+    // MG/OBS follow user config: selected disciplines + componenteParaMediaGeral (from full template if provided)
+    const calculateClassificationForSelectedDisciplinas = (aluno: any) => {
+        const metricDisciplinas = visibleDisciplinas.map((d) => {
+            const full = disciplinasMetricas?.find((x) => x.id === d.id)
+            return {
+                id: d.id,
+                nome: d.nome,
+                componentes: full?.componentes ?? d.componentes,
             }
         })
 
-        // Calculate average across selected disciplines
-        let mediaGeral = 0
-        if (notasFinaisDisciplinas.length > 0) {
-            mediaGeral = notasFinaisDisciplinas.reduce((sum, n) => sum + n, 0) / notasFinaisDisciplinas.length
-            mediaGeral = Math.round(mediaGeral * 100) / 100
-        }
-
-        // Use new classification logic
-        const classification = classifyStudent(
-            disciplinaGrades,
-            data.nivel_ensino,
-            data.classe,
-            disciplinasObrigatorias
-        )
+        const metrics = computePautaGeralAlunoMetrics(aluno, metricDisciplinas, {
+            componenteParaMediaGeral: fieldSelection.componenteParaMediaGeral,
+            nivelEnsino: data.nivel_ensino || data.turma.nivel_ensino,
+            classe: data.classe,
+            disciplinasObrigatorias,
+        })
 
         return {
-            media: mediaGeral,
-            observacao: classification.status,
-            motivos: classification.motivos,
-            disciplinas_em_risco: classification.disciplinas_em_risco,
-            acoes_recomendadas: classification.acoes_recomendadas
+            media: metrics.media_geral,
+            observacao: metrics.observacao as 'Transita' | 'Não Transita' | 'Condicional' | 'AguardandoNotas',
+            motivos: metrics.motivos,
+            disciplinas_em_risco: metrics.disciplinas_em_risco,
+            acoes_recomendadas: [] as string[],
         }
     }
 
     // Status badge component
     const StatusBadge = ({ observacao, matriculaCondicional }: { observacao: string; matriculaCondicional: boolean }) => (
         <div className="flex flex-wrap items-center gap-1.5">
-            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${observacao === 'Transita' ? 'bg-emerald-100 text-emerald-700' :
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${observacao === 'Transita' ? 'bg-blue-100 text-blue-700' :
                 observacao === 'Condicional' ? 'bg-amber-100 text-amber-700' :
                     observacao === 'AguardandoNotas' ? 'bg-slate-100 text-slate-600' :
                         'bg-red-100 text-red-700'
@@ -309,7 +280,7 @@ export const PautaGeralPreview: React.FC<Props> = ({ data, loading, colorConfig,
                                                             }`}
                                                     >
                                                         <span className="text-[10px] text-slate-500 font-medium">
-                                                            {componente.codigo_componente}
+                                                            {formatComponentePautaLabel(componente)}
                                                         </span>
                                                         <span
                                                             className="text-sm font-bold"
@@ -420,7 +391,7 @@ export const PautaGeralPreview: React.FC<Props> = ({ data, loading, colorConfig,
                                                 : 'bg-slate-100 text-slate-600'
                                                 }`}
                                         >
-                                            {componente.codigo_componente}
+                                            {formatComponentePautaLabel(componente)}
                                         </th>
                                     ))
                                 })}

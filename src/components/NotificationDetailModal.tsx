@@ -114,7 +114,10 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             'atualizacao_sistema': 'Actualização do Sistema',
             'nova_circular_municipal': 'Comunicação Oficial',
             'nova_circular_provincial': 'Circular Provincial',
-            'novo_concurso_publico': 'Concurso Público'
+            'novo_concurso_publico': 'Concurso Público',
+            'conselho_notas_convite': 'Conselho de Notas',
+            'conselho_notas_rascunho': 'Conselho — Rascunho',
+            'conselho_notas_aprovado': 'Conselho — Aprovado',
         }
         return labels[tipo] || 'Notificação'
     }
@@ -213,6 +216,36 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                                 {notification.dados_adicionais?.provincia && (
                                     <span className="px-3 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
                                         📍 {notification.dados_adicionais.provincia}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {(notification.tipo === 'conselho_notas_convite' ||
+                            notification.tipo === 'conselho_notas_rascunho' ||
+                            notification.tipo === 'conselho_notas_aprovado') && (
+                            <div className="flex flex-wrap gap-2 mb-4">
+                                <span className="px-3 py-1 bg-slate-200 text-slate-800 text-xs font-medium rounded-full">
+                                    Conselho de Notas
+                                </span>
+                                {notification.tipo === 'conselho_notas_rascunho' && (
+                                    <span className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
+                                        Rascunho guardado
+                                    </span>
+                                )}
+                                {notification.tipo === 'conselho_notas_aprovado' && (
+                                    <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-medium rounded-full">
+                                        Aprovado
+                                    </span>
+                                )}
+                                {notification.dados_adicionais?.papel && (
+                                    <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full capitalize">
+                                        {String(notification.dados_adicionais.papel)}
+                                    </span>
+                                )}
+                                {notification.dados_adicionais?.prazo_dias && (
+                                    <span className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
+                                        {notification.dados_adicionais.prazo_dias} dia(s)
                                     </span>
                                 )}
                             </div>
