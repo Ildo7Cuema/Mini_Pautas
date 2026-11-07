@@ -13,6 +13,8 @@ import {
     DmButton,
     DmEmpty,
     DmStatCard,
+    DmModal,
+    DmModalFooter,
 } from '../modules/municipal_education/components/MunicipalChrome'
 
 interface EscolasOverviewPageProps {
@@ -27,6 +29,7 @@ export default function EscolasOverviewPage({ onNavigate }: EscolasOverviewPageP
     const [searchQuery, setSearchQuery] = useState('')
     const [selectedEscola, setSelectedEscola] = useState<Escola | null>(null)
     const [showEditModal, setShowEditModal] = useState(false)
+    const [showDetailsModal, setShowDetailsModal] = useState(false)
 
     const municipio = direcaoMunicipalProfile?.municipio || ''
 
@@ -63,6 +66,16 @@ export default function EscolasOverviewPage({ onNavigate }: EscolasOverviewPageP
     const handleEditEscola = (escola: Escola) => {
         setSelectedEscola(escola)
         setShowEditModal(true)
+    }
+
+    const handleViewDetails = (escola: Escola) => {
+        setSelectedEscola(escola)
+        setShowDetailsModal(true)
+    }
+
+    const closeDetailsModal = () => {
+        setShowDetailsModal(false)
+        if (!showEditModal) setSelectedEscola(null)
     }
 
     const handleSaveEscolaEdit = async (updates: Partial<Escola>) => {
@@ -208,7 +221,7 @@ export default function EscolasOverviewPage({ onNavigate }: EscolasOverviewPageP
                                         <DmButton
                                             variant="ghost"
                                             className="flex-1"
-                                            onClick={() => onNavigate?.('escola-detail', { escolaId: escola.id })}
+                                            onClick={() => handleViewDetails(escola)}
                                             icon={<Icons.EyeOpen className="w-4 h-4" />}
                                         >
                                             Detalhes
@@ -230,8 +243,173 @@ export default function EscolasOverviewPage({ onNavigate }: EscolasOverviewPageP
                         onSave={handleSaveEscolaEdit}
                     />
                 )}
+
+                <DmModal
+                    isOpen={showDetailsModal && !!selectedEscola}
+                    onClose={closeDetailsModal}
+                    title={selectedEscola?.nome || 'Detalhes da Escola'}
+                    subtitle="Consulta municipal"
+                    icon={<Icons.School className="w-5 h-5" />}
+                    accent="blue"
+                    size="lg"
+                    badge={
+                        selectedEscola ? (
+                            selectedEscola.bloqueado ? (
+                                <DmBadge tone="danger">Bloqueada</DmBadge>
+                            ) : !selectedEscola.ativo ? (
+                                <DmBadge tone="neutral">Inactiva</DmBadge>
+                            ) : (
+                                <DmBadge tone="success">Activa</DmBadge>
+                            )
+                        ) : undefined
+                    }
+                    footer={
+                        <DmModalFooter>
+                            <DmButton variant="secondary" onClick={closeDetailsModal}>
+                                Fechar
+                            </DmButton>
+                            {selectedEscola && (
+                                <DmButton
+                                    variant="primary"
+                                    onClick={() => {
+                                        setShowDetailsModal(false)
+                                        handleEditEscola(selectedEscola)
+                                    }}
+                                    icon={<Icons.Edit className="w-4 h-4" />}
+                                >
+                                    Editar
+                                </DmButton>
+                            )}
+                        </DmModalFooter>
+                    }
+                >
+                    {selectedEscola && (
+                        <EscolaDetailsContent
+                            escola={selectedEscola}
+                            stats={escolaStats[selectedEscola.id]}
+                        />
+                    )}
+                </DmModal>
             </DmContent>
         </DmPage>
+    )
+}
+
+function EscolaDetailsContent({
+    escola,
+    stats,
+}: {
+    escola: Escola
+    stats?: EscolaStats
+}) {
+    const infoItems = [
+        { label: 'Código', value: escola.codigo_escola || 'Sem código' },
+        { label: 'Município', value: escola.municipio },
+        { label: 'Província', value: escola.provincia },
+        { label: 'Email', value: escola.email || '—' },
+        { label: 'Telefone', value: escola.telefone || '—' },
+        { label: 'Endereço', value: escola.endereco || '—' },
+    ]
+
+    const genderRows = [
+        {
+            label: 'Alunos',
+            total: stats?.total_alunos ?? 0,
+            m: stats?.alunos_masculino ?? 0,
+            f: stats?.alunos_feminino ?? 0,
+        },
+        {
+            label: 'Professores',
+            total: stats?.total_professores ?? 0,
+            m: stats?.professores_masculino ?? 0,
+            f: stats?.professores_feminino ?? 0,
+        },
+        {
+            label: 'Funcionários',
+            total: stats?.total_funcionarios ?? 0,
+            m: stats?.funcionarios_masculino ?? 0,
+            f: stats?.funcionarios_feminino ?? 0,
+        },
+    ]
+
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {infoItems.map((item) => (
+                    <div key={item.label}>
+                        <p className="text-sm font-medium text-slate-500">{item.label}</p>
+                        <p className="mt-0.5 text-slate-900 break-words">{item.value}</p>
+                    </div>
+                ))}
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+                <h3 className="font-semibold text-slate-900 mb-3">Indicadores</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                        {
+                            icon: <Icons.Building className="w-5 h-5 text-blue-600" />,
+                            value: stats?.total_turmas ?? 0,
+                            label: 'Turmas',
+                            bg: 'bg-blue-50',
+                        },
+                        {
+                            icon: <Icons.Users className="w-5 h-5 text-emerald-600" />,
+                            value: stats?.total_alunos ?? 0,
+                            label: 'Alunos',
+                            bg: 'bg-emerald-50',
+                        },
+                        {
+                            icon: <Icons.AcademicCap className="w-5 h-5 text-indigo-600" />,
+                            value: stats?.media_geral?.toFixed(1) ?? '0.0',
+                            label: 'Média',
+                            bg: 'bg-indigo-50',
+                        },
+                        {
+                            icon: <Icons.CheckCircle className="w-5 h-5 text-teal-600" />,
+                            value: `${stats?.taxa_aprovacao ?? 0}%`,
+                            label: 'Aprovação',
+                            bg: 'bg-teal-50',
+                        },
+                    ].map((stat) => (
+                        <div key={stat.label} className={`${stat.bg} rounded-xl p-3 text-center`}>
+                            <div className="flex justify-center mb-1">{stat.icon}</div>
+                            <p className="text-xl font-bold text-slate-900">{stat.value}</p>
+                            <p className="text-xs text-slate-500">{stat.label}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+                <h3 className="font-semibold text-slate-900 mb-3">Distribuição por género</h3>
+                <div className="space-y-2.5">
+                    {genderRows.map((row) => (
+                        <div
+                            key={row.label}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5 text-sm"
+                        >
+                            <span className="font-medium text-slate-700">
+                                {row.label}{' '}
+                                <span className="text-slate-400 font-normal">({row.total})</span>
+                            </span>
+                            <span className="text-slate-600 tabular-nums">
+                                M: <strong className="text-slate-900">{row.m}</strong>
+                                <span className="mx-2 text-slate-300">·</span>
+                                F: <strong className="text-slate-900">{row.f}</strong>
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {escola.bloqueado && escola.bloqueado_motivo && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                    <p className="font-medium mb-1">Motivo do bloqueio</p>
+                    <p>{escola.bloqueado_motivo}</p>
+                </div>
+            )}
+        </div>
     )
 }
 
