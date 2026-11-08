@@ -3,6 +3,8 @@
  * Handles validation, parsing, and evaluation of component formulas
  */
 
+import { safeEvalMath } from './safeMathEval';
+
 export interface FormulaValidationResult {
     valid: boolean;
     error?: string;
@@ -424,10 +426,7 @@ export function evaluateFormula(
             evaluableExpression = evaluableExpression.replace(regex, value.toString());
         }
 
-        // Evaluate the expression safely
-        // Note: In production, consider using a safer expression evaluator library
-        // eslint-disable-next-line no-eval
-        const result = eval(evaluableExpression);
+        const result = safeEvalMath(evaluableExpression);
 
         if (typeof result !== 'number' || isNaN(result)) {
             throw new Error('Resultado da fórmula não é um número válido');

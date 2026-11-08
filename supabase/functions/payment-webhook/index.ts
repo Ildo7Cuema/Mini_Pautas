@@ -3,217 +3,301 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 /**
  * Edge Function: Payment Webhook
- * 
+ *
  * POST /payment-webhook
- * 
+ *
  * Receives payment confirmation callbacks from payment providers.
  * Updates transaction status and activates/renews licenses upon success.
- * 
+ *
  * Headers:
  *   - x-provider: The payment provider sending the webhook
- *   - x-signature: Signature for webhook verification (provider-specific)
+ *   - x-signature: HMAC-SHA256 hex of raw body (or sha256=<hex>)
+ *
+ * Secrets (podem ser configurados mais tarde):
+ *   EMIS_GPO_WEBHOOK_SECRET, PROXYPAY_WEBHOOK_SECRET,
+ *   APPYPAY_WEBHOOK_SECRET, MANUAL_WEBHOOK_SECRET
+ *
+ * Enquanto os secrets não existirem em desenvolvimento:
+ *   SKIP_WEBHOOK_VERIFICATION=true  (bloqueado se ENVIRONMENT=production)
  */
 
 interface WebhookPayload {
-    // Common fields
     transaction_id?: string
     reference?: string
-    status: 'success' | 'failed' | 'cancelled' | 'pending'
+    status: 'success' | 'failed' | 'cancelled' | 'pending' | string
     amount?: number
     currency?: string
-
-    // Provider-specific fields stored in metadata
-    provider_data?: Record<string, any>
+    provider_data?: Record<string, unknown>
 }
 
-// Webhook signature verification (placeholder - implement per provider)
-function verifyWebhookSignature(
+const ALLOWED_PROVIDERS = new Set(['emis_gpo', 'proxypay', 'appypay', 'manual'])
+
+function timingSafeEqual(a: string, b: string): boolean {
+    if (a.length !== b.length) return false
+    let mismatch = 0
+    for (let i = 0; i < a.length; i++) {
+        mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
+    }
+    return mismatch === 0
+}
+
+function normalizeHex(input: string): string {
+    return input.trim().toLowerCase().replace(/^sha256=/i, '')
+}
+
+async function hmacSha256Hex(secret: string, body: string): Promise<string> {
+    const key = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+    )
+    const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body))
+    return Array.from(new Uint8Array(signature))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+}
+
+/**
+ * Verifies webhook authenticity.
+ * - Production: requires configured secret + matching HMAC-SHA256 signature.
+ * - Dev only: SKIP_WEBHOOK_VERIFICATION=true is allowed when Deno.env DENO_ENV/ENVIRONMENT is not production.
+ * - Provider "manual" requires MANUAL_WEBHOOK_SECRET (never open).
+ */
+async function verifyWebhookSignature(
     provider: string,
     signature: string | null,
-    body: string
-): boolean {
-    // In production, each provider has its own signature verification method
-    // EMIS GPO, ProxyPay, and AppyPay all have different signature schemes
+    body: string,
+): Promise<boolean> {
+    const isProduction =
+        (Deno.env.get('ENVIRONMENT') || Deno.env.get('DENO_ENV') || Deno.env.get('NODE_ENV') || '')
+            .toLowerCase() === 'production'
+
+    if (Deno.env.get('SKIP_WEBHOOK_VERIFICATION') === 'true') {
+        if (isProduction) {
+            console.error('SKIP_WEBHOOK_VERIFICATION is forbidden in production')
+            return false
+        }
+        console.log('Webhook verification skipped (development mode)')
+        return true
+    }
+
+    if (!ALLOWED_PROVIDERS.has(provider)) {
+        console.error('Unknown payment provider:', provider)
+        return false
+    }
 
     const webhookSecrets: Record<string, string> = {
         emis_gpo: Deno.env.get('EMIS_GPO_WEBHOOK_SECRET') || '',
         proxypay: Deno.env.get('PROXYPAY_WEBHOOK_SECRET') || '',
         appypay: Deno.env.get('APPYPAY_WEBHOOK_SECRET') || '',
+        manual: Deno.env.get('MANUAL_WEBHOOK_SECRET') || '',
     }
 
-    // Skip verification in development/testing
-    if (Deno.env.get('SKIP_WEBHOOK_VERIFICATION') === 'true') {
-        console.log('⚠️ Webhook verification skipped (development mode)')
-        return true
+    const secret = webhookSecrets[provider]
+    if (!secret) {
+        console.error('Missing webhook secret for provider:', provider)
+        return false
     }
 
-    // If no signature provided but secret exists, reject
-    if (!signature && webhookSecrets[provider]) {
+    if (!signature) {
         console.error('Missing signature for provider:', provider)
         return false
     }
 
-    // TODO: Implement actual signature verification per provider
-    // Example for HMAC-based verification:
-    // const crypto = await import('https://deno.land/std@0.168.0/crypto/mod.ts')
-    // const expectedSignature = await crypto.hmac('sha256', webhookSecrets[provider], body)
-    // return signature === expectedSignature
-
-    return true
+    const expected = await hmacSha256Hex(secret, body)
+    const provided = normalizeHex(signature)
+    return timingSafeEqual(expected, provided)
 }
 
-// Map provider status to our internal status
+function isSafeTransactionId(value: string): boolean {
+    // UUID, provider refs, alphanumeric refs — reject PostgREST filter metacharacters
+    return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)
+}
+
 function mapProviderStatus(provider: string, providerStatus: string): string {
     const statusMaps: Record<string, Record<string, string>> = {
         emis_gpo: {
-            'PAID': 'sucesso',
-            'APPROVED': 'sucesso',
-            'FAILED': 'falha',
-            'CANCELLED': 'cancelado',
-            'PENDING': 'processando',
-            'EXPIRED': 'cancelado'
+            PAID: 'sucesso',
+            APPROVED: 'sucesso',
+            FAILED: 'falha',
+            CANCELLED: 'cancelado',
+            PENDING: 'processando',
+            EXPIRED: 'cancelado',
+            success: 'sucesso',
+            failed: 'falha',
+            cancelled: 'cancelado',
+            pending: 'processando',
         },
         proxypay: {
-            'paid': 'sucesso',
-            'pending': 'processando',
-            'failed': 'falha',
-            'deleted': 'cancelado'
+            paid: 'sucesso',
+            pending: 'processando',
+            failed: 'falha',
+            deleted: 'cancelado',
+            success: 'sucesso',
+            cancelled: 'cancelado',
         },
         appypay: {
-            'completed': 'sucesso',
-            'processing': 'processando',
-            'failed': 'falha',
-            'cancelled': 'cancelado'
+            completed: 'sucesso',
+            processing: 'processando',
+            failed: 'falha',
+            cancelled: 'cancelado',
+            success: 'sucesso',
+            pending: 'processando',
         },
         manual: {
-            'success': 'sucesso',
-            'failed': 'falha',
-            'cancelled': 'cancelado'
-        }
+            success: 'sucesso',
+            failed: 'falha',
+            cancelled: 'cancelado',
+            pending: 'processando',
+        },
     }
 
     return statusMaps[provider]?.[providerStatus] || providerStatus
 }
 
 serve(async (req) => {
-    // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', {
             headers: {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-provider, x-signature',
+                'Access-Control-Allow-Headers':
+                    'authorization, x-client-info, apikey, content-type, x-provider, x-signature',
             },
         })
     }
 
-    // Only allow POST
     if (req.method !== 'POST') {
-        return new Response(
-            JSON.stringify({ error: 'Method not allowed' }),
-            { status: 405, headers: { 'Content-Type': 'application/json' } }
-        )
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+            status: 405,
+            headers: { 'Content-Type': 'application/json' },
+        })
     }
 
     try {
-        // Get provider from header or body
-        const provider = req.headers.get('x-provider') || 'manual'
+        const provider = (req.headers.get('x-provider') || 'manual').toLowerCase()
         const signature = req.headers.get('x-signature')
-
-        // Read raw body for signature verification
         const rawBody = await req.text()
 
-        // Verify webhook signature
-        if (!verifyWebhookSignature(provider, signature, rawBody)) {
+        if (!(await verifyWebhookSignature(provider, signature, rawBody))) {
             console.error('Webhook signature verification failed for provider:', provider)
-            return new Response(
-                JSON.stringify({ error: 'Invalid signature' }),
-                { status: 401, headers: { 'Content-Type': 'application/json' } }
-            )
+            return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+                status: 401,
+                headers: { 'Content-Type': 'application/json' },
+            })
         }
 
-        // Parse body
         const payload: WebhookPayload = JSON.parse(rawBody)
-        console.log('Received webhook:', { provider, payload })
 
-        // Create Supabase admin client (webhooks don't have user context)
         const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
         )
 
-        // Find transaction by provider_transaction_id or reference
         const transactionId = payload.transaction_id || payload.reference
-        if (!transactionId) {
+        if (!transactionId || !isSafeTransactionId(String(transactionId))) {
             return new Response(
-                JSON.stringify({ error: 'Missing transaction_id or reference' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
+                JSON.stringify({ error: 'Missing or invalid transaction_id / reference' }),
+                { status: 400, headers: { 'Content-Type': 'application/json' } },
             )
         }
 
-        // Search for transaction
-        let { data: transacao, error: searchError } = await supabaseAdmin
-            .from('transacoes_pagamento')
-            .select('*, licencas(*), escolas(*)')
-            .or(`provider_transaction_id.eq.${transactionId},metadata->reference.eq.${transactionId}`)
-            .eq('provider', provider)
-            .single()
+        const safeId = String(transactionId)
 
-        // If not found by provider_transaction_id, try by our internal ID
+        // Prefer exact equality lookups (no string-interpolated .or filter)
+        let transacao: Record<string, any> | null = null
+        let searchError: { message?: string } | null = null
+
+        {
+            const { data, error } = await supabaseAdmin
+                .from('transacoes_pagamento')
+                .select('*, licencas(*), escolas(*)')
+                .eq('provider', provider)
+                .eq('provider_transaction_id', safeId)
+                .maybeSingle()
+            if (error) searchError = error
+            if (data) transacao = data
+        }
+
         if (!transacao) {
             const { data, error } = await supabaseAdmin
                 .from('transacoes_pagamento')
                 .select('*, licencas(*), escolas(*)')
-                .eq('id', transactionId)
-                .single()
+                .eq('provider', provider)
+                .contains('metadata', { reference: safeId })
+                .maybeSingle()
+            if (error) searchError = error
+            if (data) transacao = data
+        }
 
-            transacao = data
-            searchError = error
+        if (!transacao && /^[0-9a-f-]{36}$/i.test(safeId)) {
+            const { data, error } = await supabaseAdmin
+                .from('transacoes_pagamento')
+                .select('*, licencas(*), escolas(*)')
+                .eq('id', safeId)
+                .maybeSingle()
+            if (error) searchError = error
+            if (data) transacao = data
         }
 
         if (searchError || !transacao) {
-            console.error('Transaction not found:', transactionId, searchError)
-            return new Response(
-                JSON.stringify({ error: 'Transação não encontrada' }),
-                { status: 404, headers: { 'Content-Type': 'application/json' } }
-            )
+            console.error('Transaction not found:', safeId, searchError)
+            return new Response(JSON.stringify({ error: 'Transação não encontrada' }), {
+                status: 404,
+                headers: { 'Content-Type': 'application/json' },
+            })
         }
 
-        // Map status
+        // Reject replay of already-successful payments mutating license again unnecessarily
+        // but still allow idempotent success responses.
         const internalStatus = mapProviderStatus(provider, payload.status)
 
-        // Update transaction
+        if (
+            payload.amount != null &&
+            transacao.valor != null &&
+            Number(payload.amount) !== Number(transacao.valor)
+        ) {
+            console.error('Webhook amount mismatch', {
+                expected: transacao.valor,
+                received: payload.amount,
+            })
+            return new Response(JSON.stringify({ error: 'Amount mismatch' }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+
         const { error: updateError } = await supabaseAdmin
             .from('transacoes_pagamento')
             .update({
                 estado: internalStatus,
                 provider_transaction_id: payload.transaction_id || transacao.provider_transaction_id,
                 metadata: {
-                    ...transacao.metadata,
+                    ...(transacao.metadata || {}),
                     webhook_received_at: new Date().toISOString(),
-                    provider_data: payload.provider_data
+                    provider_data: payload.provider_data,
                 },
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
             })
             .eq('id', transacao.id)
 
         if (updateError) {
             console.error('Error updating transaction:', updateError)
-            return new Response(
-                JSON.stringify({ error: 'Erro ao actualizar transação' }),
-                { status: 500, headers: { 'Content-Type': 'application/json' } }
-            )
+            return new Response(JSON.stringify({ error: 'Erro ao actualizar transação' }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' },
+            })
         }
 
-        // If payment successful, activate/renew license
-        if (internalStatus === 'sucesso' && transacao.licenca_id) {
-            // Update license
+        if (internalStatus === 'sucesso' && transacao.licenca_id && transacao.estado !== 'sucesso') {
             const { error: licenseError } = await supabaseAdmin
                 .from('licencas')
                 .update({
                     estado: 'ativa',
                     data_ultimo_pagamento: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
+                    updated_at: new Date().toISOString(),
                 })
                 .eq('id', transacao.licenca_id)
 
@@ -221,7 +305,6 @@ serve(async (req) => {
                 console.error('Error updating license:', licenseError)
             }
 
-            // Unblock school
             const { error: unblockError } = await supabaseAdmin
                 .from('escolas')
                 .update({
@@ -229,7 +312,7 @@ serve(async (req) => {
                     bloqueado_motivo: null,
                     bloqueado_em: null,
                     bloqueado_por: null,
-                    ativo: true
+                    ativo: true,
                 })
                 .eq('id', transacao.escola_id)
 
@@ -237,38 +320,27 @@ serve(async (req) => {
                 console.error('Error unblocking school:', unblockError)
             }
 
-            // Log to history
-            await supabaseAdmin
-                .from('historico_licencas')
-                .insert({
-                    licenca_id: transacao.licenca_id,
-                    escola_id: transacao.escola_id,
-                    estado_anterior: transacao.licencas?.estado || 'pendente',
-                    estado_novo: 'ativa',
-                    motivo: `Pagamento confirmado via ${provider} - Ref: ${transactionId}`,
-                    metadata: { transaction_id: transacao.id, provider }
-                })
+            await supabaseAdmin.from('historico_licencas').insert({
+                licenca_id: transacao.licenca_id,
+                escola_id: transacao.escola_id,
+                estado_anterior: transacao.licencas?.estado || 'pendente',
+                estado_novo: 'ativa',
+                motivo: `Pagamento confirmado via ${provider} - Ref: ${safeId}`,
+                metadata: { transaction_id: transacao.id, provider },
+            })
 
-            console.log('✅ License activated and school unblocked:', transacao.escola_id)
+            console.log('License activated and school unblocked:', transacao.escola_id)
         }
 
-        // If payment failed, log it
-        if (internalStatus === 'falha') {
-            console.log('❌ Payment failed for transaction:', transacao.id)
-
-            // Log to history
-            if (transacao.licenca_id) {
-                await supabaseAdmin
-                    .from('historico_licencas')
-                    .insert({
-                        licenca_id: transacao.licenca_id,
-                        escola_id: transacao.escola_id,
-                        estado_anterior: transacao.licencas?.estado,
-                        estado_novo: transacao.licencas?.estado || 'pendente',
-                        motivo: `Pagamento falhou via ${provider} - Ref: ${transactionId}`,
-                        metadata: { transaction_id: transacao.id, provider, error: payload.provider_data }
-                    })
-            }
+        if (internalStatus === 'falha' && transacao.licenca_id) {
+            await supabaseAdmin.from('historico_licencas').insert({
+                licenca_id: transacao.licenca_id,
+                escola_id: transacao.escola_id,
+                estado_anterior: transacao.licencas?.estado,
+                estado_novo: transacao.licencas?.estado || 'pendente',
+                motivo: `Pagamento falhou via ${provider} - Ref: ${safeId}`,
+                metadata: { transaction_id: transacao.id, provider, error: payload.provider_data },
+            })
         }
 
         return new Response(
@@ -276,29 +348,31 @@ serve(async (req) => {
                 success: true,
                 transaction_id: transacao.id,
                 status: internalStatus,
-                message: internalStatus === 'sucesso'
-                    ? 'Pagamento confirmado e licença activada'
-                    : `Status actualizado para: ${internalStatus}`
+                message:
+                    internalStatus === 'sucesso'
+                        ? 'Pagamento confirmado e licença activada'
+                        : `Status actualizado para: ${internalStatus}`,
             }),
             {
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
                 },
-            }
+            },
         )
-
     } catch (error) {
         console.error('Webhook error:', error)
         return new Response(
-            JSON.stringify({ error: error.message || 'Erro interno do servidor' }),
+            JSON.stringify({
+                error: error instanceof Error ? error.message : 'Erro interno do servidor',
+            }),
             {
                 status: 500,
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
                 },
-            }
+            },
         )
     }
 })

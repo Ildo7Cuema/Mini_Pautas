@@ -3,6 +3,7 @@
  */
 
 import { supabase } from '../lib/supabaseClient'
+import { safeEvalMath } from './safeMathEval'
 
 export interface FormulaConfig {
     id?: string
@@ -54,14 +55,12 @@ export function calculateMT(
         const T2 = notasFinais[2]
         const T3 = notasFinais[3]
 
-        // Replace T1, T2, T3 in formula and evaluate
         const expression = config.formula_expression
             .replace(/T1/gi, T1.toString())
             .replace(/T2/gi, T2.toString())
             .replace(/T3/gi, T3.toString())
 
-        // eslint-disable-next-line no-eval
-        const result = eval(expression)
+        const result = safeEvalMath(expression)
         return typeof result === 'number' ? result : null
     } catch (error) {
         console.error('Error evaluating MT formula:', error)
@@ -188,8 +187,7 @@ export function validateMTFormula(formula: string): { valid: boolean; error?: st
             .replace(/T2/gi, '16')
             .replace(/T3/gi, '17')
 
-        // eslint-disable-next-line no-eval
-        const result = eval(testFormula)
+        const result = safeEvalMath(testFormula)
 
         if (typeof result !== 'number' || isNaN(result)) {
             return { valid: false, error: 'Fórmula não produz um número válido' }

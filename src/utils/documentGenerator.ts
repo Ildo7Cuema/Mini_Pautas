@@ -2,6 +2,7 @@ import jsPDF from 'jspdf'
 import { format } from 'date-fns'
 import { pt } from 'date-fns/locale'
 import { supabase } from '../lib/supabaseClient'
+import { sanitizeHtml } from './sanitizeHtml'
 
 // Extended interface to include ALL employee fields
 export interface DocumentData {
@@ -363,7 +364,7 @@ export const generatePDF = async (
 
     // === BODY ===
     const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = processTemplate(config.conteudo_html, data)
+    tempDiv.innerHTML = sanitizeHtml(processTemplate(config.conteudo_html, data))
 
     // Content width in mm for CSS (170mm for A4 with our margins)
     const contentWidthMm = 170

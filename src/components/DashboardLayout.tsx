@@ -28,7 +28,7 @@ interface SidebarProps {
     currentPage: string
     onNavigate: (
         page: string,
-        params?: { filter?: string; turmaId?: string; conselhoToken?: string }
+        params?: { filter?: string; turmaId?: string; conselhoToken?: string; conselhoId?: string }
     ) => void
     onSearch?: (query: string) => void
 }
@@ -1048,6 +1048,10 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                                         onNavigate('reports', {
                                             filter: 'conselho-notas',
                                             turmaId: String(n.dados_adicionais.turma_id),
+                                            conselhoId: n.dados_adicionais.conselho_id
+                                                ? String(n.dados_adicionais.conselho_id)
+                                                : undefined,
+                                            // legado: links antigos ainda podem ter token
                                             conselhoToken: n.dados_adicionais.token
                                                 ? String(n.dados_adicionais.token)
                                                 : undefined,

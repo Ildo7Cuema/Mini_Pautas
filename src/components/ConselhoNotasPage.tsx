@@ -136,25 +136,33 @@ export const ConselhoNotasPage: React.FC<ConselhoNotasPageProps> = ({ initialTur
 
     useEffect(() => {
         let pendingToken: string | undefined
+        let pendingConselhoId: string | undefined
         try {
             const raw = sessionStorage.getItem(CONSELHO_INVITE_STORAGE_KEY)
             if (raw) {
-                const parsed = JSON.parse(raw) as { turmaId?: string; token?: string }
+                const parsed = JSON.parse(raw) as {
+                    turmaId?: string
+                    token?: string
+                    conselhoId?: string
+                }
                 if (parsed.turmaId) setSelectedTurma(parsed.turmaId)
                 pendingToken = parsed.token
+                pendingConselhoId = parsed.conselhoId
                 sessionStorage.removeItem(CONSELHO_INVITE_STORAGE_KEY)
             }
         } catch {
             /* ignore */
         }
 
-        if (!pendingToken) return
+        if (!pendingToken && !pendingConselhoId) return
 
         ;(async () => {
             try {
-                const { data, error } = await supabase.rpc('aceitar_conselho_convite', {
-                    p_token: pendingToken,
-                })
+                const { data, error } = pendingToken
+                    ? await supabase.rpc('aceitar_conselho_convite', { p_token: pendingToken })
+                    : await supabase.rpc('aceitar_conselho_convite_pendente', {
+                          p_conselho_id: pendingConselhoId,
+                      })
                 if (error) throw error
                 const result = data as { turma_id?: string }
                 const turmaId = result?.turma_id

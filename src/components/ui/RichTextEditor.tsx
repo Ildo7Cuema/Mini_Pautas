@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { sanitizeHtml } from '../../utils/sanitizeHtml'
 
 interface RichTextEditorProps {
     value: string
@@ -21,13 +22,13 @@ export const RichTextEditor = ({
     // Initialize content
     useEffect(() => {
         if (editorRef.current && editorRef.current.innerHTML !== value) {
-            editorRef.current.innerHTML = value
+            editorRef.current.innerHTML = sanitizeHtml(value)
         }
     }, [])
 
     const handleInput = useCallback(() => {
         if (editorRef.current) {
-            onChange(editorRef.current.innerHTML)
+            onChange(sanitizeHtml(editorRef.current.innerHTML))
         }
     }, [onChange])
 

@@ -566,7 +566,7 @@ export async function convidarMembroConselho(params: {
                 conselho_id: params.conselhoId,
                 turma_id: conselhoMeta?.turma_id || null,
                 ano_lectivo: conselhoMeta?.ano_lectivo || null,
-                token: membro.token,
+                // token omitido de propósito — aceitação via RPC por conselho_id
                 papel: params.papel,
                 prazo_dias: Math.floor(params.prazoDias),
                 expires_at: membro.expires_at,

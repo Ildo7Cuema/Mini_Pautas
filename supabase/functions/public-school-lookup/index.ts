@@ -3,122 +3,152 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 /**
  * Edge Function: Public School Lookup
- * 
+ *
  * POST /public-school-lookup
- * 
- * Allows public (unauthenticated) lookup of schools by code or email
- * for the purpose of blocked school payment flow.
- * 
- * Uses service role to bypass RLS policies.
- * 
- * Body: { identifier: string }
- * Returns: { success, school?: {...} }
+ * Public lookup by school code or email for blocked-school payment flow.
+ * Uses service role (bypasses RLS) — keep response minimal + rate-limited.
  */
 
 interface LookupRequest {
     identifier: string
 }
 
-interface SchoolPublicInfo {
-    id: string
-    nome: string
-    codigo_escola: string
-    email?: string
-    bloqueado: boolean
-    bloqueado_motivo?: string
-    provincia?: string
-    municipio?: string
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Content-Type': 'application/json',
+}
+
+// In-memory rate limit (per isolate). Best-effort — not a substitute for gateway limits.
+const RATE_WINDOW_MS = 60_000
+const RATE_MAX = 20
+const hits = new Map<string, { count: number; resetAt: number }>()
+
+function clientKey(req: Request): string {
+    return (
+        req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        req.headers.get('cf-connecting-ip') ||
+        req.headers.get('x-real-ip') ||
+        'unknown'
+    )
+}
+
+function allowRequest(key: string): boolean {
+    const now = Date.now()
+    const cur = hits.get(key)
+    if (!cur || now >= cur.resetAt) {
+        hits.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS })
+        return true
+    }
+    if (cur.count >= RATE_MAX) return false
+    cur.count += 1
+    return true
+}
+
+function escapeIlike(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+}
+
+function maskEmail(email: string | null | undefined): string | undefined {
+    if (!email || !email.includes('@')) return undefined
+    const [user, domain] = email.split('@')
+    if (!user || !domain) return undefined
+    const visible = user.slice(0, Math.min(2, user.length))
+    return `${visible}***@${domain}`
 }
 
 serve(async (req) => {
-    // Handle CORS preflight
     if (req.method === 'OPTIONS') {
-        return new Response('ok', {
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-            },
+        return new Response('ok', { headers: corsHeaders })
+    }
+
+    if (req.method !== 'POST') {
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+            status: 405,
+            headers: corsHeaders,
         })
     }
 
-    // Only allow POST
-    if (req.method !== 'POST') {
+    const key = clientKey(req)
+    if (!allowRequest(key)) {
         return new Response(
-            JSON.stringify({ error: 'Method not allowed' }),
-            { status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+            JSON.stringify({ success: false, error: 'Demasiados pedidos. Tente novamente dentro de um minuto.' }),
+            { status: 429, headers: { ...corsHeaders, 'Retry-After': '60' } },
         )
     }
 
     try {
-        // Create Supabase client with SERVICE ROLE (bypasses RLS)
         const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
         )
 
-        // Parse request body
         const body: LookupRequest = await req.json()
         const { identifier } = body
 
-        // Validate input
-        if (!identifier || typeof identifier !== 'string' || identifier.trim().length < 2) {
+        if (!identifier || typeof identifier !== 'string' || identifier.trim().length < 3) {
             return new Response(
                 JSON.stringify({
                     success: false,
-                    error: 'Identificador inválido. Forneça o código ou email da escola.'
+                    error: 'Identificador inválido. Forneça o código ou email da escola.',
                 }),
-                { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+                { status: 400, headers: corsHeaders },
+            )
+        }
+
+        if (identifier.trim().length > 120) {
+            return new Response(
+                JSON.stringify({ success: false, error: 'Identificador demasiado longo.' }),
+                { status: 400, headers: corsHeaders },
             )
         }
 
         const searchValue = identifier.trim()
+        const looksLikeEmail = searchValue.includes('@')
 
-        // Try to find school by codigo_escola first
-        let school: SchoolPublicInfo | null = null
+        let school: {
+            id: string
+            nome: string
+            codigo_escola: string
+            email?: string | null
+            bloqueado: boolean
+            bloqueado_motivo?: string | null
+            provincia?: string | null
+            municipio?: string | null
+        } | null = null
 
-        const { data: byCode, error: codeError } = await supabaseAdmin
-            .from('escolas')
-            .select('id, nome, codigo_escola, email, bloqueado, bloqueado_motivo, provincia, municipio')
-            .ilike('codigo_escola', searchValue)
-            .limit(1)
-            .maybeSingle()
-
-        if (codeError) {
-            console.error('Error searching by code:', codeError)
-        }
-
-        if (byCode) {
-            school = byCode as SchoolPublicInfo
-        } else {
-            // Try by email
-            const { data: byEmail, error: emailError } = await supabaseAdmin
+        if (looksLikeEmail) {
+            const { data, error } = await supabaseAdmin
                 .from('escolas')
                 .select('id, nome, codigo_escola, email, bloqueado, bloqueado_motivo, provincia, municipio')
-                .ilike('email', searchValue)
+                .ilike('email', escapeIlike(searchValue))
                 .limit(1)
                 .maybeSingle()
-
-            if (emailError) {
-                console.error('Error searching by email:', emailError)
-            }
-
-            if (byEmail) {
-                school = byEmail as SchoolPublicInfo
-            }
+            if (error) console.error('Error searching by email:', error)
+            school = data
+        } else {
+            const { data, error } = await supabaseAdmin
+                .from('escolas')
+                .select('id, nome, codigo_escola, email, bloqueado, bloqueado_motivo, provincia, municipio')
+                .ilike('codigo_escola', escapeIlike(searchValue))
+                .limit(1)
+                .maybeSingle()
+            if (error) console.error('Error searching by code:', error)
+            school = data
         }
 
+        // Resposta uniforme (não revelar se o email vs código falhou)
         if (!school) {
             return new Response(
                 JSON.stringify({
                     success: false,
-                    error: 'Escola não encontrada. Verifique o código ou email inserido.'
+                    error: 'Escola não encontrada. Verifique o código ou email inserido.',
                 }),
-                { status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+                { status: 404, headers: corsHeaders },
             )
         }
 
-        // Return limited public info only
         return new Response(
             JSON.stringify({
                 success: true,
@@ -126,33 +156,21 @@ serve(async (req) => {
                     id: school.id,
                     nome: school.nome,
                     codigo_escola: school.codigo_escola,
-                    email: school.email,
+                    // email mascarado — evita enumeração de contactos
+                    email: maskEmail(school.email),
                     bloqueado: school.bloqueado,
                     bloqueado_motivo: school.bloqueado_motivo,
                     provincia: school.provincia,
-                    municipio: school.municipio
-                }
-            }),
-            {
-                status: 200,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
+                    municipio: school.municipio,
                 },
-            }
+            }),
+            { status: 200, headers: corsHeaders },
         )
-
     } catch (error) {
         console.error('Error:', error)
-        return new Response(
-            JSON.stringify({ success: false, error: 'Erro interno do servidor' }),
-            {
-                status: 500,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                },
-            }
-        )
+        return new Response(JSON.stringify({ success: false, error: 'Erro interno do servidor' }), {
+            status: 500,
+            headers: corsHeaders,
+        })
     }
 })

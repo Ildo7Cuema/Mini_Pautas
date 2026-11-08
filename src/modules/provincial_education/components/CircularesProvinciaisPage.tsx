@@ -164,11 +164,14 @@ export const CircularesProvinciaisPage: React.FC = () => {
             let anexo_filename: string | undefined;
 
             if (attachmentFile) {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (!authUser?.id) throw new Error('Sessão inválida para upload');
                 const fileExt = attachmentFile.name.split('.').pop();
                 const fileName = `provincial_${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-                const { error: uploadError } = await supabase.storage.from('circulares').upload(fileName, attachmentFile);
+                const filePath = `${authUser.id}/${fileName}`;
+                const { error: uploadError } = await supabase.storage.from('circulares').upload(filePath, attachmentFile);
                 if (uploadError) throw uploadError;
-                const { data: { publicUrl } } = supabase.storage.from('circulares').getPublicUrl(fileName);
+                const { data: { publicUrl } } = supabase.storage.from('circulares').getPublicUrl(filePath);
                 anexo_url = publicUrl;
                 anexo_filename = attachmentFile.name;
             }

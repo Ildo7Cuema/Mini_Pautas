@@ -61,9 +61,11 @@ export function CircularesPage({ onNavigate: _onNavigate }: CircularesPageProps)
             let anexo_filename = undefined;
 
             if (file) {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (!authUser?.id) throw new Error('Sessão inválida para upload');
                 const fileExt = file.name.split('.').pop();
                 const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-                const filePath = `${fileName}`;
+                const filePath = `${authUser.id}/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
                     .from('circulares')

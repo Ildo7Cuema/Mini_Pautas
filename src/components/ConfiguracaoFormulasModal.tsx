@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { FormulaConfig, MTCalculationType, getDefaultMTConfig, saveFormulaConfig, validateMTFormula } from '../utils/formulaConfigUtils'
+import { safeEvalMath } from '../utils/safeMathEval'
 
 interface ConfiguracaoFormulasModalProps {
     isOpen: boolean
@@ -112,8 +113,7 @@ export const ConfiguracaoFormulasModal: React.FC<ConfiguracaoFormulasModalProps>
     } else if (customFormula) {
         try {
             const expr = customFormula.replace(/T1/gi, T1.toString()).replace(/T2/gi, T2.toString()).replace(/T3/gi, T3.toString())
-            // eslint-disable-next-line no-eval
-            preview = eval(expr)
+            preview = safeEvalMath(expr)
         } catch {
             preview = 0
         }

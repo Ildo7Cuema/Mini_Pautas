@@ -22,6 +22,7 @@
         "db:apply-usage-stats": "node scripts/apply-system-usage-stats.mjs",
         "db:apply-conselho-membros": "node scripts/apply-conselho-membros-propostas.mjs",
         "db:apply-conselho-notif": "node scripts/apply-conselho-notificacoes.mjs",
+        "db:apply-security-hardening": "node scripts/apply-security-hardening-20261108.mjs",
         "verify:delete-escola": "node scripts/verify-delete-escola-responsavel.mjs"
     },
     "dependencies": {
@@ -35,7 +36,7 @@
         "pg": "^8.19.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
-        "react-router-dom": "^6.20.0",
+        "react-router-dom": "^6.30.6",
         "recharts": "^2.10.0",
         "xlsx": "^0.18.5",
         "zustand": "^4.4.7"

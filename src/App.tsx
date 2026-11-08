@@ -271,7 +271,12 @@ function App() {
 
     const handleNavigate = (
         page: string,
-        params?: { turmaId?: string; filter?: string; conselhoToken?: string }
+        params?: {
+            turmaId?: string
+            filter?: string
+            conselhoToken?: string
+            conselhoId?: string
+        }
     ) => {
         setCurrentPage(page)
         setSearchQuery('') // Clear search when navigating
@@ -283,13 +288,14 @@ function App() {
         if (page === 'reports' && params?.filter === 'conselho-notas') {
             setReportsInitialTab('conselho-notas')
             if (params.turmaId) setReportsInitialTurmaId(params.turmaId)
-            if (params.conselhoToken) {
+            if (params.conselhoToken || params.conselhoId) {
                 try {
                     sessionStorage.setItem(
                         'conselho_invite_pending',
                         JSON.stringify({
                             turmaId: params.turmaId,
                             token: params.conselhoToken,
+                            conselhoId: params.conselhoId,
                         })
                     )
                 } catch {
