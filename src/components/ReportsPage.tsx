@@ -32,6 +32,53 @@ import { TermoFrequenciaPreview } from './TermoFrequenciaPreview'
 import { BoletimNotasPreview, BoletimNotasData } from './BoletimNotasPreview'
 import { generateTermoFrequenciaPDF, generateBatchTermosFrequenciaZip, generateMapaAproveitamentoPDF, generateBoletimNotasPDF, generateBatchBoletinsZip } from '../utils/pdfGenerator'
 import { MapaAproveitamentoPreview, MapaAproveitamentoData, MapaAproveitamentoTurmaData } from './MapaAproveitamentoPreview'
+import {
+    classifyStudent,
+    isAttendanceSufficient,
+    type DisciplinaGrade,
+} from '../utils/studentClassification'
+
+function extractClasseFromTurmaNome(turmaNome: string): string | undefined {
+    const match = turmaNome.match(/(\d+[ªº]\s*Classe)/i)
+    return match ? match[1] : undefined
+}
+
+/**
+ * Decide transição geral do Termo de Frequência alinhada com classifyStudent,
+ * incluindo a regra de frequência mínima (66,67%).
+ */
+function resolveTransicaoTermo(
+    disciplinasProcessadas: Array<{ id: string; nome: string; nota_final: number | null; transita: boolean }>,
+    nivelEnsino: string | undefined,
+    turmaNome: string,
+    frequenciaAnual?: number | null
+) {
+    const disciplinaGrades: DisciplinaGrade[] = disciplinasProcessadas
+        .filter((d): d is typeof d & { nota_final: number } => d.nota_final !== null)
+        .map(d => ({ id: d.id, nome: d.nome, nota: d.nota_final }))
+
+    const classification = classifyStudent(
+        disciplinaGrades,
+        nivelEnsino,
+        extractClasseFromTurmaNome(turmaNome),
+        undefined,
+        frequenciaAnual ?? undefined
+    )
+
+    const frequenciaOk = isAttendanceSufficient(frequenciaAnual)
+
+    // Transita plena ou condicional; frequência insuficiente bloqueia sempre
+    const transita =
+        frequenciaOk &&
+        (classification.status === 'Transita' || classification.status === 'Condicional')
+
+    return {
+        transita,
+        observacao_padronizada: classification.observacao_padronizada,
+        motivo_retencao: classification.motivo_retencao,
+        matricula_condicional: classification.matricula_condicional && frequenciaOk,
+    }
+}
 
 interface Turma {
     id: string
@@ -491,11 +538,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                 }
             })
 
-            // Determine overall education level for threshold
-            const isPrimaryEducation = turmaData.nivel_ensino?.toLowerCase().includes('primário') ||
-                turmaData.nivel_ensino?.toLowerCase().includes('primario')
-            const limiarGeralTransicao = isPrimaryEducation ? 5 : 10
-
             // Calculate overall statistics
             const notasFinaisValidas = disciplinasProcessadas
                 .map(d => d.nota_final)
@@ -508,8 +550,13 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
             const disciplinasAprovadas = disciplinasProcessadas.filter(d => d.transita).length
             const disciplinasReprovadas = disciplinasProcessadas.filter(d => !d.transita).length
 
-            // Student passes if all disciplines are passed and average meets threshold
-            const transitaGeral = disciplinasProcessadas.every(d => d.transita) && mediaGeral >= limiarGeralTransicao
+            // Transição geral: notas + frequência mínima (66,67%) via classifyStudent
+            const transicao = resolveTransicaoTermo(
+                disciplinasProcessadas,
+                turmaData.nivel_ensino,
+                turmaData.nome,
+                alunoData.frequencia_anual
+            )
 
             // Load escola info (optional)
             const { data: escolaData } = await supabase
@@ -554,10 +601,10 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     total_disciplinas: disciplinasProcessadas.length,
                     disciplinas_aprovadas: disciplinasAprovadas,
                     disciplinas_reprovadas: disciplinasReprovadas,
-                    transita: transitaGeral,
-                    observacao_padronizada: alunoData.observacao_transicao,
-                    motivo_retencao: alunoData.motivo_retencao,
-                    matricula_condicional: alunoData.matricula_condicional
+                    transita: transicao.transita,
+                    observacao_padronizada: transicao.observacao_padronizada,
+                    motivo_retencao: transicao.motivo_retencao,
+                    matricula_condicional: transicao.matricula_condicional
                 },
                 escola: escolaData || undefined
             })
@@ -1960,7 +2007,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         nome_pai, nome_mae, nome_encarregado, parentesco_encarregado,
                         telefone_encarregado, email_encarregado, profissao_encarregado,
                         provincia, municipio, bairro, rua, endereco,
-                        ano_ingresso, escola_anterior, classe_anterior, observacoes_academicas
+                        ano_ingresso, escola_anterior, classe_anterior, observacoes_academicas,
+                        frequencia_anual, tipo_exame
                     `)
                     .eq('id', alunoId)
                     .single()
@@ -2057,11 +2105,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     }
                 })
 
-                // Determine overall education level for threshold
-                const isPrimaryEducation = selectedTurmaData.nivel_ensino?.toLowerCase().includes('primário') ||
-                    selectedTurmaData.nivel_ensino?.toLowerCase().includes('primario')
-                const limiarGeralTransicao = isPrimaryEducation ? 5 : 10
-
                 const notasFinaisValidas = disciplinasProcessadas
                     .map(d => d.nota_final)
                     .filter(n => n !== null) as number[]
@@ -2072,7 +2115,14 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
 
                 const disciplinasAprovadas = disciplinasProcessadas.filter(d => d.transita).length
                 const disciplinasReprovadas = disciplinasProcessadas.filter(d => !d.transita).length
-                const transitaGeral = disciplinasProcessadas.every(d => d.transita) && mediaGeral >= limiarGeralTransicao
+
+                // Transição geral: notas + frequência mínima (66,67%) via classifyStudent
+                const transicao = resolveTransicaoTermo(
+                    disciplinasProcessadas,
+                    selectedTurmaData.nivel_ensino,
+                    selectedTurmaData.nome,
+                    alunoData.frequencia_anual
+                )
 
                 const { data: escolaData } = await supabase
                     .from('escolas')
@@ -2106,6 +2156,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         escola_anterior: alunoData.escola_anterior,
                         classe_anterior: alunoData.classe_anterior,
                         observacoes_academicas: alunoData.observacoes_academicas,
+                        frequencia_anual: alunoData.frequencia_anual,
+                        tipo_exame: alunoData.tipo_exame,
                     },
                     turma: selectedTurmaData,
                     disciplinas: disciplinasProcessadas,
@@ -2114,7 +2166,10 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         total_disciplinas: disciplinasProcessadas.length,
                         disciplinas_aprovadas: disciplinasAprovadas,
                         disciplinas_reprovadas: disciplinasReprovadas,
-                        transita: transitaGeral
+                        transita: transicao.transita,
+                        observacao_padronizada: transicao.observacao_padronizada,
+                        motivo_retencao: transicao.motivo_retencao,
+                        matricula_condicional: transicao.matricula_condicional
                     },
                     escola: escolaData || undefined
                 }

@@ -45,6 +45,8 @@ export interface StudentFormData {
     escola_anterior: string
     classe_anterior: string
     observacoes_academicas: string
+    frequencia_anual: string
+    tipo_exame: string
     // Conta de Acesso (ALUNO)
     criar_conta_aluno: boolean
     email_aluno: string
@@ -81,6 +83,8 @@ export const initialStudentFormData: StudentFormData = {
     escola_anterior: '',
     classe_anterior: '',
     observacoes_academicas: '',
+    frequencia_anual: '',
+    tipo_exame: '',
     // Conta de Acesso
     criar_conta_aluno: false,
     email_aluno: '',
@@ -544,6 +548,68 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                                 className="form-input min-h-[100px] resize-none"
                                 rows={4}
                             />
+                        </div>
+
+                        <div className="border-t border-slate-200 pt-4 mt-2">
+                            <h4 className="text-sm font-semibold text-slate-700 mb-3">Frequência e Avaliação</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <Input
+                                        label="Frequência Anual (%)"
+                                        type="number"
+                                        value={formData.frequencia_anual}
+                                        onChange={(e) => {
+                                            const value = e.target.value
+                                            if (value === '' || (parseFloat(value) >= 0 && parseFloat(value) <= 100)) {
+                                                setFormData({ ...formData, frequencia_anual: value })
+                                            }
+                                        }}
+                                        placeholder="0-100"
+                                        min="0"
+                                        max="100"
+                                        step="0.1"
+                                        helpText={
+                                            formData.frequencia_anual && parseFloat(formData.frequencia_anual) < 66.67
+                                                ? '⚠️ Frequência abaixo do mínimo (66,67%)'
+                                                : formData.frequencia_anual
+                                                    ? '✓ Frequência adequada'
+                                                    : 'Percentual de presença anual do aluno'
+                                        }
+                                    />
+                                    {formData.frequencia_anual && (
+                                        <div className="mt-2">
+                                            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full transition-all ${
+                                                        parseFloat(formData.frequencia_anual) < 66.67
+                                                            ? 'bg-red-500'
+                                                            : 'bg-green-500'
+                                                    }`}
+                                                    style={{
+                                                        width: `${Math.min(parseFloat(formData.frequencia_anual) || 0, 100)}%`,
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="form-label">Tipo de Exame</label>
+                                    <select
+                                        value={formData.tipo_exame}
+                                        onChange={(e) => setFormData({ ...formData, tipo_exame: e.target.value })}
+                                        className="form-input min-h-touch"
+                                    >
+                                        <option value="">Selecione</option>
+                                        <option value="Nacional">Nacional</option>
+                                        <option value="Extraordinário">Extraordinário</option>
+                                        <option value="Recurso">Recurso</option>
+                                    </select>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Tipo de exame que o aluno deve realizar (quando aplicável)
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )

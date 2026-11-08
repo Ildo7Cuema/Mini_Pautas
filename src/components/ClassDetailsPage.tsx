@@ -64,6 +64,8 @@ interface Aluno {
     escola_anterior?: string
     classe_anterior?: string
     observacoes_academicas?: string
+    frequencia_anual?: number | null
+    tipo_exame?: string | null
 }
 
 export const ClassDetailsPage: React.FC<ClassDetailsPageProps> = ({ turmaId, onNavigate }) => {
@@ -320,7 +322,16 @@ export const ClassDetailsPage: React.FC<ClassDetailsPageProps> = ({ turmaId, onN
             setLoadingStudents(true)
             const { data, error } = await supabase
                 .from('alunos')
-                .select('id, nome_completo, numero_processo, turma_id')
+                .select(`
+                    id, nome_completo, numero_processo, turma_id,
+                    data_nascimento, genero, nacionalidade, naturalidade,
+                    tipo_documento, numero_documento,
+                    nome_pai, nome_mae, nome_encarregado, parentesco_encarregado,
+                    telefone_encarregado, email_encarregado, profissao_encarregado,
+                    provincia, municipio, bairro, rua, endereco,
+                    ano_ingresso, escola_anterior, classe_anterior, observacoes_academicas,
+                    frequencia_anual, tipo_exame
+                `)
                 .eq('turma_id', turmaId)
                 .order('nome_completo')
 
@@ -470,6 +481,8 @@ export const ClassDetailsPage: React.FC<ClassDetailsPageProps> = ({ turmaId, onN
             escola_anterior: student.escola_anterior || '',
             classe_anterior: student.classe_anterior || '',
             observacoes_academicas: student.observacoes_academicas || '',
+            frequencia_anual: student.frequencia_anual != null ? String(student.frequencia_anual) : '',
+            tipo_exame: student.tipo_exame || '',
         })
         setShowEditStudentModal(true)
     }
@@ -496,6 +509,8 @@ export const ClassDetailsPage: React.FC<ClassDetailsPageProps> = ({ turmaId, onN
                 ...studentData,
                 genero: data.genero || null,
                 ano_ingresso: data.ano_ingresso ? parseInt(data.ano_ingresso) : null,
+                frequencia_anual: data.frequencia_anual ? parseFloat(data.frequencia_anual) : null,
+                tipo_exame: data.tipo_exame || null,
             }
 
             const { error: updateError } = await supabase

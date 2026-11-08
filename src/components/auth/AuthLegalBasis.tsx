@@ -7,53 +7,7 @@ component-meta:
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-
-interface LegalDoc {
-    id: string
-    tag: string
-    title: string
-    description: string
-    published: string
-    url: string
-    /** Destaque: diploma de avaliação actualmente em vigor. */
-    current?: boolean
-}
-
-/**
- * Diplomas que sustentam o sistema. Para actualizar quando o Ministério da Educação
- * publicar nova legislação, basta editar esta lista.
- */
-const LEGAL_DOCS: LegalDoc[] = [
-    {
-        id: 'raa',
-        tag: 'Avaliação das Aprendizagens',
-        title: 'Decreto Executivo n.º 106/26 — Regulamento da Avaliação das Aprendizagens (RAA)',
-        description:
-            'Ministério da Educação. Escalas de classificação, arredondamento das notas e regras de avaliação no Ensino Primário e Secundário Geral (revoga o Decreto Executivo n.º 424/25).',
-        published: 'Publicado a 27 de Abril de 2026',
-        url: 'https://www.angolex.com/paginas/decreto-executivo/regulamento-da-avaliacao-das-aprendizagens-dos-subsistemas-da-educacao-pre-escolar-ensino-geral-e-educacao-de-adultos-raa-106a-26a.html',
-        current: true,
-    },
-    {
-        id: 'regime-ensino-geral',
-        tag: 'Sistema de Ensino',
-        title: 'Decreto Presidencial n.º 162/23 — Regime Jurídico do Ensino Primário e Secundário',
-        description:
-            'Organização, gestão escolar e curricular das instituições do Subsistema de Ensino Geral, incluindo a avaliação das aprendizagens e os Exames Nacionais.',
-        published: 'Publicado a 1 de Agosto de 2023',
-        url: 'https://lex.ao/docs/presidente-da-republica/2023/decreto-presidencial-n-o-162-23-de-01-de-agosto/',
-    },
-    {
-        id: 'lei-bases',
-        tag: 'Lei de Bases',
-        title: 'Lei n.º 17/16, alterada e republicada pela Lei n.º 32/20 — Lei de Bases do Sistema de Educação e Ensino',
-        description: 'Princípios, objectivos e estrutura do Sistema de Educação e Ensino de Angola.',
-        published: 'Lei n.º 32/20, de 12 de Agosto de 2020',
-        url: 'https://lex.ao/docs/assembleia-nacional/2020/lei-n-o-32-20-de-12-de-agosto/',
-    },
-]
-
-const MED_NORMATIVOS_URL = 'https://xilonga.med.gov.ao/normativos'
+import { ANGOLA_LEGAL_DOCS, MED_NORMATIVOS_URL } from '../../utils/angolaLegalDocs'
 
 function LegalDialog({ onClose }: { onClose: () => void }) {
     const closeRef = useRef<HTMLButtonElement>(null)
@@ -117,7 +71,7 @@ function LegalDialog({ onClose }: { onClose: () => void }) {
                 </div>
 
                 <ul className="flex-1 space-y-3 overflow-y-auto px-5 py-4 md:px-6">
-                    {LEGAL_DOCS.map((doc) => (
+                    {ANGOLA_LEGAL_DOCS.map((doc) => (
                         <li key={doc.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
                             <div className="mb-2 flex flex-wrap items-center gap-2">
                                 <span className="rounded-full bg-primary-50 px-2.5 py-0.5 text-[11px] font-semibold text-primary-700">

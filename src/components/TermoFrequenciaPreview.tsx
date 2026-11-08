@@ -10,6 +10,13 @@ component-meta:
 import React, { useState } from 'react'
 import { Card, CardHeader, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
+import {
+    FREQUENCIA_MINIMA_PERCENT,
+    frequenciaDeficitPercent,
+    isAttendanceSufficient,
+    normalizeFrequenciaPercent,
+} from '../utils/studentClassification'
+import { AvaliacaoFrequenciaLegalNote } from './AvaliacaoFrequenciaLegalNote'
 
 interface ComponenteNota {
     codigo: string
@@ -203,9 +210,12 @@ export const TermoFrequenciaPreview: React.FC<TermoFrequenciaPreviewProps> = ({ 
                             {data.aluno.frequencia_anual !== undefined && data.aluno.frequencia_anual !== null && (
                                 <div>
                                     <p className="text-sm text-slate-500">Frequência Anual</p>
-                                    <p className={`font-bold text-lg ${data.aluno.frequencia_anual < 66.67 ? 'text-red-600' : 'text-green-600'
+                                    <p className={`font-bold text-lg ${isAttendanceSufficient(data.aluno.frequencia_anual) ? 'text-green-600' : 'text-red-600'
                                         }`}>
-                                        {data.aluno.frequencia_anual.toFixed(1)}%
+                                        {normalizeFrequenciaPercent(data.aluno.frequencia_anual).toFixed(1)}%
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                        Mínimo oficial: {FREQUENCIA_MINIMA_PERCENT.toFixed(2).replace('.', ',')}%
                                     </p>
                                 </div>
                             )}
@@ -540,40 +550,98 @@ export const TermoFrequenciaPreview: React.FC<TermoFrequenciaPreviewProps> = ({ 
                         </div>
                     </div>
 
-                    {/* Final Observation */}
-                    <div className={`p-4 rounded-lg ${data.estatisticas.transita
-                        ? 'bg-blue-50 border-2 border-blue-500'
-                        : 'bg-red-50 border-2 border-red-500'
-                        }`}>
-                        <div className="text-center mb-3">
-                            <p className={`text-xl font-bold ${data.estatisticas.transita ? 'text-blue-700' : 'text-red-700'}`}>
-                                OBSERVAÇÃO FINAL: {data.estatisticas.transita ? 'TRANSITA' : 'NÃO TRANSITA'}
-                            </p>
-                            {data.estatisticas.matricula_condicional && (
-                                <span className="inline-block mt-2 px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-semibold">
-                                    📝 Matrícula Condicional - Exame Extraordinário Obrigatório
-                                </span>
-                            )}
-                        </div>
+                    {(() => {
+                        const resultadoAcademicoOk =
+                            data.disciplinas.length > 0 &&
+                            data.disciplinas.every(d => d.transita) &&
+                            data.estatisticas.disciplinas_reprovadas === 0
+                        const frequencia = data.aluno.frequencia_anual
+                        const frequenciaOk = isAttendanceSufficient(frequencia)
+                        const frequenciaTexto = frequencia !== undefined && frequencia !== null
+                            ? `${normalizeFrequenciaPercent(frequencia).toFixed(2)}%`
+                            : 'Não registada'
+                        const deficit = frequencia !== undefined && frequencia !== null && !frequenciaOk
+                            ? frequenciaDeficitPercent(frequencia)
+                            : 0
 
-                        {/* Observação Padronizada */}
-                        {data.estatisticas.observacao_padronizada && (
-                            <div className="mt-3 p-3 bg-white rounded border border-slate-200">
-                                <p className="text-sm text-slate-700 italic">
-                                    {data.estatisticas.observacao_padronizada}
-                                </p>
-                            </div>
-                        )}
+                        return (
+                            <>
+                                {/* Estratégia: separar académico, frequência e decisão oficial */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                                    <div className={`p-3 rounded-lg border ${resultadoAcademicoOk ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resultado académico</p>
+                                        <p className={`text-base font-bold mt-1 ${resultadoAcademicoOk ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                            {resultadoAcademicoOk ? 'Apto (notas positivas)' : 'Não apto (há reprovações)'}
+                                        </p>
+                                        <p className="text-xs text-slate-600 mt-1">
+                                            {data.estatisticas.disciplinas_aprovadas}/{data.estatisticas.total_disciplinas} disciplinas · média {data.estatisticas.media_geral.toFixed(2)}
+                                        </p>
+                                    </div>
+                                    <div className={`p-3 rounded-lg border ${frequenciaOk ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Frequência anual</p>
+                                        <p className={`text-base font-bold mt-1 ${frequenciaOk ? 'text-emerald-700' : 'text-red-700'}`}>
+                                            {frequenciaTexto} {frequenciaOk ? '· Suficiente' : '· Insuficiente'}
+                                        </p>
+                                        <p className="text-xs text-slate-600 mt-1">
+                                            Mínimo {FREQUENCIA_MINIMA_PERCENT.toFixed(2).replace('.', ',')}%
+                                            {!frequenciaOk && deficit > 0
+                                                ? ` · défice ${deficit.toFixed(2)} p.p.`
+                                                : ''}
+                                        </p>
+                                    </div>
+                                    <div className={`p-3 rounded-lg border ${data.estatisticas.transita ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Decisão final</p>
+                                        <p className={`text-base font-bold mt-1 ${data.estatisticas.transita ? 'text-blue-700' : 'text-red-700'}`}>
+                                            {data.estatisticas.transita ? 'TRANSITA' : 'NÃO TRANSITA'}
+                                        </p>
+                                        <p className="text-xs text-slate-600 mt-1">
+                                            Exige notas + frequência ≥ {FREQUENCIA_MINIMA_PERCENT.toFixed(2).replace('.', ',')}%
+                                        </p>
+                                    </div>
+                                </div>
 
-                        {/* Motivo de Retenção */}
-                        {data.estatisticas.motivo_retencao && (
-                            <div className="mt-3 p-3 bg-red-50 rounded border border-red-200">
-                                <p className="text-sm text-red-700 font-medium">
-                                    ⚠️ {data.estatisticas.motivo_retencao}
-                                </p>
-                            </div>
-                        )}
-                    </div>
+                                {/* Final Observation */}
+                                <div className={`p-4 rounded-lg ${data.estatisticas.transita
+                                    ? 'bg-blue-50 border-2 border-blue-500'
+                                    : 'bg-red-50 border-2 border-red-500'
+                                    }`}>
+                                    <div className="text-center mb-3">
+                                        <p className={`text-xl font-bold ${data.estatisticas.transita ? 'text-blue-700' : 'text-red-700'}`}>
+                                            OBSERVAÇÃO FINAL: {data.estatisticas.transita ? 'TRANSITA' : 'NÃO TRANSITA'}
+                                        </p>
+                                        {resultadoAcademicoOk && !frequenciaOk && (
+                                            <p className="mt-2 text-sm text-slate-700">
+                                                Academicamente apta, mas retida exclusivamente por frequência insuficiente.
+                                            </p>
+                                        )}
+                                        {data.estatisticas.matricula_condicional && (
+                                            <span className="inline-block mt-2 px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-semibold">
+                                                📝 Matrícula Condicional - Exame Extraordinário Obrigatório
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {data.estatisticas.observacao_padronizada && (
+                                        <div className="mt-3 p-3 bg-white rounded border border-slate-200">
+                                            <p className="text-sm text-slate-700 italic">
+                                                {data.estatisticas.observacao_padronizada}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {data.estatisticas.motivo_retencao && (
+                                        <div className="mt-3 p-3 bg-red-50 rounded border border-red-200">
+                                            <p className="text-sm text-red-700 font-medium">
+                                                ⚠️ {data.estatisticas.motivo_retencao}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <AvaliacaoFrequenciaLegalNote compact className="mt-4" />
+                            </>
+                        )
+                    })()}
                 </CardBody>
             </Card>
         </div>

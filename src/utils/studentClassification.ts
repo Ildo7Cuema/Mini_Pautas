@@ -43,12 +43,63 @@ function roundGrade(grade: number): number {
     return Math.round(grade)
 }
 
+/** Frequência anual mínima oficial (2/3 ≈ 66,67%). */
+export const FREQUENCIA_MINIMA_PERCENT = 66.67
+
+/**
+ * Normaliza a frequência a 2 casas decimais antes de comparar com o mínimo oficial.
+ * Evita falsos negativos com valores como 66.666...% (exactamente 2/3).
+ */
+export function normalizeFrequenciaPercent(frequencia: number): number {
+    return Math.round(frequencia * 100) / 100
+}
+
 /**
  * Check if attendance is sufficient (>= 66.67%)
  */
-function isAttendanceSufficient(frequencia?: number): boolean {
+export function isAttendanceSufficient(frequencia?: number | null): boolean {
     if (frequencia === undefined || frequencia === null) return true // If not set, don't block
-    return frequencia >= 66.67
+    return normalizeFrequenciaPercent(frequencia) >= FREQUENCIA_MINIMA_PERCENT
+}
+
+/**
+ * Défice percentual face ao mínimo oficial (0 se já suficiente).
+ * Ex.: 48% → 18,67 p.p. em falta para atingir 66,67%.
+ */
+export function frequenciaDeficitPercent(frequencia: number): number {
+    const normalizada = normalizeFrequenciaPercent(frequencia)
+    if (normalizada >= FREQUENCIA_MINIMA_PERCENT) return 0
+    return normalizeFrequenciaPercent(FREQUENCIA_MINIMA_PERCENT - normalizada)
+}
+
+/**
+ * Observação de retenção por frequência, reconhecendo o resultado académico quando positivo.
+ */
+function buildObservacaoFrequenciaInsuficiente(
+    frequencia: number,
+    resultadoAcademico: 'Transita' | 'Condicional' | 'Não Transita' | 'AguardandoNotas',
+    limiarNota: number
+): { observacao: string; motivo: string } {
+    const freqText = normalizeFrequenciaPercent(frequencia).toFixed(2)
+    const deficitText = frequenciaDeficitPercent(frequencia).toFixed(2)
+    const motivo = `Frequência insuficiente (${freqText}%, mínimo 66,67% — défice de ${deficitText} p.p.)`
+
+    if (resultadoAcademico === 'Transita' || resultadoAcademico === 'Condicional') {
+        const academicoTxt = resultadoAcademico === 'Condicional'
+            ? 'resultado académico condicional'
+            : `classificação positiva em todas as disciplinas (>= ${limiarNota} valores)`
+        return {
+            observacao:
+                `Apesar de ${academicoTxt}, não transitou por frequência insuficiente ` +
+                `(${freqText}%, inferior ao mínimo de 66,67% — défice de ${deficitText} p.p.).`,
+            motivo,
+        }
+    }
+
+    return {
+        observacao: `Não transitou por frequência insuficiente (${freqText}%, inferior ao mínimo de 66,67% — défice de ${deficitText} p.p.).`,
+        motivo,
+    }
 }
 
 /**
@@ -65,12 +116,13 @@ function generateObservacao(
     const isPrimary = nivelEnsino?.toLowerCase().includes('primário') || nivelEnsino?.toLowerCase().includes('primario')
     const limiarNota = isPrimary ? 5 : 10
 
-    if (frequencia !== undefined && frequencia !== null && frequencia < 66.67) {
-        return `Não transitou por frequência insuficiente (${frequencia.toFixed(2)}%, inferior ao mínimo de 66,67%).`
-    }
+    // Nota: retenção por frequência é tratada fora desta função (buildObservacaoFrequenciaInsuficiente),
+    // para não misturar resultado académico com a decisão final.
 
     if (status === 'Transita') {
-        const freqText = frequencia !== null && frequencia !== undefined ? frequencia.toFixed(2) : 'N/A'
+        const freqText = frequencia !== null && frequencia !== undefined
+            ? normalizeFrequenciaPercent(frequencia).toFixed(2)
+            : 'N/A'
         return `Transitou por ter obtido classificação igual ou superior a ${limiarNota} valores em todas as disciplinas e frequência de ${freqText}%.`
     }
 
@@ -129,22 +181,8 @@ function classifyEnsinoPrimario(
         }
     }
 
-    // RULE 1: Check attendance FIRST (overrides everything)
-    if (!isAttendanceSufficient(frequencia)) {
-        const freqText = frequencia !== null && frequencia !== undefined ? frequencia.toFixed(2) : 'N/A'
-        return {
-            status: 'Não Transita',
-            motivos: [`Frequência insuficiente (${freqText}%)`],
-            disciplinas_em_risco: [],
-            acoes_recomendadas: ['Melhorar assiduidade'],
-            observacao_padronizada: generateObservacao('Não Transita', 'Ensino Primário', undefined, [], frequencia),
-            motivo_retencao: `Frequência insuficiente (${freqText}%, inferior ao mínimo de 66,67%)`,
-            matricula_condicional: false
-        }
-    }
-
+    // 1) Resultado académico (notas) — independente da frequência
     const disciplinasAbaixo5: string[] = []
-
     disciplinas.forEach(disc => {
         const notaArredondada = roundGrade(disc.nota)
         if (notaArredondada < 5) {
@@ -152,8 +190,8 @@ function classifyEnsinoPrimario(
         }
     })
 
-    if (disciplinasAbaixo5.length === 0) {
-        return {
+    const academico: ClassificationResult = disciplinasAbaixo5.length === 0
+        ? {
             status: 'Transita',
             motivos: ['Todas as disciplinas com nota >= 5'],
             disciplinas_em_risco: [],
@@ -161,8 +199,7 @@ function classifyEnsinoPrimario(
             observacao_padronizada: generateObservacao('Transita', 'Ensino Primário', undefined, [], frequencia, 5),
             matricula_condicional: false
         }
-    } else {
-        return {
+        : {
             status: 'Não Transita',
             motivos: [`${disciplinasAbaixo5.length} disciplina(s) com nota < 5`],
             disciplinas_em_risco: disciplinasAbaixo5,
@@ -171,7 +208,30 @@ function classifyEnsinoPrimario(
             motivo_retencao: `${disciplinasAbaixo5.length} disciplina(s) com nota inferior a 5 valores: ${disciplinasAbaixo5.join(', ')}`,
             matricula_condicional: false
         }
+
+    // 2) Frequência insuficiente bloqueia a transição, mas preserva o contexto académico
+    if (!isAttendanceSufficient(frequencia) && frequencia !== undefined && frequencia !== null) {
+        const freqText = normalizeFrequenciaPercent(frequencia).toFixed(2)
+        const { observacao, motivo } = buildObservacaoFrequenciaInsuficiente(
+            frequencia,
+            academico.status,
+            5
+        )
+        return {
+            status: 'Não Transita',
+            motivos: [
+                `Frequência insuficiente (${freqText}%)`,
+                ...academico.motivos.map(m => `Académico: ${m}`),
+            ],
+            disciplinas_em_risco: academico.disciplinas_em_risco,
+            acoes_recomendadas: ['Melhorar assiduidade', ...academico.acoes_recomendadas],
+            observacao_padronizada: observacao,
+            motivo_retencao: motivo,
+            matricula_condicional: false
+        }
     }
+
+    return academico
 }
 
 /**
@@ -195,161 +255,167 @@ function classifyEnsinoSecundario(
         }
     }
 
-    // RULE 1: Check attendance FIRST (overrides everything)
-    if (!isAttendanceSufficient(frequencia)) {
-        const freqText = frequencia !== null && frequencia !== undefined ? frequencia.toFixed(2) : 'N/A'
-        return {
-            status: 'Não Transita',
-            motivos: [`Frequência insuficiente (${freqText}%)`],
-            disciplinas_em_risco: [],
-            acoes_recomendadas: ['Melhorar assiduidade'],
-            observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classe, [], frequencia),
-            motivo_retencao: `Frequência insuficiente (${freqText}%, inferior ao mínimo de 66,67%)`,
-            matricula_condicional: false
-        }
-    }
+    // 1) Resultado académico (notas) — independente da frequência
+    const academico = (() => {
+        const classNumber = extractClassNumber(classe)
+        const disciplinasAbaixo7: string[] = []
+        const disciplinasEntre7e9: string[] = []
+        const disciplinasAbaixo10: string[] = []
 
-    const classNumber = extractClassNumber(classe)
-    const disciplinasAbaixo7: string[] = []
-    const disciplinasEntre7e9: string[] = []
-    const disciplinasAbaixo10: string[] = []
+        disciplinas.forEach(disc => {
+            const notaArredondada = roundGrade(disc.nota)
 
-    disciplinas.forEach(disc => {
-        const notaArredondada = roundGrade(disc.nota)
-
-        if (notaArredondada < 7) {
-            disciplinasAbaixo7.push(disc.nome)
-        } else if (notaArredondada >= 7 && notaArredondada < 10) {
-            disciplinasEntre7e9.push(disc.nome)
-        } else if (notaArredondada < 10) {
-            disciplinasAbaixo10.push(disc.nome)
-        }
-    })
-
-    // Rule: Não Transita if ANY discipline < 7
-    if (disciplinasAbaixo7.length > 0) {
-        return {
-            status: 'Não Transita',
-            motivos: [`${disciplinasAbaixo7.length} disciplina(s) com nota < 7`],
-            disciplinas_em_risco: disciplinasAbaixo7,
-            acoes_recomendadas: ['Reforço urgente nas disciplinas em risco', 'Acompanhamento pedagógico intensivo'],
-            observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classe, disciplinasAbaixo7, frequencia, 7),
-            motivo_retencao: `${disciplinasAbaixo7.length} disciplina(s) com nota inferior a 7 valores: ${disciplinasAbaixo7.join(', ')}`,
-            matricula_condicional: false
-        }
-    }
-
-    // 9ª and 12ª Classes (Terminal): Apply general rule (all >= 10) - NO conditional allowed
-    const isTerminalClass = classNumber === 9 || classNumber === 12
-    if (isTerminalClass) {
-        if (disciplinasEntre7e9.length > 0 || disciplinasAbaixo10.length > 0) {
-            const todasEmRisco = [...disciplinasEntre7e9, ...disciplinasAbaixo10]
-            const classeLabel = classNumber === 9 ? '9ª Classe' : '12ª Classe'
-            return {
-                status: 'Não Transita',
-                motivos: [`${classeLabel} (terminal) requer todas as disciplinas >= 10`],
-                disciplinas_em_risco: todasEmRisco,
-                acoes_recomendadas: ['Reforço nas disciplinas abaixo de 10', 'Preparação para exames'],
-                observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classeLabel, todasEmRisco, frequencia, 10),
-                motivo_retencao: `${classeLabel} (terminal) requer todas as disciplinas com nota >= 10 valores. Disciplinas em risco: ${todasEmRisco.join(', ')}`,
-                matricula_condicional: false
+            if (notaArredondada < 7) {
+                disciplinasAbaixo7.push(disc.nome)
+            } else if (notaArredondada >= 7 && notaArredondada < 10) {
+                disciplinasEntre7e9.push(disc.nome)
+            } else if (notaArredondada < 10) {
+                disciplinasAbaixo10.push(disc.nome)
             }
-        } else {
-            const classeLabel = classNumber === 9 ? '9ª Classe' : '12ª Classe'
+        })
+
+        // Rule: Não Transita if ANY discipline < 7
+        if (disciplinasAbaixo7.length > 0) {
             return {
-                status: 'Transita',
-                motivos: ['Todas as disciplinas >= 10'],
-                disciplinas_em_risco: [],
-                acoes_recomendadas: [],
-                observacao_padronizada: generateObservacao('Transita', 'Ensino Secundário', classeLabel, [], frequencia, 10),
+                status: 'Não Transita' as const,
+                motivos: [`${disciplinasAbaixo7.length} disciplina(s) com nota < 7`],
+                disciplinas_em_risco: disciplinasAbaixo7,
+                acoes_recomendadas: ['Reforço urgente nas disciplinas em risco', 'Acompanhamento pedagógico intensivo'],
+                observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classe, disciplinasAbaixo7, frequencia, 7),
+                motivo_retencao: `${disciplinasAbaixo7.length} disciplina(s) com nota inferior a 7 valores: ${disciplinasAbaixo7.join(', ')}`,
                 matricula_condicional: false
             }
         }
-    }
 
-    // 7ª, 8ª, 10ª and 11ª Classes: Exception allows up to 2 disciplines between 7-9
-    // BUT NOT if two are mandatory disciplines simultaneously (Português and Matemática or configured by admin)
-    const allowsConditional = classNumber === 7 || classNumber === 8 || classNumber === 10 || classNumber === 11
-    if (allowsConditional) {
-        if (disciplinasEntre7e9.length === 0) {
-            // All disciplines >= 10
-            return {
-                status: 'Transita',
-                motivos: ['Todas as disciplinas >= 10'],
-                disciplinas_em_risco: [],
-                acoes_recomendadas: [],
-                observacao_padronizada: generateObservacao('Transita', 'Ensino Secundário', classe, [], frequencia, 10),
-                matricula_condicional: false
-            }
-        } else if (disciplinasEntre7e9.length <= 2) {
-            // Check if both are mandatory disciplines (Português and Matemática or configured)
-            const mandatoryCount = disciplinasEntre7e9.filter(nome => {
-                const disc = disciplinas.find(d => d.nome === nome)
-                return disc ? isMandatoryDiscipline(disc.id, disc.nome, mandatoryDisciplineIds) : false
-            }).length
-
-            if (disciplinasEntre7e9.length === 2 && mandatoryCount === 2) {
-                // Both disciplines are mandatory - NOT allowed
+        // 9ª and 12ª Classes (Terminal): Apply general rule (all >= 10) - NO conditional allowed
+        const isTerminalClass = classNumber === 9 || classNumber === 12
+        if (isTerminalClass) {
+            if (disciplinasEntre7e9.length > 0 || disciplinasAbaixo10.length > 0) {
+                const todasEmRisco = [...disciplinasEntre7e9, ...disciplinasAbaixo10]
+                const classeLabel = classNumber === 9 ? '9ª Classe' : '12ª Classe'
                 return {
-                    status: 'Não Transita',
-                    motivos: ['Não permitido ter 2 disciplinas obrigatórias simultaneamente entre 7-9'],
-                    disciplinas_em_risco: disciplinasEntre7e9,
-                    acoes_recomendadas: ['Reforço urgente nas disciplinas obrigatórias'],
-                    observacao_padronizada: 'Não transitou por ter obtido classificação inferior a 10 valores simultaneamente em Língua Portuguesa e Matemática.',
-                    motivo_retencao: 'Não permitido ter Língua Portuguesa e Matemática simultaneamente com notas entre 7-9 valores',
+                    status: 'Não Transita' as const,
+                    motivos: [`${classeLabel} (terminal) requer todas as disciplinas >= 10`],
+                    disciplinas_em_risco: todasEmRisco,
+                    acoes_recomendadas: ['Reforço nas disciplinas abaixo de 10', 'Preparação para exames'],
+                    observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classeLabel, todasEmRisco, frequencia, 10),
+                    motivo_retencao: `${classeLabel} (terminal) requer todas as disciplinas com nota >= 10 valores. Disciplinas em risco: ${todasEmRisco.join(', ')}`,
                     matricula_condicional: false
                 }
             } else {
-                // Allowed: up to 2 disciplines between 7-9 (not both Port. and Mat.)
-                // This is MATRÍCULA CONDICIONAL - requires Exame Extraordinário
+                const classeLabel = classNumber === 9 ? '9ª Classe' : '12ª Classe'
                 return {
-                    status: 'Condicional',
-                    motivos: [`Permitido até 2 disciplinas entre 7-9 (${disciplinasEntre7e9.length} encontrada(s))`],
-                    disciplinas_em_risco: disciplinasEntre7e9,
-                    acoes_recomendadas: disciplinasEntre7e9.length > 0
-                        ? ['Reforço nas disciplinas entre 7-9 para melhorar desempenho', 'Preparação para Exame Extraordinário']
-                        : [],
-                    observacao_padronizada: generateObservacao('Condicional', 'Ensino Secundário', classe, disciplinasEntre7e9, frequencia, 10),
-                    matricula_condicional: true
+                    status: 'Transita' as const,
+                    motivos: ['Todas as disciplinas >= 10'],
+                    disciplinas_em_risco: [],
+                    acoes_recomendadas: [],
+                    observacao_padronizada: generateObservacao('Transita', 'Ensino Secundário', classeLabel, [], frequencia, 10),
+                    matricula_condicional: false
                 }
             }
-        } else {
-            // More than 2 disciplines between 7-9
+        }
+
+        // 7ª, 8ª, 10ª and 11ª Classes: Exception allows up to 2 disciplines between 7-9
+        // BUT NOT if two are mandatory disciplines simultaneously (Português and Matemática or configured by admin)
+        const allowsConditional = classNumber === 7 || classNumber === 8 || classNumber === 10 || classNumber === 11
+        if (allowsConditional) {
+            if (disciplinasEntre7e9.length === 0) {
+                return {
+                    status: 'Transita' as const,
+                    motivos: ['Todas as disciplinas >= 10'],
+                    disciplinas_em_risco: [],
+                    acoes_recomendadas: [],
+                    observacao_padronizada: generateObservacao('Transita', 'Ensino Secundário', classe, [], frequencia, 10),
+                    matricula_condicional: false
+                }
+            } else if (disciplinasEntre7e9.length <= 2) {
+                const mandatoryCount = disciplinasEntre7e9.filter(nome => {
+                    const disc = disciplinas.find(d => d.nome === nome)
+                    return disc ? isMandatoryDiscipline(disc.id, disc.nome, mandatoryDisciplineIds) : false
+                }).length
+
+                if (disciplinasEntre7e9.length === 2 && mandatoryCount === 2) {
+                    return {
+                        status: 'Não Transita' as const,
+                        motivos: ['Não permitido ter 2 disciplinas obrigatórias simultaneamente entre 7-9'],
+                        disciplinas_em_risco: disciplinasEntre7e9,
+                        acoes_recomendadas: ['Reforço urgente nas disciplinas obrigatórias'],
+                        observacao_padronizada: 'Não transitou por ter obtido classificação inferior a 10 valores simultaneamente em Língua Portuguesa e Matemática.',
+                        motivo_retencao: 'Não permitido ter Língua Portuguesa e Matemática simultaneamente com notas entre 7-9 valores',
+                        matricula_condicional: false
+                    }
+                } else {
+                    return {
+                        status: 'Condicional' as const,
+                        motivos: [`Permitido até 2 disciplinas entre 7-9 (${disciplinasEntre7e9.length} encontrada(s))`],
+                        disciplinas_em_risco: disciplinasEntre7e9,
+                        acoes_recomendadas: disciplinasEntre7e9.length > 0
+                            ? ['Reforço nas disciplinas entre 7-9 para melhorar desempenho', 'Preparação para Exame Extraordinário']
+                            : [],
+                        observacao_padronizada: generateObservacao('Condicional', 'Ensino Secundário', classe, disciplinasEntre7e9, frequencia, 10),
+                        matricula_condicional: true
+                    }
+                }
+            } else {
+                return {
+                    status: 'Não Transita' as const,
+                    motivos: [`Mais de 2 disciplinas entre 7-9 (${disciplinasEntre7e9.length} encontradas)`],
+                    disciplinas_em_risco: disciplinasEntre7e9,
+                    acoes_recomendadas: ['Reforço nas disciplinas entre 7-9'],
+                    observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classe, disciplinasEntre7e9, frequencia, 10),
+                    motivo_retencao: `Mais de 2 disciplinas com notas entre 7-9 valores (${disciplinasEntre7e9.length} encontradas): ${disciplinasEntre7e9.join(', ')}`,
+                    matricula_condicional: false
+                }
+            }
+        }
+
+        // Default for other secondary classes
+        if (disciplinasEntre7e9.length > 0 || disciplinasAbaixo10.length > 0) {
+            const todasEmRisco = [...disciplinasEntre7e9, ...disciplinasAbaixo10]
             return {
-                status: 'Não Transita',
-                motivos: [`Mais de 2 disciplinas entre 7-9 (${disciplinasEntre7e9.length} encontradas)`],
-                disciplinas_em_risco: disciplinasEntre7e9,
-                acoes_recomendadas: ['Reforço nas disciplinas entre 7-9'],
-                observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classe, disciplinasEntre7e9, frequencia, 10),
-                motivo_retencao: `Mais de 2 disciplinas com notas entre 7-9 valores (${disciplinasEntre7e9.length} encontradas): ${disciplinasEntre7e9.join(', ')}`,
+                status: 'Não Transita' as const,
+                motivos: ['Regra geral: todas as disciplinas devem ter >= 10'],
+                disciplinas_em_risco: todasEmRisco,
+                acoes_recomendadas: ['Reforço nas disciplinas abaixo de 10'],
+                observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classe, todasEmRisco, frequencia, 10),
+                motivo_retencao: `Disciplinas com nota inferior a 10 valores: ${todasEmRisco.join(', ')}`,
                 matricula_condicional: false
             }
         }
-    }
 
-    // Default for other secondary classes (shouldn't reach here normally)
-    // Apply general rule: all >= 10
-    if (disciplinasEntre7e9.length > 0 || disciplinasAbaixo10.length > 0) {
-        const todasEmRisco = [...disciplinasEntre7e9, ...disciplinasAbaixo10]
         return {
-            status: 'Não Transita',
-            motivos: ['Regra geral: todas as disciplinas devem ter >= 10'],
-            disciplinas_em_risco: todasEmRisco,
-            acoes_recomendadas: ['Reforço nas disciplinas abaixo de 10'],
-            observacao_padronizada: generateObservacao('Não Transita', 'Ensino Secundário', classe, todasEmRisco, frequencia, 10),
-            motivo_retencao: `Disciplinas com nota inferior a 10 valores: ${todasEmRisco.join(', ')}`,
-            matricula_condicional: false
-        }
-    } else {
-        return {
-            status: 'Transita',
+            status: 'Transita' as const,
             motivos: ['Todas as disciplinas >= 10'],
             disciplinas_em_risco: [],
             acoes_recomendadas: [],
             observacao_padronizada: generateObservacao('Transita', 'Ensino Secundário', classe, [], frequencia, 10),
             matricula_condicional: false
         }
+    })()
+
+    // 2) Frequência insuficiente bloqueia a transição, mas preserva o contexto académico
+    if (!isAttendanceSufficient(frequencia) && frequencia !== undefined && frequencia !== null) {
+        const freqText = normalizeFrequenciaPercent(frequencia).toFixed(2)
+        const { observacao, motivo } = buildObservacaoFrequenciaInsuficiente(
+            frequencia,
+            academico.status,
+            10
+        )
+        return {
+            status: 'Não Transita',
+            motivos: [
+                `Frequência insuficiente (${freqText}%)`,
+                ...academico.motivos.map(m => `Académico: ${m}`),
+            ],
+            disciplinas_em_risco: academico.disciplinas_em_risco,
+            acoes_recomendadas: ['Melhorar assiduidade', ...academico.acoes_recomendadas],
+            observacao_padronizada: observacao,
+            motivo_retencao: motivo,
+            matricula_condicional: false
+        }
     }
+
+    return academico
 }
 
 /**
