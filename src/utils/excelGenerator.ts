@@ -8,6 +8,7 @@ import {
     DEFAULT_PAUTA_GERAL_EXPORT_CONFIG,
     type PautaGeralExportConfig,
 } from './pautaGeralExportUtils'
+import { getComponenteDisplayLabel } from './gradeUtils'
 
 interface TrimestreData {
     notas: Record<string, number>
@@ -83,7 +84,7 @@ export function generateMiniPautaExcel(data: MiniPautaData): void {
         interface DisciplineGroup {
             disciplina_nome: string
             ordem?: number
-            componentes: Array<{ id: string; codigo_componente: string }>
+            componentes: Array<{ id: string; codigo_componente: string; nome?: string }>
         }
 
         const disciplineMap = new Map<string, DisciplineGroup>()
@@ -103,7 +104,8 @@ export function generateMiniPautaExcel(data: MiniPautaData): void {
 
                 disciplineMap.get(disciplineName)!.componentes.push({
                     id: comp.id,
-                    codigo_componente: comp.codigo_componente
+                    codigo_componente: comp.codigo_componente,
+                    nome: comp.nome,
                 })
             }
         })
@@ -120,7 +122,7 @@ export function generateMiniPautaExcel(data: MiniPautaData): void {
         headerRow = ['Nº', 'Nome do Aluno']
         disciplineGroups.forEach(group => {
             group.componentes.forEach(comp => {
-                headerRow.push(comp.codigo_componente)
+                headerRow.push(getComponenteDisplayLabel(comp))
             })
         })
 
@@ -153,11 +155,11 @@ export function generateMiniPautaExcel(data: MiniPautaData): void {
             'Nº',
             'Nome do Aluno',
             // 1º Trimestre
-            ...componentes1T.map(c => c.codigo_componente),
+            ...componentes1T.map(c => getComponenteDisplayLabel(c)),
             // 2º Trimestre
-            ...componentes2T.map(c => c.codigo_componente),
+            ...componentes2T.map(c => getComponenteDisplayLabel(c)),
             // 3º Trimestre
-            ...componentes3T.map(c => c.codigo_componente)
+            ...componentes3T.map(c => getComponenteDisplayLabel(c))
         ]
 
         // Data rows for all-trimester layout (without Nº Processo)
@@ -195,7 +197,7 @@ export function generateMiniPautaExcel(data: MiniPautaData): void {
         headerRow = [
             'Nº',
             'Nome do Aluno',
-            ...data.componentes.map(c => `${c.codigo_componente} (${c.peso_percentual}%)`)
+            ...data.componentes.map(c => `${getComponenteDisplayLabel(c)} (${c.peso_percentual}%)`)
         ]
 
         // Data rows for single-trimester layout - MATCH PREVIEW (no Nota Final or Classificação)
@@ -225,7 +227,7 @@ export function generateMiniPautaExcel(data: MiniPautaData): void {
                     })
                 }
 
-                disciplineMap.get(disciplineName)!.componentes.push(comp.codigo_componente)
+                disciplineMap.get(disciplineName)!.componentes.push(getComponenteDisplayLabel(comp))
             }
         })
 
@@ -337,7 +339,7 @@ export function generateMiniPautaExcel(data: MiniPautaData): void {
                     })
                 }
 
-                disciplineMap.get(disciplineName)!.componentes.push(comp.codigo_componente)
+                disciplineMap.get(disciplineName)!.componentes.push(getComponenteDisplayLabel(comp))
             }
         })
 
@@ -448,7 +450,7 @@ export function generateCSV(data: MiniPautaData): void {
         interface DisciplineGroup {
             disciplina_nome: string
             ordem?: number
-            componentes: Array<{ id: string; codigo_componente: string }>
+            componentes: Array<{ id: string; codigo_componente: string; nome?: string }>
         }
 
         const disciplineMap = new Map<string, DisciplineGroup>()
@@ -468,7 +470,8 @@ export function generateCSV(data: MiniPautaData): void {
 
                 disciplineMap.get(disciplineName)!.componentes.push({
                     id: comp.id,
-                    codigo_componente: comp.codigo_componente
+                    codigo_componente: comp.codigo_componente,
+                    nome: comp.nome,
                 })
             }
         })
@@ -485,7 +488,7 @@ export function generateCSV(data: MiniPautaData): void {
         headers = ['Nº', 'Nome do Aluno']
         disciplineGroups.forEach(group => {
             group.componentes.forEach(comp => {
-                headers.push(comp.codigo_componente)
+                headers.push(getComponenteDisplayLabel(comp))
             })
         })
 
@@ -518,11 +521,11 @@ export function generateCSV(data: MiniPautaData): void {
             'Nº',
             'Nome do Aluno',
             // 1º Trimestre
-            ...componentes1T.map(c => c.codigo_componente),
+            ...componentes1T.map(c => getComponenteDisplayLabel(c)),
             // 2º Trimestre
-            ...componentes2T.map(c => c.codigo_componente),
+            ...componentes2T.map(c => getComponenteDisplayLabel(c)),
             // 3º Trimestre
-            ...componentes3T.map(c => c.codigo_componente)
+            ...componentes3T.map(c => getComponenteDisplayLabel(c))
         ]
 
         // Data rows for all-trimester layout (without Nº Processo)
@@ -560,7 +563,7 @@ export function generateCSV(data: MiniPautaData): void {
         headers = [
             'Nº',
             'Nome do Aluno',
-            ...data.componentes.map(c => `${c.codigo_componente} (${c.peso_percentual}%)`)
+            ...data.componentes.map(c => `${getComponenteDisplayLabel(c)} (${c.peso_percentual}%)`)
         ]
 
         // Data rows for single-trimester layout - MATCH PREVIEW (no Nota Final or Classificação)

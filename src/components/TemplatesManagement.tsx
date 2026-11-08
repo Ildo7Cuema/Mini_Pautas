@@ -14,9 +14,18 @@ import { Card, CardBody, CardHeader } from './ui/Card'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { Icons } from './ui/Icons'
+import { FormModal } from './ui/FormModal'
 import { translateError } from '../utils/translations'
 import type { DisciplinaTemplate, ComponenteTemplate } from '../types'
 import { ComponenteSelectorModal } from './ComponenteSelectorModal'
+import { inferDependsOnComponentIds } from '../utils/formulaUtils'
+import {
+    fanOutDeleteComponenteToSiblings,
+    fanOutEditComponenteToRelated,
+    fanOutNewComponenteToSiblings,
+    nextOrdemForTrimestre,
+    syncComponenteCatalogSafely,
+} from '../utils/templateComponenteSync'
 
 // Available classes in the Angolan education system
 const CLASSES_PRIMARIO = ['1ª Classe', '2ª Classe', '3ª Classe', '4ª Classe', '5ª Classe', '6ª Classe']
@@ -373,31 +382,60 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                 trimestre: parseInt(componenteFormData.trimestre)
             })
 
+            const siblingComponents = componentes[selectedTemplate.id] || []
+            const formulaExpression = componenteFormData.is_calculated
+                ? componenteFormData.formula_expression
+                : null
+            const dependsOn = formulaExpression
+                ? inferDependsOnComponentIds(formulaExpression, siblingComponents, {
+                    tipoCalculo: componenteFormData.tipo_calculo,
+                    trimestre: parseInt(componenteFormData.trimestre),
+                })
+                : []
+
+            const trimestre = parseInt(componenteFormData.trimestre)
+            // Position is always system-assigned per disciplina/trimestre (1, 2, 3…)
+            const ordem = nextOrdemForTrimestre(siblingComponents, trimestre)
+
+            const insertPayload = {
+                disciplina_template_id: selectedTemplate.id,
+                nome: componenteFormData.nome,
+                codigo_componente: componenteFormData.codigo_componente.trim().toUpperCase(),
+                peso_percentual: pesoPercentual,
+                escala_minima: parseFloat(componenteFormData.escala_minima),
+                escala_maxima: parseFloat(componenteFormData.escala_maxima),
+                obrigatorio: componenteFormData.obrigatorio,
+                ordem,
+                descricao: componenteFormData.descricao || null,
+                trimestre,
+                is_calculated: componenteFormData.is_calculated,
+                formula_expression: formulaExpression,
+                depends_on_components: dependsOn,
+                tipo_calculo: componenteFormData.tipo_calculo,
+            }
+
             const { data, error } = await supabase
                 .from('componentes_template')
-                .insert({
-                    disciplina_template_id: selectedTemplate.id,
-                    nome: componenteFormData.nome,
-                    codigo_componente: componenteFormData.codigo_componente,
-                    peso_percentual: pesoPercentual,
-                    escala_minima: parseFloat(componenteFormData.escala_minima),
-                    escala_maxima: parseFloat(componenteFormData.escala_maxima),
-                    obrigatorio: componenteFormData.obrigatorio,
-                    ordem: parseInt(componenteFormData.ordem),
-                    descricao: componenteFormData.descricao || null,
-                    trimestre: parseInt(componenteFormData.trimestre),
-                    is_calculated: componenteFormData.is_calculated,
-                    formula_expression: componenteFormData.is_calculated ? componenteFormData.formula_expression : null,
-                    tipo_calculo: componenteFormData.tipo_calculo
-                })
+                .insert(insertPayload)
                 .select()
 
             console.log('Resultado insert componente:', { data, error })
 
             if (error) throw error
 
-            const turmasCount = selectedTemplate.turmas_count || 0
-            setSuccess(`Componente adicionado! ${turmasCount > 0 ? `Sincronizado em ${turmasCount} turma(s).` : ''}`)
+            const escolaId = escolaProfile?.id
+            const syncedTurmas = escolaId
+                ? await fanOutNewComponenteToSiblings(supabase, {
+                    escolaId,
+                    template: selectedTemplate,
+                    payload: insertPayload,
+                })
+                : 0
+
+            const turmasCount = syncedTurmas || selectedTemplate.turmas_count || 0
+            setSuccess(
+                `Componente adicionado na posição ${ordem}º! ${turmasCount > 0 ? `Sincronizado em ${turmasCount} turma(s).` : ''}`,
+            )
             setShowAddComponenteModal(false)
             resetComponenteForm()
             loadComponentes(selectedTemplate.id)
@@ -405,7 +443,14 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             setTimeout(() => setSuccess(null), 3000)
         } catch (err: any) {
             console.error('Erro ao adicionar componente:', err)
-            setError(translateError(err?.message || 'Erro ao adicionar componente'))
+            const msg = err?.message || 'Erro ao adicionar componente'
+            setError(
+                translateError(
+                    /unique_componente_template_ordem|duplicate key.*ordem/i.test(msg)
+                        ? 'Já existe um componente nessa posição nesta disciplina/trimestre. A posição é automática — tente novamente.'
+                        : msg,
+                ),
+            )
         } finally {
             setSubmittingComponente(false)
         }
@@ -427,27 +472,79 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                 return
             }
 
+            const siblingComponents = (componentes[selectedTemplate.id] || [])
+                .filter((c) => c.id !== selectedComponente.id)
+            const formulaExpression = componenteFormData.is_calculated
+                ? componenteFormData.formula_expression
+                : null
+            const dependsOn = formulaExpression
+                ? inferDependsOnComponentIds(formulaExpression, siblingComponents, {
+                    tipoCalculo: componenteFormData.tipo_calculo,
+                    trimestre: parseInt(componenteFormData.trimestre),
+                })
+                : []
+
+            const oldCodigo = selectedComponente.codigo_componente
+            const oldTrimestre = selectedComponente.trimestre
+            const oldOrdem = selectedComponente.ordem
+            const newNome = componenteFormData.nome.trim()
+            const newCodigo = componenteFormData.codigo_componente.trim().toUpperCase()
+            const newTrimestre = parseInt(componenteFormData.trimestre)
+            const escolaId = escolaProfile?.id
+            const siblings = (componentes[selectedTemplate.id] || []).filter(
+                (c) => c.id !== selectedComponente.id,
+            )
+            // Keep position when trimestre stays; if moved, take next free slot there
+            const ordem =
+                Number(newTrimestre) === Number(oldTrimestre)
+                    ? oldOrdem
+                    : nextOrdemForTrimestre(siblings, newTrimestre)
+
+            const payload = {
+                nome: newNome,
+                codigo_componente: newCodigo || componenteFormData.codigo_componente,
+                peso_percentual: pesoPercentual,
+                escala_minima: parseFloat(componenteFormData.escala_minima),
+                escala_maxima: parseFloat(componenteFormData.escala_maxima),
+                obrigatorio: componenteFormData.obrigatorio,
+                ordem,
+                descricao: componenteFormData.descricao || null,
+                trimestre: newTrimestre,
+                is_calculated: componenteFormData.is_calculated,
+                formula_expression: formulaExpression,
+                depends_on_components: dependsOn,
+                tipo_calculo: componenteFormData.tipo_calculo,
+            }
+
             const { error } = await supabase
                 .from('componentes_template')
-                .update({
-                    nome: componenteFormData.nome,
-                    codigo_componente: componenteFormData.codigo_componente,
-                    peso_percentual: pesoPercentual,
-                    escala_minima: parseFloat(componenteFormData.escala_minima),
-                    escala_maxima: parseFloat(componenteFormData.escala_maxima),
-                    obrigatorio: componenteFormData.obrigatorio,
-                    ordem: parseInt(componenteFormData.ordem),
-                    descricao: componenteFormData.descricao || null,
-                    trimestre: parseInt(componenteFormData.trimestre),
-                    is_calculated: componenteFormData.is_calculated,
-                    formula_expression: componenteFormData.is_calculated ? componenteFormData.formula_expression : null,
-                    tipo_calculo: componenteFormData.tipo_calculo
-                })
+                .update(payload)
                 .eq('id', selectedComponente.id)
 
             if (error) throw error
 
-            const turmasCount = selectedTemplate.turmas_count || 0
+            // Catalog + mapas (componentes_avaliacao) stay aligned per class family / subsystem
+            if (escolaId && oldCodigo) {
+                await syncComponenteCatalogSafely(supabase, {
+                    escolaId,
+                    oldCodigo,
+                    newCodigo: newCodigo || oldCodigo,
+                    newNome,
+                })
+            }
+
+            const syncedTurmas = escolaId && oldCodigo
+                ? await fanOutEditComponenteToRelated(supabase, {
+                    escolaId,
+                    template: selectedTemplate,
+                    oldCodigo,
+                    oldOrdem,
+                    oldTrimestre,
+                    payload,
+                })
+                : 0
+
+            const turmasCount = syncedTurmas || selectedTemplate.turmas_count || 0
             setSuccess(`Componente actualizado! ${turmasCount > 0 ? `Sincronizado em ${turmasCount} turma(s).` : ''}`)
             setShowEditComponenteModal(false)
             setSelectedComponente(null)
@@ -512,6 +609,7 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
 
         try {
             const codigoApagado = selectedComponente.codigo_componente
+            const escolaId = escolaProfile?.id
 
             const { error } = await supabase
                 .from('componentes_template')
@@ -520,9 +618,21 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
 
             if (error) throw error
 
+            const syncedTurmas = escolaId
+                ? await fanOutDeleteComponenteToSiblings(supabase, {
+                    escolaId,
+                    template: selectedTemplate,
+                    codigo: codigoApagado,
+                    ordem: selectedComponente.ordem,
+                    trimestre: selectedComponente.trimestre,
+                })
+                : 0
+
             await hideDeletedComponenteFromCatalog(codigoApagado)
 
-            setSuccess('Componente eliminado!')
+            setSuccess(
+                `Componente eliminado!${syncedTurmas > 0 ? ` Retirado da mini-pauta em ${syncedTurmas} turma(s).` : ''}`,
+            )
             setShowDeleteComponenteModal(false)
             setSelectedComponente(null)
             loadComponentes(selectedTemplate.id)
@@ -535,7 +645,22 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
 
     const openAddComponenteModal = (template: DisciplinaTemplate) => {
         setSelectedTemplate(template)
-        resetComponenteForm()
+        const existing = componentes[template.id] || []
+        const defaultTrimestre = 1
+        setComponenteFormData({
+            nome: '',
+            codigo_componente: '',
+            peso_percentual: '',
+            escala_minima: '0',
+            escala_maxima: '20',
+            obrigatorio: true,
+            ordem: String(nextOrdemForTrimestre(existing, defaultTrimestre)),
+            descricao: '',
+            trimestre: String(defaultTrimestre),
+            is_calculated: false,
+            formula_expression: '',
+            tipo_calculo: 'trimestral',
+        })
         setShowAddComponenteModal(true)
     }
 
@@ -664,10 +789,13 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             const trimestre = parseInt(componenteFormData.trimestre)
             console.log('Trimestre alvo:', trimestre)
 
+            const existing = componentes[selectedTemplate.id] || []
+            const ordem = nextOrdemForTrimestre(existing, trimestre)
+
             const payload = {
                 disciplina_template_id: selectedTemplate.id,
                 nome: data.componente.nome,
-                codigo_componente: data.componente.codigo_componente,
+                codigo_componente: String(data.componente.codigo_componente || '').trim().toUpperCase(),
                 peso_percentual: data.componente.peso_padrao || 0,
                 trimestre: trimestre,
                 is_calculated: data.componente.is_calculated,
@@ -676,7 +804,7 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                 escala_minima: 0,
                 escala_maxima: 20,
                 obrigatorio: true,
-                ordem: 1,
+                ordem,
                 descricao: data.componente.descricao
             }
             console.log('Payload para insert:', payload)
@@ -693,8 +821,26 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
 
             console.log('Componente inserido com sucesso:', inserted)
 
-            const turmasCount = selectedTemplate.turmas_count || 0
-            setSuccess(`Componente adicionado! ${turmasCount > 0 ? `Sincronizado em ${turmasCount} turma(s).` : ''}`)
+            // Keep local list in sync so the next add gets ordem+1 immediately
+            if (inserted?.length) {
+                setComponentes((prev) => ({
+                    ...prev,
+                    [selectedTemplate.id]: [...(prev[selectedTemplate.id] || []), ...inserted],
+                }))
+            }
+
+            const escolaId = escolaProfile?.id
+            const syncedTurmas = escolaId
+                ? await fanOutNewComponenteToSiblings(supabase, {
+                    escolaId,
+                    template: selectedTemplate,
+                    payload,
+                })
+                : 0
+            const turmasCount = syncedTurmas || selectedTemplate.turmas_count || 0
+            setSuccess(
+                `Componente adicionado na posição ${ordem}º! ${turmasCount > 0 ? `Sincronizado em ${turmasCount} turma(s).` : ''}`,
+            )
             setShowAddComponenteModal(false)
             resetComponenteForm()
 
@@ -1186,7 +1332,15 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                 <ComponenteSelectorModal
                     escolaId={escolaProfile?.id || ''}
                     trimestre={parseInt(componenteFormData.trimestre)}
-                    onTrimestreChange={(t) => setComponenteFormData({ ...componenteFormData, trimestre: t.toString() })}
+                    proximaPosicao={parseInt(componenteFormData.ordem) || 1}
+                    onTrimestreChange={(t) => {
+                        const existing = componentes[selectedTemplate.id] || []
+                        setComponenteFormData({
+                            ...componenteFormData,
+                            trimestre: t.toString(),
+                            ordem: String(nextOrdemForTrimestre(existing, t)),
+                        })
+                    }}
                     onSelect={handleComponenteSelected}
                     onClose={closeModals}
                     disableAssociation={true}
@@ -1196,242 +1350,237 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                 />
             )}
 
-            {/* Edit Component Modal - Only used for editing now */}
-            {showEditComponenteModal && selectedTemplate && (
-                <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center md:p-4 z-50 animate-fade-in">
-                    <Card className="w-full md:max-w-lg md:rounded-lg rounded-t-2xl rounded-b-none md:rounded-b-lg animate-slide-up max-h-[90vh] overflow-y-auto">
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-lg font-semibold text-slate-900">
-                                        Editar Componente
-                                    </h3>
-                                    <p className="text-sm text-slate-600 mt-0.5">{selectedTemplate.nome}</p>
+            {/* Edit Component Modal */}
+            <FormModal
+                isOpen={!!(showEditComponenteModal && selectedTemplate)}
+                onClose={closeModals}
+                title="Editar Componente"
+                subtitle={selectedTemplate?.nome}
+                icon={<Icons.Edit />}
+                accent="blue"
+                size="md"
+                busy={submittingComponente}
+            >
+                <form onSubmit={handleEditComponente} className="px-5 py-4 space-y-3">
+                    <Input
+                        label="Nome do Componente"
+                        type="text"
+                        value={componenteFormData.nome}
+                        onChange={(e) => setComponenteFormData({ ...componenteFormData, nome: e.target.value })}
+                        placeholder="Ex: MAC - Média das Avaliações Contínuas"
+                        required
+                    />
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <Input
+                            label="Código"
+                            type="text"
+                            value={componenteFormData.codigo_componente}
+                            onChange={(e) => setComponenteFormData({ ...componenteFormData, codigo_componente: e.target.value })}
+                            placeholder="Ex: MAC"
+                            required
+                        />
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                Trimestre <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                                value={componenteFormData.trimestre}
+                                onChange={(e) => {
+                                    if (!selectedTemplate) return
+                                    const t = parseInt(e.target.value)
+                                    const siblings = (componentes[selectedTemplate.id] || [])
+                                        .filter((c) => c.id !== selectedComponente?.id)
+                                    const sameTrimestre =
+                                        selectedComponente &&
+                                        Number(selectedComponente.trimestre) === t
+                                    setComponenteFormData({
+                                        ...componenteFormData,
+                                        trimestre: e.target.value,
+                                        ordem: sameTrimestre
+                                            ? String(selectedComponente.ordem)
+                                            : String(nextOrdemForTrimestre(siblings, t)),
+                                    })
+                                }}
+                                className="form-input w-full"
+                                required
+                            >
+                                <option value="1">1º Trimestre</option>
+                                <option value="2">2º Trimestre</option>
+                                <option value="3">3º Trimestre</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <Input
+                            label="Peso (%)"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={componenteFormData.peso_percentual}
+                            onChange={(e) => setComponenteFormData({ ...componenteFormData, peso_percentual: e.target.value })}
+                            placeholder="Ex: 30"
+                            required
+                        />
+                        <div>
+                            <Input
+                                label="Posição"
+                                type="text"
+                                value={`${componenteFormData.ordem}º`}
+                                readOnly
+                                disabled
+                            />
+                            <p className="mt-1 text-xs text-slate-500">
+                                Automática (sem conflitos no trimestre).
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <Input
+                            label="Escala Mínima"
+                            type="number"
+                            step="0.01"
+                            value={componenteFormData.escala_minima}
+                            onChange={(e) => setComponenteFormData({ ...componenteFormData, escala_minima: e.target.value })}
+                            required
+                        />
+                        <Input
+                            label="Escala Máxima"
+                            type="number"
+                            step="0.01"
+                            value={componenteFormData.escala_maxima}
+                            onChange={(e) => setComponenteFormData({ ...componenteFormData, escala_maxima: e.target.value })}
+                            required
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="obrigatorio-template"
+                            checked={componenteFormData.obrigatorio}
+                            onChange={(e) => setComponenteFormData({ ...componenteFormData, obrigatorio: e.target.checked })}
+                            className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
+                        />
+                        <label htmlFor="obrigatorio-template" className="text-sm text-slate-700">
+                            Componente obrigatório
+                        </label>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                        <input
+                            type="checkbox"
+                            id="is_calculated_template"
+                            checked={componenteFormData.is_calculated}
+                            onChange={(e) => setComponenteFormData({ ...componenteFormData, is_calculated: e.target.checked, formula_expression: '' })}
+                            className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
+                        />
+                        <label htmlFor="is_calculated_template" className="text-sm text-slate-700 flex-1">
+                            <strong>Campo Calculável</strong>
+                            <span className="block text-xs text-slate-600">
+                                Calculado automaticamente com fórmula
+                            </span>
+                        </label>
+                    </div>
+
+                    {componenteFormData.is_calculated && (
+                        <div className="space-y-2.5 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <div className="space-y-1.5">
+                                <label className="form-label text-sm">Tipo de Cálculo</label>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="radio"
+                                            value="trimestral"
+                                            checked={componenteFormData.tipo_calculo === 'trimestral'}
+                                            onChange={(e) => setComponenteFormData({ ...componenteFormData, tipo_calculo: e.target.value as 'trimestral' | 'anual' })}
+                                            className="w-4 h-4 text-primary-600"
+                                        />
+                                        <span className="text-sm text-slate-700">Trimestral (MT)</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="radio"
+                                            value="anual"
+                                            checked={componenteFormData.tipo_calculo === 'anual'}
+                                            onChange={(e) => setComponenteFormData({ ...componenteFormData, tipo_calculo: e.target.value as 'trimestral' | 'anual' })}
+                                            className="w-4 h-4 text-primary-600"
+                                        />
+                                        <span className="text-sm text-slate-700">Anual (MF)</span>
+                                    </label>
                                 </div>
-                                <button
-                                    onClick={closeModals}
-                                    className="text-slate-400 hover:text-slate-600 min-h-touch min-w-touch flex items-center justify-center -mr-2"
-                                >
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
                             </div>
-                        </CardHeader>
-                        <CardBody>
-                            <form onSubmit={handleEditComponente} className="space-y-4">
-                                <Input
-                                    label="Nome do Componente"
+                            <div>
+                                <label className="form-label text-sm">Fórmula</label>
+                                <input
                                     type="text"
-                                    value={componenteFormData.nome}
-                                    onChange={(e) => setComponenteFormData({ ...componenteFormData, nome: e.target.value })}
-                                    placeholder="Ex: MAC - Média das Avaliações Contínuas"
-                                    required
+                                    value={componenteFormData.formula_expression}
+                                    onChange={(e) => setComponenteFormData({ ...componenteFormData, formula_expression: e.target.value })}
+                                    placeholder={componenteFormData.tipo_calculo === 'anual'
+                                        ? 'Ex: (MT1 + MT2 + MT3) / 3'
+                                        : 'Ex: (MAC + NPT) / 2'}
+                                    className="form-input w-full text-sm font-mono"
                                 />
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Códigos (MAC, NPT, MT…) e operadores + - * / ( ).
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
-                                <Input
-                                    label="Código do Componente"
-                                    type="text"
-                                    value={componenteFormData.codigo_componente}
-                                    onChange={(e) => setComponenteFormData({ ...componenteFormData, codigo_componente: e.target.value })}
-                                    placeholder="Ex: MAC"
-                                    required
-                                />
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Descrição (opcional)</label>
+                        <textarea
+                            value={componenteFormData.descricao}
+                            onChange={(e) => setComponenteFormData({ ...componenteFormData, descricao: e.target.value })}
+                            placeholder="Breve descrição do componente..."
+                            className="form-input w-full min-h-[48px] resize-none"
+                            rows={2}
+                        />
+                    </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                        Trimestre <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={componenteFormData.trimestre}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, trimestre: e.target.value })}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                        required
-                                    >
-                                        <option value="1">1º Trimestre</option>
-                                        <option value="2">2º Trimestre</option>
-                                        <option value="3">3º Trimestre</option>
-                                    </select>
-                                </div>
+                    {selectedTemplate && (selectedTemplate.turmas_count || 0) > 0 && (
+                        <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-xs text-blue-700">
+                                <strong>Nota:</strong> Sincronizada em {selectedTemplate.turmas_count} turma(s).
+                            </p>
+                        </div>
+                    )}
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Input
-                                        label="Peso Percentual (%)"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        max="100"
-                                        value={componenteFormData.peso_percentual}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, peso_percentual: e.target.value })}
-                                        placeholder="Ex: 30"
-                                        required
-                                    />
-
-                                    <Input
-                                        label="Ordem"
-                                        type="number"
-                                        min="1"
-                                        value={componenteFormData.ordem}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, ordem: e.target.value })}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Input
-                                        label="Escala Mínima"
-                                        type="number"
-                                        step="0.01"
-                                        value={componenteFormData.escala_minima}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, escala_minima: e.target.value })}
-                                        required
-                                    />
-
-                                    <Input
-                                        label="Escala Máxima"
-                                        type="number"
-                                        step="0.01"
-                                        value={componenteFormData.escala_maxima}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, escala_maxima: e.target.value })}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
-                                        id="obrigatorio-template"
-                                        checked={componenteFormData.obrigatorio}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, obrigatorio: e.target.checked })}
-                                        className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
-                                    />
-                                    <label htmlFor="obrigatorio-template" className="text-sm text-slate-700">
-                                        Componente obrigatório
-                                    </label>
-                                </div>
-
-                                {/* Calculated Field Toggle */}
-                                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                    <input
-                                        type="checkbox"
-                                        id="is_calculated_template"
-                                        checked={componenteFormData.is_calculated}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, is_calculated: e.target.checked, formula_expression: '' })}
-                                        className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
-                                    />
-                                    <label htmlFor="is_calculated_template" className="text-sm text-slate-700 flex-1">
-                                        <strong>Campo Calculável</strong>
-                                        <span className="block text-xs text-slate-600 mt-0.5">
-                                            Este componente será calculado automaticamente usando uma fórmula
-                                        </span>
-                                    </label>
-                                </div>
-
-                                {/* Formula Builder - Only show when calculated is enabled */}
-                                {componenteFormData.is_calculated && (
-                                    <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                                        {/* Calculation Type */}
-                                        <div className="space-y-2">
-                                            <label className="form-label text-sm">Tipo de Cálculo</label>
-                                            <div className="flex gap-4">
-                                                <label className="flex items-center gap-2">
-                                                    <input
-                                                        type="radio"
-                                                        value="trimestral"
-                                                        checked={componenteFormData.tipo_calculo === 'trimestral'}
-                                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, tipo_calculo: e.target.value as 'trimestral' | 'anual' })}
-                                                        className="w-4 h-4 text-primary-600"
-                                                    />
-                                                    <span className="text-sm text-slate-700">Trimestral (MT)</span>
-                                                </label>
-                                                <label className="flex items-center gap-2">
-                                                    <input
-                                                        type="radio"
-                                                        value="anual"
-                                                        checked={componenteFormData.tipo_calculo === 'anual'}
-                                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, tipo_calculo: e.target.value as 'trimestral' | 'anual' })}
-                                                        className="w-4 h-4 text-primary-600"
-                                                    />
-                                                    <span className="text-sm text-slate-700">Anual (MF)</span>
-                                                </label>
-                                            </div>
-                                            <p className="text-xs text-slate-600">
-                                                {componenteFormData.tipo_calculo === 'trimestral'
-                                                    ? 'Calcula usando componentes do mesmo trimestre (ex: MAC * 0.4 + EXAME * 0.6)'
-                                                    : 'Calcula usando médias dos 3 trimestres (ex: (T1 + T2 + T3) / 3)'}
-                                            </p>
-                                        </div>
-
-                                        {/* Formula Input */}
-                                        <div>
-                                            <label className="form-label text-sm">Fórmula de Cálculo</label>
-                                            <input
-                                                type="text"
-                                                value={componenteFormData.formula_expression}
-                                                onChange={(e) => setComponenteFormData({ ...componenteFormData, formula_expression: e.target.value })}
-                                                placeholder="Ex: MAC * 0.4 + EXAME * 0.6"
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm font-mono"
-                                            />
-                                            <p className="text-xs text-slate-500 mt-1">
-                                                Use os códigos dos componentes e operadores: + - * / ( )
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Descrição (opcional)</label>
-                                    <textarea
-                                        value={componenteFormData.descricao}
-                                        onChange={(e) => setComponenteFormData({ ...componenteFormData, descricao: e.target.value })}
-                                        placeholder="Breve descrição do componente..."
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent min-h-[60px] resize-none"
-                                        rows={2}
-                                    />
-                                </div>
-
-                                {selectedTemplate && (selectedTemplate.turmas_count || 0) > 0 && (
-                                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                                        <p className="text-sm text-blue-700">
-                                            <strong>Nota:</strong> Esta alteração será sincronizada em {selectedTemplate.turmas_count} turma(s).
-                                        </p>
-                                    </div>
-                                )}
-
-                                <div className="flex gap-3 pt-4">
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        onClick={closeModals}
-                                        className="flex-1"
-                                        disabled={submittingComponente}
-                                    >
-                                        Cancelar
-                                    </Button>
-                                    <Button
-                                        type="submit"
-                                        variant="primary"
-                                        className="flex-1"
-                                        disabled={submittingComponente}
-                                    >
-                                        {submittingComponente ? (
-                                            <span className="flex items-center justify-center gap-2">
-                                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                                </svg>
-                                                {showAddComponenteModal ? 'A adicionar...' : 'A guardar...'}
-                                            </span>
-                                        ) : (
-                                            'Guardar Alterações'
-                                        )}
-                                    </Button>
-                                </div>
-                            </form>
-                        </CardBody>
-                    </Card>
-                </div>
-            )}
+                    <div className="flex gap-3 pt-2 sticky bottom-0 bg-white pb-1">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={closeModals}
+                            className="flex-1"
+                            disabled={submittingComponente}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            className="flex-1"
+                            disabled={submittingComponente}
+                        >
+                            {submittingComponente ? (
+                                <span className="flex items-center justify-center gap-2">
+                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    A guardar...
+                                </span>
+                            ) : (
+                                'Guardar Alterações'
+                            )}
+                        </Button>
+                    </div>
+                </form>
+            </FormModal>
 
             {/* Delete Component Modal */}
             {showDeleteComponenteModal && selectedComponente && (

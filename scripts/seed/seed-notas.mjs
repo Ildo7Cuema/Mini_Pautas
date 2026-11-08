@@ -22,10 +22,89 @@ function chunk(arr, size) {
 }
 
 /**
+ * Liga depends_on_components por código da fórmula (MT→MAC/NPT, MF→MT×3).
+ * Os relatórios também resolvem por código; isto mantém GradeEntry/Pauta alinhados.
+ */
+async function linkDependsOnComponents(supabase, turmaId) {
+    const { data: comps, error } = await withRetry(`deps-comps(${turmaId})`, async () => {
+        const res = await supabase
+            .from('componentes_avaliacao')
+            .select('id, disciplina_id, codigo_componente, trimestre, formula_expression, is_calculated, tipo_calculo, depends_on_components')
+            .eq('turma_id', turmaId)
+        if (res.error) throw new Error(res.error.message)
+        return res
+    })
+    if (error || !comps?.length) return
+
+    const byDisc = new Map()
+    for (const c of comps) {
+        if (!byDisc.has(c.disciplina_id)) byDisc.set(c.disciplina_id, [])
+        byDisc.get(c.disciplina_id).push(c)
+    }
+
+    const updates = []
+    for (const group of byDisc.values()) {
+        for (const comp of group) {
+            if (!comp.is_calculated || !comp.formula_expression) continue
+            const formula = String(comp.formula_expression).toUpperCase()
+            const codes = [...new Set((formula.match(/[A-Z][A-Z0-9_]*/g) || []))]
+            const depIds = new Set()
+
+            for (const raw of codes) {
+                const alias = /^T([1-3])$/.exec(raw)
+                const suffixed = /^([A-Z][A-Z0-9_]*?)([1-3])$/.exec(raw)
+                let base = raw
+                let trim = null
+                if (alias) {
+                    base = 'MT'
+                    trim = Number(alias[1])
+                } else if (suffixed) {
+                    base = suffixed[1]
+                    trim = Number(suffixed[2])
+                }
+
+                for (const other of group) {
+                    if (other.id === comp.id) continue
+                    if (String(other.codigo_componente).toUpperCase() !== base) continue
+                    const otherT = Number(other.trimestre) || null
+                    if (trim != null) {
+                        if (otherT === trim) depIds.add(other.id)
+                    } else if (comp.tipo_calculo === 'anual') {
+                        depIds.add(other.id)
+                    } else if (otherT === (Number(comp.trimestre) || null)) {
+                        depIds.add(other.id)
+                    }
+                }
+            }
+
+            const next = [...depIds]
+            const prev = Array.isArray(comp.depends_on_components) ? comp.depends_on_components : []
+            const same =
+                next.length === prev.length && next.every((id) => prev.includes(id))
+            if (!same && next.length > 0) {
+                updates.push({ id: comp.id, depends_on_components: next })
+            }
+        }
+    }
+
+    for (const part of chunk(updates, 40)) {
+        for (const row of part) {
+            await withRetry(`deps-upd(${row.id})`, async () => {
+                const { error: uErr } = await supabase
+                    .from('componentes_avaliacao')
+                    .update({ depends_on_components: row.depends_on_components })
+                    .eq('id', row.id)
+                if (uErr) throw new Error(uErr.message)
+            })
+        }
+        await sleep(20)
+    }
+}
+
+/**
  * Garante componentes_avaliacao para todos os trimestres do template
  * (apply_template_to_turma só cria o 1.º código por disciplina).
- * depends_on fica vazio: a seed grava MT/MF directamente e os relatórios
- * avaliam fórmulas por código (MAC/NPT/MT1…).
+ * Depois liga depends_on a partir da fórmula (MAC/NPT/MT1…).
  */
 export async function ensureComponentesAvaliacao(supabase, turmaId) {
     const { data: links, error: lErr } = await withRetry(`links(${turmaId})`, async () => {
@@ -117,6 +196,8 @@ export async function ensureComponentesAvaliacao(supabase, turmaId) {
         }
         await sleep(40)
     }
+
+    await linkDependsOnComponents(supabase, turmaId)
 
     return { created }
 }

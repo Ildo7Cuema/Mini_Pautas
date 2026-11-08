@@ -10,6 +10,7 @@ component-meta:
 import React, { useState } from 'react'
 import { Card, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
+import { getComponenteDisplayLabel, getComponenteTooltipLabel } from '../utils/gradeUtils'
 
 interface MiniPautaPreviewPrimarioProps {
     data: {
@@ -57,7 +58,7 @@ interface MiniPautaPreviewPrimarioProps {
 interface DisciplineGroup {
     disciplina_nome: string
     ordem?: number
-    componentes: Array<{ id: string; codigo_componente: string; is_calculated?: boolean }>
+    componentes: Array<{ id: string; codigo_componente: string; nome?: string; is_calculated?: boolean }>
 }
 
 const groupComponentsByDiscipline = (componentes: MiniPautaPreviewPrimarioProps['data']['componentes']): DisciplineGroup[] => {
@@ -78,6 +79,7 @@ const groupComponentsByDiscipline = (componentes: MiniPautaPreviewPrimarioProps[
         group.componentes.push({
             id: comp.id,
             codigo_componente: comp.codigo_componente,
+            nome: comp.nome,
             is_calculated: comp.is_calculated
         })
     })
@@ -254,8 +256,8 @@ export const MiniPautaPreviewPrimario: React.FC<MiniPautaPreviewPrimarioProps> =
                                                         className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg ${isFinal ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'
                                                             }`}
                                                     >
-                                                        <span className="text-[10px] text-slate-500 font-medium">
-                                                            {comp.codigo_componente}
+                                                        <span className="text-[10px] text-slate-500 font-medium max-w-[7rem] truncate" title={getComponenteTooltipLabel(comp)}>
+                                                            {getComponenteDisplayLabel(comp)}
                                                         </span>
                                                         <span
                                                             className="text-sm font-bold"
@@ -286,8 +288,8 @@ export const MiniPautaPreviewPrimario: React.FC<MiniPautaPreviewPrimarioProps> =
                                                 className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg ${isFinal ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'
                                                     }`}
                                             >
-                                                <span className="text-[10px] text-slate-500 font-medium">
-                                                    {comp.codigo_componente}
+                                                <span className="text-[10px] text-slate-500 font-medium max-w-[7rem] truncate" title={getComponenteTooltipLabel(comp)}>
+                                                    {getComponenteDisplayLabel(comp)}
                                                 </span>
                                                 <span
                                                     className="text-sm font-bold"
@@ -374,10 +376,10 @@ export const MiniPautaPreviewPrimario: React.FC<MiniPautaPreviewPrimarioProps> =
                                                     className={`border border-slate-200 px-2 py-1.5 text-center text-xs font-semibold ${comp.is_calculated ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
                                                         }`}
                                                 >
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        {comp.codigo_componente}
+                                                    <div className="flex items-center justify-center gap-1 max-w-[8rem] mx-auto" title={getComponenteTooltipLabel(comp)}>
+                                                        <span className="truncate">{getComponenteDisplayLabel(comp)}</span>
                                                         {comp.is_calculated && (
-                                                            <span className="text-amber-500" title="Calculado">✦</span>
+                                                            <span className="text-amber-500 shrink-0" title="Calculado">✦</span>
                                                         )}
                                                     </div>
                                                 </th>
@@ -397,10 +399,10 @@ export const MiniPautaPreviewPrimario: React.FC<MiniPautaPreviewPrimarioProps> =
                                             className={`border border-slate-300 px-2 py-2 text-center text-xs font-semibold ${comp.is_calculated ? 'bg-green-500' : ''
                                                 }`}
                                         >
-                                            <div className="flex items-center justify-center gap-1">
-                                                {comp.codigo_componente}
+                                            <div className="flex items-center justify-center gap-1 max-w-[8rem] mx-auto" title={getComponenteTooltipLabel(comp)}>
+                                                <span className="truncate">{getComponenteDisplayLabel(comp)}</span>
                                                 {comp.is_calculated && (
-                                                    <span className="text-amber-300" title="Calculado">✦</span>
+                                                    <span className="text-amber-300 shrink-0" title="Calculado">✦</span>
                                                 )}
                                             </div>
                                             <div className="text-[10px] font-normal opacity-80">({comp.peso_percentual}%)</div>

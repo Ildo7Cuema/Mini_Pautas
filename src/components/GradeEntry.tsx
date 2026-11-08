@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { Turma, Disciplina, ComponenteAvaliacao, Aluno, Nota } from '../types'
 import { validateGrade } from '../utils/formulaParser'
-import { evaluateFormula } from '../utils/formulaUtils'
+import { evaluateConfiguredComponent, type GradesByTrimestre } from '../utils/formulaUtils'
 import { isManualGradeEntryComponent } from '../utils/gradeUtils'
 
 interface GradeEntryProps {
@@ -108,66 +108,95 @@ export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => 
         }
     }
 
-    // Calculate grades for calculated components
+    // Calculate grades strictly from tipo_calculo + formula_expression of the selected component
     const calculateGradesForCalculatedComponent = async () => {
         if (!selectedComponente?.is_calculated || !selectedComponente.formula_expression) return
-        if (!selectedComponente.depends_on_components || selectedComponente.depends_on_components.length === 0) return
 
         try {
-            // Load grades for all dependent components
-            const { data: dependentGrades, error } = await supabase
-                .from('notas')
-                .select('aluno_id, componente_id, valor')
-                .in('componente_id', selectedComponente.depends_on_components)
-                .eq('turma_id', turma.id)
-                .eq('trimestre', trimestre)
+            const isAnnual = selectedComponente.tipo_calculo === 'anual'
+            const relatedIds = componentes
+                .filter((c) => c.id !== selectedComponente.id)
+                .map((c) => c.id)
 
+            if (relatedIds.length === 0) return
+
+            let gradesQuery = supabase
+                .from('notas')
+                .select('aluno_id, componente_id, valor, trimestre')
+                .eq('turma_id', turma.id)
+                .in('componente_id', relatedIds)
+
+            if (!isAnnual) {
+                gradesQuery = gradesQuery.eq('trimestre', trimestre)
+            }
+
+            const { data: dependentGrades, error } = await gradesQuery
             if (error) throw error
 
-            // Group grades by student
-            const gradesByStudent: Record<string, Record<string, number>> = {}
+            const gradesByStudent: Record<string, { byId: Record<string, number>; byTrimestre: GradesByTrimestre }> = {}
             dependentGrades?.forEach((grade) => {
                 if (!gradesByStudent[grade.aluno_id]) {
-                    gradesByStudent[grade.aluno_id] = {}
+                    gradesByStudent[grade.aluno_id] = {
+                        byId: {},
+                        byTrimestre: { 1: {}, 2: {}, 3: {} },
+                    }
                 }
-                gradesByStudent[grade.aluno_id][grade.componente_id] = grade.valor
+                const bucket = gradesByStudent[grade.aluno_id]
+                bucket.byId[grade.componente_id] = grade.valor
+                const comp = componentes.find((c) => c.id === grade.componente_id)
+                if (comp) {
+                    const t = Number(comp.trimestre) || Number(grade.trimestre) || 1
+                    if (!bucket.byTrimestre[t]) bucket.byTrimestre[t] = {}
+                    bucket.byTrimestre[t][comp.codigo_componente] = grade.valor
+                }
             })
 
-            // Get component codes for formula
-            const componentCodesMap: Record<string, string> = {}
-            componentes.forEach(comp => {
-                componentCodesMap[comp.id] = comp.codigo_componente
-            })
-
-            // Calculate for each student
             const calculatedGrades: Record<string, number> = {}
             alunos.forEach((aluno) => {
-                const studentGrades = gradesByStudent[aluno.id]
-                if (!studentGrades) return
+                const student = gradesByStudent[aluno.id]
+                if (!student) return
 
-                // Check if all dependent components have grades
-                const hasAllGrades = selectedComponente.depends_on_components!.every(
-                    compId => studentGrades[compId] !== undefined
-                )
-
-                if (hasAllGrades) {
-                    // Map component IDs to codes with their values
-                    const formulaValues: Record<string, number> = {}
-                    selectedComponente.depends_on_components!.forEach(compId => {
-                        const code = componentCodesMap[compId]
-                        if (code) {
-                            formulaValues[code] = studentGrades[compId]
+                let result: number | null = null
+                if (isAnnual) {
+                    // Recalculate trimestral deps first so annual formulas see configured MT values
+                    ;[1, 2, 3].forEach((t) => {
+                        const compsT = componentes.filter(
+                            (c) =>
+                                Number(c.trimestre) === t &&
+                                (c.tipo_calculo === 'trimestral' || !c.tipo_calculo)
+                        )
+                        compsT.forEach((depComp) => {
+                            if (!(depComp.is_calculated && depComp.formula_expression)) return
+                            const map = student.byTrimestre[t] || {}
+                            const mt = evaluateConfiguredComponent(depComp, {
+                                gradesByCode: map,
+                                components: compsT,
+                                trimestre: t,
+                            })
+                            if (mt !== null) student.byTrimestre[t][depComp.codigo_componente] = mt
+                        })
+                    })
+                    result = evaluateConfiguredComponent(selectedComponente, {
+                        gradesByTrimestre: student.byTrimestre,
+                        components: componentes,
+                    })
+                } else {
+                    const gradesByCode: Record<string, number> = {}
+                    const compsT = componentes.filter((c) => Number(c.trimestre) === Number(trimestre))
+                    compsT.forEach((c) => {
+                        if (student.byId[c.id] !== undefined) {
+                            gradesByCode[c.codigo_componente] = student.byId[c.id]
                         }
                     })
+                    result = evaluateConfiguredComponent(selectedComponente, {
+                        gradesByCode,
+                        components: compsT,
+                        trimestre,
+                    })
+                }
 
-                    try {
-                        if (selectedComponente.formula_expression) {
-                            const result = evaluateFormula(selectedComponente.formula_expression, formulaValues)
-                            calculatedGrades[aluno.id] = Math.round(result * 100) / 100 // Round to 2 decimals
-                        }
-                    } catch (err) {
-                        console.error(`Error calculating grade for student ${aluno.nome_completo}:`, err)
-                    }
+                if (result !== null) {
+                    calculatedGrades[aluno.id] = result
                 }
             })
 

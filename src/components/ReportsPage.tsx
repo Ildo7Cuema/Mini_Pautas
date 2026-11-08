@@ -18,9 +18,10 @@ import { TurmaStatistics } from './TurmaStatistics'
 import { generateMiniPautaPDF } from '../utils/pdfGenerator'
 import { generateMiniPautaExcel, generateCSV } from '../utils/excelGenerator'
 import { calculateNotaFinal, calculateStatistics, getClassificacao } from '../utils/gradeCalculations'
-import { evaluateFormula, parseFormula } from '../utils/formulaUtils'
-import { FormulaConfig, loadFormulaConfig } from '../utils/formulaConfigUtils'
-import { ConfiguracaoFormulasModal } from './ConfiguracaoFormulasModal'
+import {
+    evaluateConfiguredComponent,
+    type GradesByTrimestre,
+} from '../utils/formulaUtils'
 import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
 import { ConfiguracaoCoresModal } from './ConfiguracaoCoresModal'
@@ -129,8 +130,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const [miniPautaData, setMiniPautaData] = useState<MiniPautaData | null>(null)
-    const [mtConfig, setMtConfig] = useState<FormulaConfig | null>(null)
-    const [showConfigModal, setShowConfigModal] = useState(false)
     const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
     const [showOrdenarDisciplinasModal, setShowOrdenarDisciplinasModal] = useState(false)
     const [colorConfig, setColorConfig] = useState<GradeColorConfig | null>(null)
@@ -350,33 +349,18 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         }
                     })
 
-                    // STEP 1: Calculate TRIMESTRAL calculated components (like MT)
+                    // STEP 1: TRIMESTRAL — só a fórmula configurada pelo utilizador
                     componentesDoTrimestre.forEach(comp => {
-                        if (comp.is_calculated && comp.formula_expression && comp.depends_on_components) {
-                            if (comp.tipo_calculo === 'trimestral' || !comp.tipo_calculo) {
-                                const dependencyValues: Record<string, number> = {}
+                        if (!(comp.is_calculated && comp.formula_expression)) return
+                        if (!(comp.tipo_calculo === 'trimestral' || !comp.tipo_calculo)) return
 
-                                comp.depends_on_components.forEach((depId: string) => {
-                                    const depComponent = componentesDisciplina.find(c => c.id === depId && c.trimestre === t)
-                                    if (depComponent) {
-                                        const value = notasMapTrimestre[depComponent.codigo_componente]
-                                        if (value !== undefined) {
-                                            dependencyValues[depComponent.codigo_componente] = value
-                                        } else {
-                                            dependencyValues[depComponent.codigo_componente] = 0
-                                        }
-                                    }
-                                })
-
-                                if (Object.keys(dependencyValues).length > 0) {
-                                    try {
-                                        const calculatedValue = evaluateFormula(comp.formula_expression, dependencyValues)
-                                        notasMapTrimestre[comp.codigo_componente] = Math.round(calculatedValue * 100) / 100
-                                    } catch (error) {
-                                        console.error(`Error calculating trimestral component ${comp.codigo_componente}:`, error)
-                                    }
-                                }
-                            }
+                        const calculatedValue = evaluateConfiguredComponent(comp, {
+                            gradesByCode: notasMapTrimestre,
+                            components: componentesDoTrimestre,
+                            trimestre: t,
+                        })
+                        if (calculatedValue !== null) {
+                            notasMapTrimestre[comp.codigo_componente] = calculatedValue
                         }
                     })
 
@@ -415,79 +399,43 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                 })))
 
                 if (annualComponents.length > 0) {
-                    // Build a complete map of all component values across all trimesters
-                    const allNotasMap: Record<string, number> = {}
+                    const gradesByTrimestre: GradesByTrimestre = { 1: {}, 2: {}, 3: {} }
 
-                    // First, add all raw grades
                     notasData?.filter(n => componentesDisciplina.some(c => c.id === n.componente_id))
                         .forEach(n => {
                             const comp = componentesDisciplina.find(c => c.id === n.componente_id)
-                            if (comp) {
-                                allNotasMap[comp.codigo_componente] = n.valor
-                            }
+                            if (!comp) return
+                            const t = Number(comp.trimestre) || Number(n.trimestre) || 1
+                            if (!gradesByTrimestre[t]) gradesByTrimestre[t] = {}
+                            gradesByTrimestre[t][comp.codigo_componente] = n.valor
                         })
 
-                    // Then, add all calculated trimestral values
                     for (let t = 1; t <= 3; t++) {
                         componentesPorTrimestre[t as 1 | 2 | 3].forEach(comp => {
                             if (comp.nota !== null && comp.is_calculated) {
-                                allNotasMap[comp.codigo] = comp.nota
+                                gradesByTrimestre[t][comp.codigo] = comp.nota
                             }
                         })
                     }
 
-                    console.log(`[TERMO DEBUG] All notas map before annual calculation:`, allNotasMap)
-
-                    // Now calculate annual components
                     annualComponents.forEach(comp => {
-                        console.log(`[TERMO DEBUG] ===== Processing ${comp.codigo_componente} =====`)
-                        console.log(`[TERMO DEBUG] Current allNotasMap:`, { ...allNotasMap })
+                        const roundedValue = evaluateConfiguredComponent(comp, {
+                            gradesByTrimestre,
+                            components: componentesDisciplina,
+                        })
+                        if (roundedValue !== null) {
+                            const t = Number(comp.trimestre) || 3
+                            if (!gradesByTrimestre[t]) gradesByTrimestre[t] = {}
+                            gradesByTrimestre[t][comp.codigo_componente] = roundedValue
 
-                        if (comp.formula_expression && comp.depends_on_components) {
-                            const dependencyValues: Record<string, number> = {}
-
-                            comp.depends_on_components.forEach((depId: string) => {
-                                const depComponent = componentesDisciplina.find(c => c.id === depId)
-                                if (depComponent) {
-                                    const value = allNotasMap[depComponent.codigo_componente]
-                                    if (value !== undefined) {
-                                        dependencyValues[depComponent.codigo_componente] = value
-                                    } else {
-                                        dependencyValues[depComponent.codigo_componente] = 0
-                                    }
-                                }
-                            })
-
-                            if (Object.keys(dependencyValues).length > 0) {
-                                try {
-                                    console.log(`[TERMO] Calculating annual component ${comp.codigo_componente}:`, dependencyValues)
-                                    const calculatedValue = evaluateFormula(comp.formula_expression, dependencyValues)
-                                    const roundedValue = Math.round(calculatedValue * 100) / 100
-                                    console.log(`[TERMO] Calculated ${comp.codigo_componente}:`, roundedValue)
-
-                                    // CRITICAL: Add to allNotasMap immediately so other annual components can use it
-                                    allNotasMap[comp.codigo_componente] = roundedValue
-                                    console.log(`[TERMO DEBUG] Added ${comp.codigo_componente}=${roundedValue} to allNotasMap. Map now has:`, Object.keys(allNotasMap))
-
-                                    // Add to the trimester where this component belongs
-                                    console.log(`[TERMO DEBUG] Adding ${comp.codigo_componente} to display. selectedComponents:`, selectedComponents.length === 0 ? 'ALL' : selectedComponents)
-                                    const shouldDisplay = selectedComponents.length === 0 || selectedComponents.includes(comp.codigo_componente)
-                                    console.log(`[TERMO DEBUG] Should display ${comp.codigo_componente}:`, shouldDisplay)
-
-                                    if (shouldDisplay) {
-                                        componentesPorTrimestre[comp.trimestre as 1 | 2 | 3].push({
-                                            codigo: comp.codigo_componente,
-                                            nome: comp.nome,
-                                            nota: roundedValue,
-                                            is_calculated: true
-                                        })
-                                        console.log(`[TERMO DEBUG] Added ${comp.codigo_componente} to trimestre ${comp.trimestre}`)
-                                    } else {
-                                        console.log(`[TERMO DEBUG] FILTERED OUT ${comp.codigo_componente} - not in selectedComponents`)
-                                    }
-                                } catch (error) {
-                                    console.error(`Error calculating annual component ${comp.codigo_componente}:`, error)
-                                }
+                            const shouldDisplay = selectedComponents.length === 0 || selectedComponents.includes(comp.codigo_componente)
+                            if (shouldDisplay) {
+                                componentesPorTrimestre[comp.trimestre as 1 | 2 | 3].push({
+                                    codigo: comp.codigo_componente,
+                                    nome: comp.nome,
+                                    nota: roundedValue,
+                                    is_calculated: true
+                                })
                             }
                         }
                     })
@@ -697,57 +645,19 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                 }
             })
 
-            // Calculate trimestral formula components (e.g. MT) — same robust resolution as mini-pauta
+            // Calculate trimestral formula components from user config (tipo_calculo + formula_expression)
             componentesTrimestre.forEach(comp => {
                 if (!(comp.is_calculated && comp.formula_expression)) return
                 if (!(comp.tipo_calculo === 'trimestral' || !comp.tipo_calculo)) return
+                if (Object.keys(notasMapByCode).length === 0) return
 
-                const dependencyValues: Record<string, number> = {}
-
-                if (!comp.depends_on_components || comp.depends_on_components.length === 0) {
-                    // Fallback: extract codes from formula (templates often leave depends_on empty)
-                    const formulaCodes = parseFormula(comp.formula_expression)
-                    formulaCodes.forEach(code => {
-                        const depComponent = componentesTrimestre.find(c =>
-                            c.codigo_componente?.trim().toUpperCase() === code.trim().toUpperCase()
-                        )
-                        if (depComponent) {
-                            dependencyValues[code] = notasMapByCode[depComponent.codigo_componente] ?? 0
-                        } else {
-                            dependencyValues[code] = 0
-                        }
-                    })
-                } else {
-                    comp.depends_on_components.forEach((depId: string) => {
-                        // Prefer ID match; fallback to codigo (templates may store either)
-                        let depComponent = componentesTrimestre.find(c => c.id === depId)
-                        if (!depComponent) {
-                            depComponent = componentesTrimestre.find(c =>
-                                c.codigo_componente?.trim().toUpperCase() === String(depId).trim().toUpperCase()
-                            )
-                        }
-                        if (depComponent) {
-                            const code = depComponent.codigo_componente
-                            dependencyValues[code] = notasMapByCode[code] ?? 0
-                        }
-                    })
-                }
-
-                // Only calculate when at least one dependency has a real launched grade
-                const hasAnyLaunchedDependency = Object.entries(dependencyValues).some(([code]) => {
-                    const dep = componentesTrimestre.find(c =>
-                        c.codigo_componente?.trim().toUpperCase() === code.trim().toUpperCase()
-                    )
-                    return dep ? notasMapById[dep.id] !== undefined : notasMapByCode[code] !== undefined
+                const calculatedValue = evaluateConfiguredComponent(comp, {
+                    gradesByCode: notasMapByCode,
+                    components: componentesTrimestre,
+                    trimestre: trimestreSel,
                 })
-
-                if (Object.keys(dependencyValues).length > 0 && hasAnyLaunchedDependency) {
-                    try {
-                        const calculatedValue = evaluateFormula(comp.formula_expression, dependencyValues)
-                        notasMapByCode[comp.codigo_componente] = Math.round(calculatedValue * 100) / 100
-                    } catch (error) {
-                        console.error(`Error calculating boletim component ${comp.codigo_componente}:`, error)
-                    }
+                if (calculatedValue !== null) {
+                    notasMapByCode[comp.codigo_componente] = calculatedValue
                 }
             })
 
@@ -1248,7 +1158,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         disciplina_id,
                         nome, 
                         peso_percentual, 
-                        trimestre, 
+                        trimestre,
+                        ordem,
                         is_calculated, 
                         formula_expression, 
                         depends_on_components,
@@ -1282,7 +1193,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         codigo_componente, 
                         nome, 
                         peso_percentual, 
-                        trimestre, 
+                        trimestre,
+                        ordem,
                         is_calculated, 
                         formula_expression, 
                         depends_on_components,
@@ -1311,7 +1223,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         codigo_componente, 
                         nome, 
                         peso_percentual, 
-                        trimestre, 
+                        trimestre,
+                        ordem,
                         is_calculated, 
                         formula_expression, 
                         depends_on_components,
@@ -1356,14 +1269,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                 return
             }
 
-            // Load MT configuration (skip if "all disciplines" mode)
-            if (selectedDisciplina !== 'all') {
-                const config = await loadFormulaConfig(selectedDisciplina, selectedTurma, 'MT')
-                setMtConfig(config)
-            } else {
-                setMtConfig(null)
-            }
-
+            // Cálculos vêm exclusivamente de tipo_calculo + formula_expression
+            // em componentes_avaliacao (configurados pelo utilizador nos Templates).
 
             // Handle ALL DISCIPLINES mode (Primary Education)
             if (isAllDisciplines && isPrimary) {
@@ -1400,43 +1307,28 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     })
 
                     sortedComponentes.forEach(componente => {
-                        if (componente.is_calculated && componente.formula_expression) {
-                            const dependencyValues: Record<string, number> = {}
+                        if (!(componente.is_calculated && componente.formula_expression)) return
+                        // Neste modo (um trimestre) só aplicamos fórmulas trimestrais;
+                        // anuais exigem MT1/MT2/MT3 e são resolvidas no modo por disciplina.
+                        if (componente.tipo_calculo === 'anual') return
 
-                            try {
-                                // Extract variables from formula
-                                const variables = parseFormula(componente.formula_expression)
-
-                                variables.forEach(variable => {
-                                    // Robust dependency resolution:
-                                    // Find component with the same Code within the same Discipline
-                                    // This is more reliable than depends_on_components IDs which might be inconsistent
-                                    const sourceComponent = componentesData.find(c =>
-                                        c.disciplina_id === componente.disciplina_id &&
-                                        c.codigo_componente?.trim().toUpperCase() === variable.trim().toUpperCase()
-                                    )
-
-                                    if (sourceComponent) {
-                                        const value = notasMap[sourceComponent.id]
-                                        dependencyValues[variable] = value !== undefined ? value : 0
-                                    } else {
-                                        // Variable needed but not found in the same discipline -> assume 0
-                                        dependencyValues[variable] = 0
-                                    }
-                                })
-
-                                // Calculate
-                                if (Object.keys(dependencyValues).length > 0) {
-                                    const calculatedValue = evaluateFormula(componente.formula_expression, dependencyValues)
-                                    notasMap[componente.id] = Math.round(calculatedValue * 100) / 100
-
-                                    // Optional: Log for debugging if needed
-                                    // console.log(`[Calc] ${componente.codigo_componente}:`, dependencyValues, '=>', notasMap[componente.id])
-                                }
-                            } catch (error) {
-                                console.error(`Error calculating component ${componente.codigo_componente}:`, error)
-                                notasMap[componente.id] = 0
+                        const compsDisc = componentesData.filter(
+                            (c) => c.disciplina_id === componente.disciplina_id
+                        )
+                        const gradesByCode: Record<string, number> = {}
+                        compsDisc.forEach((c) => {
+                            if (notasMap[c.id] !== undefined) {
+                                gradesByCode[c.codigo_componente] = notasMap[c.id]
                             }
+                        })
+
+                        const calculatedValue = evaluateConfiguredComponent(componente, {
+                            gradesByCode,
+                            components: compsDisc,
+                            trimestre: Number(trimestre) || undefined,
+                        })
+                        if (calculatedValue !== null) {
+                            notasMap[componente.id] = calculatedValue
                         }
                     })
 
@@ -1511,69 +1403,18 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                             }
                         })
 
-                        // Calculate values for TRIMESTRAL calculated components in this trimestre
+                        // TRIMESTRAL: strictly from user formula_expression + tipo_calculo
                         componentesTrimestre.forEach(componente => {
-                            if (componente.is_calculated && componente.formula_expression) {
-                                // Only process trimestral calculated components here
-                                if (componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo) {
-                                    console.log(`[DEBUG T${t}] Processing TRIMESTRAL calculated component: ${componente.codigo_componente}`, {
-                                        formula: componente.formula_expression,
-                                        dependencies: componente.depends_on_components
-                                    })
-                                    console.log(`[DEBUG T${t}] Available components in trimester:`, componentesTrimestre.map(c => `${c.codigo_componente} (${c.id})`))
-                                    console.log(`[DEBUG T${t}] Current notasMap:`, notasMap)
+                            if (!(componente.is_calculated && componente.formula_expression)) return
+                            if (!(componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo)) return
 
-                                    const dependencyValues: Record<string, number> = {}
-
-                                    if (!componente.depends_on_components || componente.depends_on_components.length === 0) {
-                                        // Fallback: extract variable names directly from the formula expression
-                                        const formulaCodes = parseFormula(componente.formula_expression)
-                                        console.log(`[DEBUG T${t}] depends_on_components vazio — extraindo da fórmula:`, formulaCodes)
-                                        formulaCodes.forEach(code => {
-                                            const depComponent = componentesData.find(c =>
-                                                c.codigo_componente?.trim().toUpperCase() === code.trim().toUpperCase() &&
-                                                c.trimestre === t
-                                            )
-                                            if (depComponent) {
-                                                dependencyValues[code] = notasMap[depComponent.codigo_componente] ?? 0
-                                            } else {
-                                                dependencyValues[code] = 0
-                                            }
-                                        })
-                                    } else {
-                                        // Use stored depends_on_components IDs
-                                        componente.depends_on_components.forEach((depId: string) => {
-                                            // Search in components from this trimester only
-                                            let depComponent = componentesData.find(c => c.id === depId && c.trimestre === t)
-                                            // Fallback: match by code if ID not found
-                                            if (!depComponent) {
-                                                depComponent = componentesData.find(c =>
-                                                    c.codigo_componente === depId && c.trimestre === t
-                                                )
-                                            }
-                                            console.log(`[DEBUG T${t}] Looking for dependency ${depId}:`, depComponent?.codigo_componente)
-                                            if (depComponent) {
-                                                const value = notasMap[depComponent.codigo_componente]
-                                                dependencyValues[depComponent.codigo_componente] = value !== undefined ? value : 0
-                                                console.log(`[DEBUG T${t}] Found value for ${depComponent.codigo_componente}:`, dependencyValues[depComponent.codigo_componente])
-                                            }
-                                        })
-                                    }
-
-                                    // Calculate if we have any dependencies resolved
-                                    if (Object.keys(dependencyValues).length > 0) {
-                                        try {
-                                            console.log(`[DEBUG T${t}] Calculating ${componente.codigo_componente} with values:`, dependencyValues)
-                                            const calculatedValue = evaluateFormula(componente.formula_expression, dependencyValues)
-                                            notasMap[componente.codigo_componente] = Math.round(calculatedValue * 100) / 100
-                                            console.log(`[DEBUG T${t}] Calculated value for ${componente.codigo_componente}:`, notasMap[componente.codigo_componente])
-                                        } catch (error) {
-                                            console.error(`Error calculating component ${componente.codigo_componente} in trimestre ${t}:`, error)
-                                        }
-                                    } else {
-                                        console.log(`[DEBUG T${t}] Skipping calculation for ${componente.codigo_componente} - no dependency components found`)
-                                    }
-                                }
+                            const calculatedValue = evaluateConfiguredComponent(componente, {
+                                gradesByCode: notasMap,
+                                components: componentesTrimestre,
+                                trimestre: t,
+                            })
+                            if (calculatedValue !== null) {
+                                notasMap[componente.codigo_componente] = calculatedValue
                             }
                         })
 
@@ -1593,80 +1434,25 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         nfPorTrimestre[t] = nf
                     }
 
-                    // Now process ANNUAL calculated components (like MFD)
-                    // These can access components from all trimesters
+                    // Now process ANNUAL calculated components (like MF / MFD)
+                    // These can access components from all trimesters (MT1/MT2/MT3 or T1/T2/T3)
                     const componentesAnuais = componentesData.filter(c =>
                         c.is_calculated && c.tipo_calculo === 'anual'
                     )
 
+                    const gradesByTrimestre: GradesByTrimestre = {
+                        1: trimestres[1]?.notas || {},
+                        2: trimestres[2]?.notas || {},
+                        3: trimestres[3]?.notas || {},
+                    }
+
                     componentesAnuais.forEach(componente => {
-                        console.log(`[DEBUG ANNUAL] Processing annual calculated component: ${componente.codigo_componente}`, {
-                            formula: componente.formula_expression,
-                            dependencies: componente.depends_on_components
+                        const calculatedValue = evaluateConfiguredComponent(componente, {
+                            gradesByTrimestre,
+                            components: componentesData,
                         })
-
-                        if (componente.formula_expression) {
-                            const dependencyValues: Record<string, number> = {}
-
-                            const resolveDepByCode = (code: string) => {
-                                // Search across all trimesters for the best match
-                                for (let tr = 1; tr <= 3; tr++) {
-                                    const trData = trimestres[tr]
-                                    if (trData && trData.notas[code] !== undefined) {
-                                        return trData.notas[code]
-                                    }
-                                }
-                                return undefined
-                            }
-
-                            if (!componente.depends_on_components || componente.depends_on_components.length === 0) {
-                                // Fallback: extract variable names directly from the formula expression
-                                const formulaCodes = parseFormula(componente.formula_expression)
-                                console.log(`[DEBUG ANNUAL] depends_on_components vazio — extraindo da fórmula:`, formulaCodes)
-                                formulaCodes.forEach(code => {
-                                    const value = resolveDepByCode(code)
-                                    dependencyValues[code] = value !== undefined ? value : 0
-                                })
-                            } else {
-                                componente.depends_on_components.forEach((depId: string) => {
-                                    let depComponent = componentesData.find(c => c.id === depId)
-                                    // Fallback: match by code if ID not found
-                                    if (!depComponent) {
-                                        depComponent = componentesData.find(c => c.codigo_componente === depId)
-                                    }
-                                    console.log(`[DEBUG ANNUAL] Looking for dependency ${depId}:`, depComponent ? {
-                                        code: depComponent.codigo_componente,
-                                        trimestre: depComponent.trimestre
-                                    } : 'NOT FOUND')
-
-                                    if (depComponent) {
-                                        const trimestreData = trimestres[depComponent.trimestre]
-                                        if (trimestreData) {
-                                            const value = trimestreData.notas[depComponent.codigo_componente]
-                                            dependencyValues[depComponent.codigo_componente] = value !== undefined ? value : 0
-                                            console.log(`[DEBUG ANNUAL] Found value for ${depComponent.codigo_componente} from T${depComponent.trimestre}:`, dependencyValues[depComponent.codigo_componente])
-                                        }
-                                    }
-                                })
-                            }
-
-                            if (Object.keys(dependencyValues).length > 0) {
-                                try {
-                                    console.log(`[DEBUG ANNUAL] Calculating ${componente.codigo_componente} with values:`, dependencyValues)
-                                    const calculatedValue = evaluateFormula(componente.formula_expression, dependencyValues)
-                                    const roundedValue = Math.round(calculatedValue * 100) / 100
-                                    console.log(`[DEBUG ANNUAL] Calculated value for ${componente.codigo_componente}:`, roundedValue)
-
-                                    // Store the annual component value in the trimestre it belongs to
-                                    if (trimestres[componente.trimestre]) {
-                                        trimestres[componente.trimestre].notas[componente.codigo_componente] = roundedValue
-                                    }
-                                } catch (error) {
-                                    console.error(`Error calculating annual component ${componente.codigo_componente}:`, error)
-                                }
-                            } else {
-                                console.log(`[DEBUG ANNUAL] Skipping calculation for ${componente.codigo_componente} - no dependency components found`)
-                            }
+                        if (calculatedValue !== null && trimestres[componente.trimestre]) {
+                            trimestres[componente.trimestre].notas[componente.codigo_componente] = calculatedValue
                         }
                     })
 
@@ -1738,54 +1524,64 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                 let allDependencyNotas: any[] = []
 
                 if (annualComponents.length > 0) {
-                    console.log('[DEBUG] Found annual components:', annualComponents.map(c => c.codigo_componente))
-
-                    // Get all dependency IDs from annual components
                     const allDependencyIds = new Set<string>()
                     annualComponents.forEach(comp => {
-                        if (comp.depends_on_components) {
+                        if (comp.depends_on_components?.length) {
                             comp.depends_on_components.forEach((depId: string) => {
                                 allDependencyIds.add(depId)
                             })
                         }
                     })
 
-                    if (allDependencyIds.size > 0) {
-                        console.log('[DEBUG] Loading dependency components:', Array.from(allDependencyIds))
+                    // When depends_on is empty (common in templates/seed), load same-discipline
+                    // components across all trimesters so MT1/MT2/MT3 and T1/T2/T3 can resolve.
+                    const disciplinaIds = [...new Set(
+                        annualComponents
+                            .map((c: any) => c.disciplina_id)
+                            .filter(Boolean)
+                    )]
 
-                        // Load all dependency components (from any trimester)
-                        const { data: depComponentsData, error: depError } = await supabase
-                            .from('componentes_avaliacao')
-                            .select(`
+                    let depQuery = supabase
+                        .from('componentes_avaliacao')
+                        .select(`
                                 id, 
                                 codigo_componente, 
                                 nome, 
                                 peso_percentual, 
                                 trimestre, 
+                                disciplina_id,
                                 is_calculated, 
                                 formula_expression, 
                                 depends_on_components,
                                 tipo_calculo
                             `)
-                            .in('id', Array.from(allDependencyIds))
+                        .eq('turma_id', selectedTurma)
 
-                        if (!depError && depComponentsData) {
-                            allDependencyComponents = depComponentsData
-                            console.log('[DEBUG] Loaded dependency components:', depComponentsData.map(c => ({
-                                code: c.codigo_componente,
-                                trimestre: c.trimestre
-                            })))
+                    if (allDependencyIds.size > 0) {
+                        depQuery = depQuery.in('id', Array.from(allDependencyIds))
+                    } else if (disciplinaIds.length > 0) {
+                        depQuery = depQuery.in('disciplina_id', disciplinaIds)
+                    }
 
-                            // Load grades for these dependency components
+                    const { data: depComponentsData, error: depError } = await depQuery
+
+                    if (!depError && depComponentsData?.length) {
+                        // Prefer non-annual deps (MT/MAC/NPT); keep annual ones only if explicitly linked
+                        allDependencyComponents = depComponentsData.filter((c: any) =>
+                            allDependencyIds.size > 0
+                                ? allDependencyIds.has(c.id)
+                                : !(c.is_calculated && c.tipo_calculo === 'anual')
+                        )
+
+                        if (allDependencyComponents.length > 0) {
                             const { data: depNotasData, error: depNotasError } = await supabase
                                 .from('notas')
                                 .select('aluno_id, componente_id, valor, trimestre')
                                 .eq('turma_id', selectedTurma)
-                                .in('componente_id', depComponentsData.map(c => c.id))
+                                .in('componente_id', allDependencyComponents.map((c: any) => c.id))
 
                             if (!depNotasError && depNotasData) {
                                 allDependencyNotas = depNotasData
-                                console.log('[DEBUG] Loaded dependency grades count:', depNotasData.length)
                             }
                         }
                     }
@@ -1814,162 +1610,64 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         }
                     })
 
-                    // STEP 1: Calculate TRIMESTRAL calculated components first
+                    // STEP 1: TRIMESTRAL — formula_expression + tipo_calculo do utilizador
                     componentesData.forEach(componente => {
-                        if (componente.is_calculated && componente.formula_expression) {
-                            // Only process trimestral components (or components without tipo_calculo)
-                            if (componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo) {
-                                console.log(`[DEBUG] Processing TRIMESTRAL calculated component: ${componente.codigo_componente}`)
-                                console.log(`[DEBUG] Formula: ${componente.formula_expression}`)
-                                console.log(`[DEBUG] Dependencies IDs from DB: ${JSON.stringify(componente.depends_on_components)}`)
+                        if (!(componente.is_calculated && componente.formula_expression)) return
+                        if (!(componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo)) return
 
-                                // Build dependency values from current trimester
-                                const dependencyValues: Record<string, number> = {}
-
-                                // If depends_on_components is empty or missing, extract codes from formula
-                                if (!componente.depends_on_components || componente.depends_on_components.length === 0) {
-                                    console.log(`[DEBUG] depends_on_components is empty, extracting from formula...`)
-                                    const formulaCodes = parseFormula(componente.formula_expression)
-                                    console.log(`[DEBUG] Extracted formula codes: ${JSON.stringify(formulaCodes)}`)
-
-                                    // Find components by their codes and build dependency values
-                                    formulaCodes.forEach(code => {
-                                        const depComponent = componentesData.find(c => c.codigo_componente === code)
-                                        if (depComponent) {
-                                            const value = notasMap[code]
-                                            dependencyValues[code] = value ?? 0
-                                            console.log(`[DEBUG] Found ${code} by formula parsing: value = ${value ?? 0}`)
-                                        } else {
-                                            // Use 0 for missing components
-                                            dependencyValues[code] = 0
-                                            console.log(`[DEBUG] Component ${code} not found, using 0`)
-                                        }
-                                    })
-                                } else {
-                                    // Use stored depends_on_components IDs
-                                    componente.depends_on_components.forEach((depId: string) => {
-                                        // First try to find by ID
-                                        let depComponent = componentesData.find(c => c.id === depId)
-
-                                        // If not found by ID, try to find by codigo_componente (fallback)
-                                        if (!depComponent) {
-                                            depComponent = componentesData.find(c => c.codigo_componente === depId)
-                                            if (depComponent) {
-                                                console.log(`[DEBUG] Found dependency by code fallback: ${depId}`)
-                                            }
-                                        }
-
-                                        if (depComponent) {
-                                            const value = notasMap[depComponent.codigo_componente]
-                                            dependencyValues[depComponent.codigo_componente] = value ?? 0
-                                            console.log(`[DEBUG] Dependency ${depComponent.codigo_componente}: value = ${value ?? 0}`)
-                                        } else {
-                                            console.warn(`[DEBUG] Dependency component not found - ID: ${depId}`)
-                                        }
-                                    })
-                                }
-
-                                console.log(`[DEBUG] Final dependencyValues: ${JSON.stringify(dependencyValues)}`)
-
-                                // Calculate if we have any dependencies
-                                if (Object.keys(dependencyValues).length > 0) {
-                                    try {
-                                        const calculatedValue = evaluateFormula(componente.formula_expression, dependencyValues)
-                                        notasMap[componente.codigo_componente] = Math.round(calculatedValue * 100) / 100
-                                        console.log(`[DEBUG] ✅ Calculated ${componente.codigo_componente}: ${notasMap[componente.codigo_componente]}`)
-                                    } catch (error) {
-                                        console.error(`Error calculating component ${componente.codigo_componente}:`, error)
-                                    }
-                                } else {
-                                    console.warn(`[DEBUG] No dependencies found for ${componente.codigo_componente}, skipping calculation`)
-                                }
-                            }
+                        const calculatedValue = evaluateConfiguredComponent(componente, {
+                            gradesByCode: notasMap,
+                            components: componentesData,
+                            trimestre: Number(trimestre) || undefined,
+                        })
+                        if (calculatedValue !== null) {
+                            notasMap[componente.codigo_componente] = calculatedValue
                         }
                     })
 
-
-
-                    // STEP 2: Calculate ANNUAL calculated components (MFD, MF, etc.)
-                    // These need dependencies from other trimesters
+                    // STEP 2: ANUAL — mesma regra; contexto = notas dos 3 trimestres
                     if (annualComponents.length > 0 && allDependencyComponents.length > 0) {
-                        // Build a map of dependency component grades (from all trimesters)
                         const depNotasAluno = allDependencyNotas.filter(n => n.aluno_id === aluno.id)
-                        const depNotasMap: Record<string, number> = {}
+                        const gradesByTrimestre: GradesByTrimestre = { 1: {}, 2: {}, 3: {} }
 
-                        // First, add raw grades from dependency components
                         depNotasAluno.forEach(nota => {
                             const depComponent = allDependencyComponents.find(c => c.id === nota.componente_id)
-                            if (depComponent) {
-                                depNotasMap[depComponent.codigo_componente] = nota.valor
-                            }
+                            if (!depComponent) return
+                            const t = Number(depComponent.trimestre) || Number(nota.trimestre) || 1
+                            if (!gradesByTrimestre[t]) gradesByTrimestre[t] = {}
+                            gradesByTrimestre[t][depComponent.codigo_componente] = nota.valor
                         })
 
-                        // Calculate any trimestral calculated dependencies (like MT)
-                        allDependencyComponents.forEach(depComp => {
-                            if (depComp.is_calculated && depComp.formula_expression && depComp.depends_on_components) {
-                                if (depComp.tipo_calculo === 'trimestral' || !depComp.tipo_calculo) {
-                                    const depValues: Record<string, number> = {}
-
-                                    depComp.depends_on_components.forEach((subDepId: string) => {
-                                        const subDepComponent = allDependencyComponents.find(c => c.id === subDepId)
-                                        if (subDepComponent) {
-                                            const value = depNotasMap[subDepComponent.codigo_componente]
-                                            if (value !== undefined) {
-                                                depValues[subDepComponent.codigo_componente] = value
-                                            } else {
-                                                depValues[subDepComponent.codigo_componente] = 0
-                                            }
-                                        }
-                                    })
-
-                                    if (Object.keys(depValues).length > 0) {
-                                        try {
-                                            const calculatedValue = evaluateFormula(depComp.formula_expression, depValues)
-                                            depNotasMap[depComp.codigo_componente] = Math.round(calculatedValue * 100) / 100
-                                        } catch (error) {
-                                            console.error(`Error calculating dependency ${depComp.codigo_componente}:`, error)
-                                        }
-                                    }
-                                }
-                            }
-                        })
-
-                        // Now calculate annual components
-                        annualComponents.forEach(componente => {
-                            console.log(`[DEBUG] Processing ANNUAL calculated component: ${componente.codigo_componente}`)
-
-                            const dependencyValues: Record<string, number> = {}
-
-                            componente.depends_on_components.forEach((depId: string) => {
-                                const depComponent = allDependencyComponents.find(c => c.id === depId)
-                                if (depComponent) {
-                                    const value = depNotasMap[depComponent.codigo_componente]
-                                    if (value !== undefined) {
-                                        dependencyValues[depComponent.codigo_componente] = value
-                                        console.log(`[DEBUG] Found dependency ${depComponent.codigo_componente}:`, value)
-                                    } else {
-                                        dependencyValues[depComponent.codigo_componente] = 0
-                                        console.log(`[DEBUG] Using 0 for missing dependency ${depComponent.codigo_componente}`)
-                                    }
+                        ;[1, 2, 3].forEach((t) => {
+                            const compsT = allDependencyComponents.filter(
+                                (c: any) => Number(c.trimestre) === t && (c.tipo_calculo === 'trimestral' || !c.tipo_calculo)
+                            )
+                            compsT.forEach((depComp: any) => {
+                                const map = gradesByTrimestre[t] || {}
+                                const calculatedValue = evaluateConfiguredComponent(depComp, {
+                                    gradesByCode: map,
+                                    components: compsT,
+                                    trimestre: t,
+                                })
+                                if (calculatedValue !== null) {
+                                    gradesByTrimestre[t][depComp.codigo_componente] = calculatedValue
                                 }
                             })
+                        })
 
-                            if (Object.keys(dependencyValues).length > 0) {
-                                try {
-                                    console.log(`[DEBUG] Calculating ${componente.codigo_componente} with values:`, dependencyValues)
-                                    const calculatedValue = evaluateFormula(componente.formula_expression, dependencyValues)
-                                    const roundedValue = Math.round(calculatedValue * 100) / 100
+                        const currentT = Number(trimestre) || 1
+                        if (!gradesByTrimestre[currentT]) gradesByTrimestre[currentT] = {}
+                        Object.entries(notasMap).forEach(([code, value]) => {
+                            gradesByTrimestre[currentT][code] = value as number
+                        })
 
-                                    // CRITICAL: Add to both maps immediately so other annual components can use it
-                                    notasMap[componente.codigo_componente] = roundedValue
-                                    depNotasMap[componente.codigo_componente] = roundedValue
-
-                                    console.log(`[DEBUG] Calculated ${componente.codigo_componente}:`, roundedValue)
-                                } catch (error) {
-                                    console.error(`Error calculating annual component ${componente.codigo_componente}:`, error)
-                                }
-                            } else {
-                                console.log(`[DEBUG] Skipping ${componente.codigo_componente} - no dependencies found`)
+                        annualComponents.forEach(componente => {
+                            const calculatedValue = evaluateConfiguredComponent(componente, {
+                                gradesByTrimestre,
+                                components: allDependencyComponents,
+                            })
+                            if (calculatedValue !== null) {
+                                notasMap[componente.codigo_componente] = calculatedValue
                             }
                         })
                     }
@@ -3062,19 +2760,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                             </CardBody>
                         </Card>
                     )}
-
-                    {/* Configuration Modal */}
-                    <ConfiguracaoFormulasModal
-                        isOpen={showConfigModal}
-                        onClose={() => setShowConfigModal(false)}
-                        disciplinaId={selectedDisciplina}
-                        turmaId={selectedTurma}
-                        currentConfig={mtConfig}
-                        onSave={() => {
-                            setShowConfigModal(false)
-                            loadMiniPautaData()
-                        }}
-                    />
 
                     {/* Ordenar Disciplinas Modal */}
                     {showOrdenarDisciplinasModal && (

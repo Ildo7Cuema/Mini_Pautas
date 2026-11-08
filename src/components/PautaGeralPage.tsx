@@ -16,7 +16,10 @@ import { PautaGeralFieldSelector } from './PautaGeralFieldSelector'
 import { PautaGeralPreview } from './PautaGeralPreview'
 import { generatePautaGeralPDF } from '../utils/pdfGenerator'
 import { generatePautaGeralExcel, generatePautaGeralCSV } from '../utils/excelGenerator'
-import { evaluateFormula } from '../utils/formulaUtils'
+import {
+    evaluateConfiguredComponent,
+    type GradesByTrimestre,
+} from '../utils/formulaUtils'
 import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
 import { classifyStudent, DisciplinaGrade } from '../utils/studentClassification'
@@ -427,80 +430,47 @@ export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({ onGoToConselho }
                         }
                     })
 
-                    // STEP 1: Calculate TRIMESTRAL calculated components first
-                    // These are components like MT (Média Trimestral) that depend only on grades within their own trimester
+                    // STEP 1/2: só a fórmula e o tipo_calculo configurados pelo utilizador
                     disc.componentes.forEach(componente => {
-                        if (componente.is_calculated && componente.formula_expression && componente.depends_on_components) {
-                            // Only process trimestral components (or components without tipo_calculo - defaults to trimestral)
-                            if (componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo) {
-                                const dependencyValues: Record<string, number> = {}
+                        if (!(componente.is_calculated && componente.formula_expression)) return
+                        if (!(componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo)) return
 
-                                // STRATEGY: Provide ALL components from the same trimester as context
-                                // This is more robust than relying solely on depends_on_components which might be incomplete
-                                disc.componentes.forEach(depComponent => {
-                                    // Only include components from the same current trimester context
-                                    if (depComponent.trimestre === componente.trimestre) {
-                                        const value = notasMap[depComponent.id] || 0
-
-                                        // Add standard code (e.g. MAC)
-                                        dependencyValues[depComponent.codigo_componente] = value
-
-                                        // Add suffixed code (e.g. MAC1)
-                                        if (depComponent.trimestre) {
-                                            dependencyValues[`${depComponent.codigo_componente}${depComponent.trimestre}`] = value
-                                        }
-                                    }
-                                })
-
-                                if (Object.keys(dependencyValues).length > 0) {
-                                    try {
-                                        const calculatedValue = evaluateFormula(componente.formula_expression, dependencyValues)
-                                        notasMap[componente.id] = Math.round(calculatedValue * 100) / 100
-                                    } catch (error) {
-                                        // Silent fail is okay here, logic might just be for another component set
-                                    }
-                                }
+                        const gradesByCode: Record<string, number> = {}
+                        disc.componentes.forEach(depComponent => {
+                            if (depComponent.trimestre === componente.trimestre) {
+                                gradesByCode[depComponent.codigo_componente] = notasMap[depComponent.id] || 0
                             }
+                        })
+
+                        const calculatedValue = evaluateConfiguredComponent(componente, {
+                            gradesByCode,
+                            components: disc.componentes.filter(c => c.trimestre === componente.trimestre),
+                            trimestre: componente.trimestre,
+                        })
+                        if (calculatedValue !== null) {
+                            notasMap[componente.id] = calculatedValue
                         }
                     })
 
-                    // STEP 2: Calculate ANNUAL calculated components
-                    // These are components like MFD that depend on values from multiple trimesters (e.g., MT1, MT2, MT3)
+                    const gradesByTrimestre: GradesByTrimestre = { 1: {}, 2: {}, 3: {} }
+                    disc.componentes.forEach(depComponent => {
+                        const t = Number(depComponent.trimestre) || 0
+                        if (t < 1 || t > 3) return
+                        const value = notasMap[depComponent.id]
+                        if (value === undefined) return
+                        gradesByTrimestre[t][depComponent.codigo_componente] = value
+                    })
+
                     disc.componentes.forEach(componente => {
-                        if (componente.is_calculated && componente.formula_expression && componente.depends_on_components) {
-                            if (componente.tipo_calculo === 'anual') {
-                                const dependencyValues: Record<string, number> = {}
+                        if (!(componente.is_calculated && componente.formula_expression)) return
+                        if (componente.tipo_calculo !== 'anual') return
 
-                                componente.depends_on_components.forEach((depId: string) => {
-                                    // Find dependency from same discipline (can be from any trimester)
-                                    const depComponent = disc.componentes.find(c => c.id === depId)
-                                    if (depComponent) {
-                                        // Get the value - could be a calculated trimestral component (like MT)
-                                        const value = notasMap[depComponent.id]
-                                        if (value !== undefined) {
-                                            dependencyValues[depComponent.codigo_componente] = value
-                                            // Also add version with trimester suffix (e.g. MT1, MT2) for annual formulas
-                                            if (depComponent.trimestre) {
-                                                dependencyValues[`${depComponent.codigo_componente}${depComponent.trimestre}`] = value
-                                            }
-                                        } else {
-                                            dependencyValues[depComponent.codigo_componente] = 0
-                                            if (depComponent.trimestre) {
-                                                dependencyValues[`${depComponent.codigo_componente}${depComponent.trimestre}`] = 0
-                                            }
-                                        }
-                                    }
-                                })
-
-                                if (Object.keys(dependencyValues).length > 0) {
-                                    try {
-                                        const calculatedValue = evaluateFormula(componente.formula_expression, dependencyValues)
-                                        notasMap[componente.id] = Math.round(calculatedValue * 100) / 100
-                                    } catch (error) {
-                                        console.error(`Error calculating annual component ${componente.codigo_componente}:`, error)
-                                    }
-                                }
-                            }
+                        const calculatedValue = evaluateConfiguredComponent(componente, {
+                            gradesByTrimestre,
+                            components: disc.componentes,
+                        })
+                        if (calculatedValue !== null) {
+                            notasMap[componente.id] = calculatedValue
                         }
                     })
 

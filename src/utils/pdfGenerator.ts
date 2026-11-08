@@ -14,6 +14,7 @@ import {
     DEFAULT_PAUTA_GERAL_EXPORT_CONFIG,
     type PautaGeralExportConfig,
 } from './pautaGeralExportUtils'
+import { getComponenteDisplayLabel } from './gradeUtils'
 
 interface TrimestreData {
     notas: Record<string, number>
@@ -306,7 +307,7 @@ function addConselhoNotasSignatures(
 interface DisciplineGroup {
     disciplina_nome: string
     ordem?: number
-    componentes: Array<{ id: string; codigo_componente: string; is_calculated?: boolean }>
+    componentes: Array<{ id: string; codigo_componente: string; nome?: string; is_calculated?: boolean }>
 }
 
 function groupComponentsByDiscipline(componentes: MiniPautaData['componentes'], trimestre: number): DisciplineGroup[] {
@@ -327,6 +328,7 @@ function groupComponentsByDiscipline(componentes: MiniPautaData['componentes'], 
             disciplineMap.get(disciplineName)!.componentes.push({
                 id: comp.id,
                 codigo_componente: comp.codigo_componente,
+                nome: comp.nome,
                 is_calculated: comp.is_calculated
             })
         }
@@ -394,7 +396,7 @@ async function generatePrimaryEducationAllDisciplinesPDF(
     disciplineGroups.forEach(group => {
         group.componentes.forEach(comp => {
             headerRow2.push({
-                content: comp.codigo_componente,
+                content: getComponenteDisplayLabel(comp),
                 styles: { halign: 'center', valign: 'middle' }
             })
         })
@@ -519,7 +521,7 @@ async function generatePrimaryEducationSingleDisciplinePDF(
     const headers = [
         'Nº',
         'Nome do Aluno',
-        ...data.componentes.map(c => `${c.codigo_componente}\n(${c.peso_percentual}%)`)
+        ...data.componentes.map(c => `${getComponenteDisplayLabel(c)}\n(${c.peso_percentual}%)`)
     ]
 
     // Table data
@@ -618,10 +620,17 @@ async function generateSecondaryEducationAllTrimestersPDF(
 
     const tableStartY = currentY + 23
 
-    // Get components for each trimestre
-    const componentes1T = data.componentes.filter(c => c.trimestre === 1)
-    const componentes2T = data.componentes.filter(c => c.trimestre === 2)
-    const componentes3T = data.componentes.filter(c => c.trimestre === 3)
+    // Get components for each trimestre (stable position by ordem)
+    const byTrimestre = (t: number) =>
+        data.componentes
+            .filter((c: { trimestre?: number; ordem?: number }) => Number(c.trimestre) === t)
+            .slice()
+            .sort((a: { ordem?: number }, b: { ordem?: number }) =>
+                (Number(a.ordem) || 0) - (Number(b.ordem) || 0)
+            )
+    const componentes1T = byTrimestre(1)
+    const componentes2T = byTrimestre(2)
+    const componentes3T = byTrimestre(3)
 
     // Build two-row header
     const headerRow1: any[] = [
@@ -653,9 +662,9 @@ async function generateSecondaryEducationAllTrimestersPDF(
 
     // Second row: component codes
     const headerRow2: any[] = [
-        ...componentes1T.map(c => ({ content: c.codigo_componente, styles: { halign: 'center' } })),
-        ...componentes2T.map(c => ({ content: c.codigo_componente, styles: { halign: 'center' } })),
-        ...componentes3T.map(c => ({ content: c.codigo_componente, styles: { halign: 'center' } }))
+        ...componentes1T.map(c => ({ content: getComponenteDisplayLabel(c), styles: { halign: 'center' } })),
+        ...componentes2T.map(c => ({ content: getComponenteDisplayLabel(c), styles: { halign: 'center' } })),
+        ...componentes3T.map(c => ({ content: getComponenteDisplayLabel(c), styles: { halign: 'center' } }))
     ]
 
     // Build table data
@@ -775,7 +784,7 @@ async function generateSecondaryEducationSingleTrimesterPDF(
     const headers = [
         'Nº',
         'Nome do Aluno',
-        ...data.componentes.map(c => `${c.codigo_componente}\n(${c.peso_percentual}%)`)
+        ...data.componentes.map(c => `${getComponenteDisplayLabel(c)}\n(${c.peso_percentual}%)`)
     ]
 
     // Table data

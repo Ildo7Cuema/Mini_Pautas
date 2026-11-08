@@ -53,15 +53,20 @@ export function componenteTrimestreLabel(trimestre?: number | null, tipoCalculo?
 }
 
 /**
- * Compact export/UI label: MT-1º, MT-2º, MF-Anual, MAC-1º…
- * Matches the usual reading of official maps/pautas.
+ * Compact export/UI label for maps/pautas.
+ * Uses "Código do Componente" from Templates (MAC, MT, MF…); falls back to nome.
+ * Examples: "MT-1º", "MF", "MAC-1º".
+ * Componentes anuais ficam só com o código (sem sufixo "-Anual").
  */
 export function formatComponentePautaLabel(c: PautaComponenteLike): string {
-    const code = normalizeComponenteCode(c.codigo_componente) || c.codigo_componente
-    if (c.tipo_calculo === 'anual') return `${code}-Anual`
+    const base =
+        normalizeComponenteCode(c.codigo_componente) ||
+        (c.codigo_componente || '').trim() ||
+        (c.nome || '').trim()
+    if (c.tipo_calculo === 'anual') return base
     const t = Number(c.trimestre)
-    if (t === 1 || t === 2 || t === 3) return `${code}-${t}º`
-    return code
+    if (t === 1 || t === 2 || t === 3) return `${base}-${t}º`
+    return base
 }
 
 export type ObservacaoPauta =
@@ -124,7 +129,7 @@ function describeComponenteFormulaLine(c: PautaLegendaComponente): PautaGeralLeg
     const nome = c.nome?.trim()
     const isAnual = c.tipo_calculo === 'anual' || code === 'MF' || code === 'MFD'
     const legendCode = isAnual
-        ? (code === 'MF' || code === 'MFD' ? `${code}-Anual` : formatComponentePautaLabel(c))
+        ? (code === 'MF' || code === 'MFD' ? code : formatComponentePautaLabel(c))
         : code
     const hasTrimestre = Number(c.trimestre) === 1 || Number(c.trimestre) === 2 || Number(c.trimestre) === 3
     const scopeHint =
@@ -132,16 +137,12 @@ function describeComponenteFormulaLine(c: PautaLegendaComponente): PautaGeralLeg
             ? ` por trimestre (ex.: ${code}-1º, ${code}-2º, ${code}-3º)`
             : ''
 
-    let formula = c.formula_expression?.trim() || ''
-    if (!formula && (code === 'MF' || code === 'MFD')) {
-        formula = '(MT1 + MT2 + MT3) / 3'
-    }
-    if (!formula && code === 'MT') {
-        formula = '(MAC + NPT) / 2'
-    }
-
+    const formula = c.formula_expression?.trim() || ''
     const label = `${legendCode}${nome ? ` — ${nome}` : ''}${scopeHint}`
     if (formula) return { item: label, detalhe: formula }
+    if (c.is_calculated) {
+        return { item: label, detalhe: 'Calculável — fórmula não definida' }
+    }
     if (isPautaLancamentoComponent(c)) {
         return { item: label, detalhe: 'Componente de lançamento (nota introduzida)' }
     }

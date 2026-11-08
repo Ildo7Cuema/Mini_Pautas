@@ -10,6 +10,7 @@ component-meta:
 import React, { useState } from 'react'
 import { Card, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
+import { getComponenteDisplayLabel, getComponenteTooltipLabel } from '../utils/gradeUtils'
 
 interface TrimestreData {
     notas: Record<string, number>
@@ -51,6 +52,7 @@ interface MiniPautaPreviewSecundarioProps {
             nome: string
             peso_percentual: number
             trimestre?: number
+            ordem?: number
             is_calculated?: boolean
         }>
         showMT?: boolean
@@ -135,10 +137,17 @@ export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProp
     // Check if this is all-trimester mode
     const isAllTrimesters = data.trimestre === 'all' && data.alunos[0]?.trimestres
 
-    // Group components by trimester
-    const componentes1T = data.componentes.filter(c => c.trimestre === 1)
-    const componentes2T = data.componentes.filter(c => c.trimestre === 2)
-    const componentes3T = data.componentes.filter(c => c.trimestre === 3)
+    // Group by trimester and keep template position (ordem). Coerce trimestre so
+    // string values from JSON/"3" still land in the correct column group.
+    const byTrimestre = (t: number) =>
+        data.componentes
+            .filter((c) => Number(c.trimestre) === t)
+            .slice()
+            .sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0))
+
+    const componentes1T = byTrimestre(1)
+    const componentes2T = byTrimestre(2)
+    const componentes3T = byTrimestre(3)
 
     // Calculate final grade for a student
     const getStudentFinalGrade = (aluno: any): number | null => {
@@ -253,8 +262,8 @@ export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProp
                                                             className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg ${isFinal ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'
                                                                 }`}
                                                         >
-                                                            <span className="text-[10px] text-slate-500 font-medium">
-                                                                {comp.codigo_componente}
+                                                            <span className="text-[10px] text-slate-500 font-medium" title={getComponenteTooltipLabel(comp)}>
+                                                                {getComponenteDisplayLabel(comp)}
                                                             </span>
                                                             <span
                                                                 className="text-sm font-bold"
@@ -286,8 +295,8 @@ export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProp
                                                 className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg ${isFinal ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'
                                                     }`}
                                             >
-                                                <span className="text-[10px] text-slate-500 font-medium">
-                                                    {comp.codigo_componente}
+                                                <span className="text-[10px] text-slate-500 font-medium" title={getComponenteTooltipLabel(comp)}>
+                                                    {getComponenteDisplayLabel(comp)}
                                                 </span>
                                                 <span
                                                     className="text-sm font-bold"
@@ -378,8 +387,8 @@ export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProp
                                                     className={`border border-slate-200 px-2 py-1.5 text-center text-xs font-semibold ${comp.is_calculated ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
                                                         }`}
                                                 >
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        {comp.codigo_componente}
+                                                    <div className="flex items-center justify-center gap-1" title={getComponenteTooltipLabel(comp)}>
+                                                        {getComponenteDisplayLabel(comp)}
                                                         {comp.is_calculated && (
                                                             <span className="text-amber-500" title="Calculado">✦</span>
                                                         )}
@@ -401,8 +410,8 @@ export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProp
                                             className={`border border-slate-300 px-2 py-2 text-center text-xs font-semibold ${comp.is_calculated ? 'bg-blue-500' : ''
                                                 }`}
                                         >
-                                            <div className="flex items-center justify-center gap-1">
-                                                {comp.codigo_componente}
+                                            <div className="flex items-center justify-center gap-1" title={getComponenteTooltipLabel(comp)}>
+                                                {getComponenteDisplayLabel(comp)}
                                                 {comp.is_calculated && (
                                                     <span className="text-amber-300" title="Calculado">✦</span>
                                                 )}

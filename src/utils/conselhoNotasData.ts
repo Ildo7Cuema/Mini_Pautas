@@ -4,7 +4,10 @@
  */
 
 import { supabase } from '../lib/supabaseClient'
-import { evaluateFormula } from './formulaUtils'
+import {
+    evaluateConfiguredComponent,
+    type GradesByTrimestre,
+} from './formulaUtils'
 import {
     computePautaGeralAlunoMetrics,
     pickComponenteParaMediaGeral,
@@ -243,59 +246,52 @@ export async function loadConselhoTurmaSnapshot(turmaId: string): Promise<Consel
 
             comps.forEach((componente) => {
                 if (
-                    componente.is_calculated &&
-                    componente.formula_expression &&
-                    componente.depends_on_components &&
-                    (componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo)
+                    !(
+                        componente.is_calculated &&
+                        componente.formula_expression &&
+                        (componente.tipo_calculo === 'trimestral' || !componente.tipo_calculo)
+                    )
                 ) {
-                    const dependencyValues: Record<string, number> = {}
-                    comps.forEach((dep) => {
-                        if (dep.trimestre === componente.trimestre) {
-                            const value = notasMap[dep.id] || 0
-                            dependencyValues[dep.codigo_componente] = value
-                            if (dep.trimestre) {
-                                dependencyValues[`${dep.codigo_componente}${dep.trimestre}`] = value
-                            }
-                        }
-                    })
-                    if (Object.keys(dependencyValues).length > 0) {
-                        try {
-                            const v = evaluateFormula(componente.formula_expression, dependencyValues)
-                            notasMap[componente.id] = Math.round(v * 100) / 100
-                        } catch {
-                            /* ignore */
-                        }
-                    }
+                    return
                 }
+                const gradesByCode: Record<string, number> = {}
+                comps.forEach((dep) => {
+                    if (dep.trimestre === componente.trimestre) {
+                        gradesByCode[dep.codigo_componente] = notasMap[dep.id] || 0
+                    }
+                })
+                const v = evaluateConfiguredComponent(componente, {
+                    gradesByCode,
+                    components: comps.filter((c) => c.trimestre === componente.trimestre),
+                    trimestre: componente.trimestre,
+                })
+                if (v !== null) notasMap[componente.id] = v
+            })
+
+            const gradesByTrimestre: GradesByTrimestre = { 1: {}, 2: {}, 3: {} }
+            comps.forEach((dep) => {
+                const t = Number(dep.trimestre) || 0
+                if (t < 1 || t > 3) return
+                const value = notasMap[dep.id]
+                if (value === undefined) return
+                gradesByTrimestre[t][dep.codigo_componente] = value
             })
 
             comps.forEach((componente) => {
                 if (
-                    componente.is_calculated &&
-                    componente.formula_expression &&
-                    componente.depends_on_components &&
-                    componente.tipo_calculo === 'anual'
+                    !(
+                        componente.is_calculated &&
+                        componente.formula_expression &&
+                        componente.tipo_calculo === 'anual'
+                    )
                 ) {
-                    const dependencyValues: Record<string, number> = {}
-                    componente.depends_on_components.forEach((depId: string) => {
-                        const dep = comps.find((c) => c.id === depId)
-                        if (dep) {
-                            const value = notasMap[dep.id]
-                            dependencyValues[dep.codigo_componente] = value ?? 0
-                            if (dep.trimestre) {
-                                dependencyValues[`${dep.codigo_componente}${dep.trimestre}`] = value ?? 0
-                            }
-                        }
-                    })
-                    if (Object.keys(dependencyValues).length > 0) {
-                        try {
-                            const v = evaluateFormula(componente.formula_expression, dependencyValues)
-                            notasMap[componente.id] = Math.round(v * 100) / 100
-                        } catch {
-                            /* ignore */
-                        }
-                    }
+                    return
                 }
+                const v = evaluateConfiguredComponent(componente, {
+                    gradesByTrimestre,
+                    components: comps,
+                })
+                if (v !== null) notasMap[componente.id] = v
             })
 
             notas_por_disciplina[disc.id] = notasMap

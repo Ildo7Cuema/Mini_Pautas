@@ -5,6 +5,36 @@
 import { Aluno } from '../types'
 
 /**
+ * Column header for Mini-Pauta / PDF / Excel.
+ * Uses the Templates field "Código do Componente" (MAC, MT, MFD…),
+ * the same value from Editar / Criar Novo Componente.
+ */
+export function getComponenteDisplayLabel(comp: {
+    nome?: string | null
+    codigo_componente?: string | null
+}): string {
+    const codigo = (comp.codigo_componente || '').trim()
+    if (codigo) return codigo
+    const nome = (comp.nome || '').trim()
+    return nome || '—'
+}
+
+/**
+ * Hover label: full descriptive nome from Templates when it differs from the código.
+ */
+export function getComponenteTooltipLabel(comp: {
+    nome?: string | null
+    codigo_componente?: string | null
+}): string {
+    const codigo = (comp.codigo_componente || '').trim()
+    const nome = (comp.nome || '').trim()
+    if (nome && codigo && nome.toUpperCase() !== codigo.toUpperCase()) {
+        return `${codigo} — ${nome}`
+    }
+    return nome || codigo || '—'
+}
+
+/**
  * Codes that represent auto-calculated results in the Angolan evaluation model.
  * Used as a safety net when is_calculated / formula flags were not synced.
  */

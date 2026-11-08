@@ -27,6 +27,8 @@ export interface ComponenteSelectorModalProps {
     escolaId: string
     disciplinaId?: string // Optional for templates
     trimestre: number
+    /** Next automatic display position for this disciplina/trimestre (1, 2, 3…). */
+    proximaPosicao?: number
     turmaId?: string // Optional for templates
     onSelect: (data: {
         disciplina_componente_id?: string
@@ -44,6 +46,7 @@ export function ComponenteSelectorModal({
     escolaId,
     disciplinaId,
     trimestre,
+    proximaPosicao,
     turmaId,
     onSelect,
     onClose,
@@ -124,12 +127,23 @@ export function ComponenteSelectorModal({
             }
 
             // Associate component to discipline
+            // Append after existing slots for this trimestre (never force ordem=1)
+            let nextOrdem = 1
+            if (disciplinaId) {
+                const { data: existingSlots } = await supabase
+                    .from('disciplina_componentes')
+                    .select('ordem')
+                    .eq('disciplina_id', disciplinaId)
+                    .eq('trimestre', trimestre)
+                nextOrdem = Math.max(0, ...(existingSlots || []).map((s) => Number(s.ordem) || 0)) + 1
+            }
+
             const { data, error } = await supabase.rpc('associate_componente_to_disciplina', {
                 p_disciplina_id: disciplinaId,
                 p_componente_catalogo_id: componente.id,
                 p_trimestre: trimestre,
                 p_peso_percentual: componente.peso_padrao,
-                p_ordem: 1, // Default order
+                p_ordem: nextOrdem,
                 p_obrigatorio: true // Default
             })
 
@@ -146,6 +160,7 @@ export function ComponenteSelectorModal({
                     codigo_componente: componente.codigo_componente,
                     peso_percentual: componente.peso_padrao,
                     trimestre: trimestre,
+                    ordem: nextOrdem,
                     is_calculated: componente.is_calculated,
                     formula_expression: componente.formula_expression ?? null,
                     tipo_calculo: componente.tipo_calculo || 'trimestral'
@@ -244,6 +259,14 @@ export function ComponenteSelectorModal({
 
             if (!disciplinaId) throw new Error('Disciplina ID required')
 
+            let nextOrdem = 1
+            const { data: existingSlots } = await supabase
+                .from('disciplina_componentes')
+                .select('ordem')
+                .eq('disciplina_id', disciplinaId)
+                .eq('trimestre', trimestre)
+            nextOrdem = Math.max(0, ...(existingSlots || []).map((s) => Number(s.ordem) || 0)) + 1
+
             // Add component to discipline (will create in catalog if needed)
             const { data, error } = await supabase.rpc('add_componente_to_disciplina', {
                 p_disciplina_id: disciplinaId,
@@ -251,6 +274,7 @@ export function ComponenteSelectorModal({
                 p_nome: newComponent.nome,
                 p_trimestre: trimestre,
                 p_peso_percentual: peso,
+                p_ordem: nextOrdem,
                 p_is_calculated: newComponent.is_calculated,
                 p_formula_expression: newComponent.is_calculated ? newComponent.formula_expression : null,
                 p_tipo_calculo: newComponent.is_calculated ? newComponent.tipo_calculo : 'trimestral'
@@ -268,6 +292,7 @@ export function ComponenteSelectorModal({
                     codigo_componente: codigoNorm,
                     peso_percentual: peso,
                     trimestre: trimestre,
+                    ordem: nextOrdem,
                     is_calculated: newComponent.is_calculated,
                     formula_expression: newComponent.is_calculated ? newComponent.formula_expression : null,
                     tipo_calculo: newComponent.is_calculated ? newComponent.tipo_calculo : 'trimestral'
@@ -459,18 +484,26 @@ export function ComponenteSelectorModal({
                         <h3 className="text-xl font-bold text-slate-900">
                             {mode === 'select' ? 'Selecionar Componente' : mode === 'edit' ? 'Editar Componente' : 'Criar Novo Componente'}
                         </h3>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-sm text-slate-500">Trimestre:</span>
-                            <select
-                                value={trimestre}
-                                onChange={(e) => onTrimestreChange && onTrimestreChange(parseInt(e.target.value))}
-                                className="text-sm border-slate-300 rounded-lg py-1 pl-2 pr-8 focus:ring-primary-500 focus:border-primary-500"
-                                disabled={!onTrimestreChange}
-                            >
-                                <option value={1}>1º Trimestre</option>
-                                <option value={2}>2º Trimestre</option>
-                                <option value="3">3º Trimestre</option>
-                            </select>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-slate-500">Trimestre:</span>
+                                <select
+                                    value={trimestre}
+                                    onChange={(e) => onTrimestreChange && onTrimestreChange(parseInt(e.target.value))}
+                                    className="text-sm border-slate-300 rounded-lg py-1 pl-2 pr-8 focus:ring-primary-500 focus:border-primary-500"
+                                    disabled={!onTrimestreChange}
+                                >
+                                    <option value={1}>1º Trimestre</option>
+                                    <option value={2}>2º Trimestre</option>
+                                    <option value="3">3º Trimestre</option>
+                                </select>
+                            </div>
+                            {proximaPosicao != null && proximaPosicao > 0 && (
+                                <span className="text-sm text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                                    Próxima posição: <strong>{proximaPosicao}º</strong>
+                                    <span className="text-slate-400 font-normal"> (automática)</span>
+                                </span>
+                            )}
                         </div>
                     </div>
                     <button
@@ -697,24 +730,34 @@ export function ComponenteSelectorModal({
                             {editForm.is_calculated && (
                                 <div className="space-y-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Fórmula</label>
-                                        <Input
-                                            type="text"
-                                            value={editForm.formula_expression}
-                                            onChange={(e) => setEditForm({ ...editForm, formula_expression: e.target.value })}
-                                            placeholder="Ex: (PP + PT) / 2"
-                                        />
-                                    </div>
-                                    <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1.5">Tipo de Cálculo</label>
                                         <select
                                             value={editForm.tipo_calculo}
                                             onChange={(e) => setEditForm({ ...editForm, tipo_calculo: e.target.value as 'trimestral' | 'anual' })}
                                             className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                         >
-                                            <option value="trimestral">Trimestral (MT)</option>
-                                            <option value="anual">Anual (MF)</option>
+                                            <option value="trimestral">Trimestral</option>
+                                            <option value="anual">Anual</option>
                                         </select>
+                                        <p className="text-xs text-slate-500 mt-1">
+                                            {editForm.tipo_calculo === 'anual'
+                                                ? 'Usa notas dos 3 trimestres (ex.: MT1, MT2, MT3).'
+                                                : 'Usa componentes do mesmo trimestre (ex.: MAC, NPT).'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Fórmula de Cálculo</label>
+                                        <Input
+                                            type="text"
+                                            value={editForm.formula_expression}
+                                            onChange={(e) => setEditForm({ ...editForm, formula_expression: e.target.value })}
+                                            placeholder={editForm.tipo_calculo === 'anual'
+                                                ? 'Ex: (MT1 + MT2 + MT3) / 3'
+                                                : 'Ex: (MAC + NPT) / 2'}
+                                        />
+                                        <p className="text-xs text-slate-500 mt-1">
+                                            O sistema calcula exactamente esta expressão — sem média padronizada.
+                                        </p>
                                     </div>
                                 </div>
                             )}
@@ -796,17 +839,6 @@ export function ComponenteSelectorModal({
                                 <div className="space-y-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                            Fórmula
-                                        </label>
-                                        <Input
-                                            type="text"
-                                            value={newComponent.formula_expression}
-                                            onChange={(e) => setNewComponent({ ...newComponent, formula_expression: e.target.value })}
-                                            placeholder="Ex: (PP + PT) / 2"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
                                             Tipo de Cálculo
                                         </label>
                                         <select
@@ -814,9 +846,30 @@ export function ComponenteSelectorModal({
                                             onChange={(e) => setNewComponent({ ...newComponent, tipo_calculo: e.target.value as 'trimestral' | 'anual' })}
                                             className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                         >
-                                            <option value="trimestral">Trimestral (MT)</option>
-                                            <option value="anual">Anual (MF)</option>
+                                            <option value="trimestral">Trimestral</option>
+                                            <option value="anual">Anual</option>
                                         </select>
+                                        <p className="text-xs text-slate-500 mt-1">
+                                            {newComponent.tipo_calculo === 'anual'
+                                                ? 'Usa notas dos 3 trimestres (ex.: MT1, MT2, MT3).'
+                                                : 'Usa componentes do mesmo trimestre (ex.: MAC, NPT).'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                            Fórmula de Cálculo
+                                        </label>
+                                        <Input
+                                            type="text"
+                                            value={newComponent.formula_expression}
+                                            onChange={(e) => setNewComponent({ ...newComponent, formula_expression: e.target.value })}
+                                            placeholder={newComponent.tipo_calculo === 'anual'
+                                                ? 'Ex: (MT1 + MT2 + MT3) / 3'
+                                                : 'Ex: (MAC + NPT) / 2'}
+                                        />
+                                        <p className="text-xs text-slate-500 mt-1">
+                                            O sistema calcula exactamente esta expressão — sem média padronizada.
+                                        </p>
                                     </div>
                                 </div>
                             )}
