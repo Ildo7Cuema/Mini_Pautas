@@ -74,27 +74,15 @@ export const PublicPaymentPage: React.FC = () => {
             setSchool(null)
 
             const searchValue = identifier.trim()
-
-            // Try to find school by codigo_escola first (requires public RLS policy)
-            let { data, error } = await supabase
-                .from('escolas')
-                .select('id, nome, codigo_escola, email, bloqueado, bloqueado_motivo, provincia, municipio')
-                .ilike('codigo_escola', searchValue)
-                .limit(1)
-                .maybeSingle()
-
-            // If not found by codigo_escola, try by email
-            if (!data && !error) {
-                const emailResult = await supabase
-                    .from('escolas')
-                    .select('id, nome, codigo_escola, email, bloqueado, bloqueado_motivo, provincia, municipio')
-                    .ilike('email', searchValue)
-                    .limit(1)
-                    .maybeSingle()
-
-                data = emailResult.data
-                error = emailResult.error
+            if (searchValue.length < 3) {
+                setLookupError('Introduza pelo menos 3 caracteres (código ou email).')
+                return
             }
+
+            // Lookup via Edge Function (sem SELECT anon aberto em escolas)
+            const { data, error } = await supabase.functions.invoke('public-school-lookup', {
+                body: { identifier: searchValue },
+            })
 
             if (error) {
                 console.error('Lookup error:', error)
@@ -102,12 +90,14 @@ export const PublicPaymentPage: React.FC = () => {
                 return
             }
 
-            if (!data) {
-                setLookupError('Escola não encontrada. Verifique o código ou email inserido.')
+            if (!data?.success || !data?.school) {
+                setLookupError(
+                    data?.error || 'Escola não encontrada. Verifique o código ou email inserido.',
+                )
                 return
             }
 
-            setSchool(data as SchoolInfo)
+            setSchool(data.school as SchoolInfo)
             setStep('payment')
         } catch (error) {
             console.error('Error in lookup:', error)
@@ -135,79 +125,43 @@ export const PublicPaymentPage: React.FC = () => {
                 return
             }
 
-            // Generate a unique payment reference
-            const reference = `PAG-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+            // Criação server-side (sem INSERT anon aberto em transacoes_pagamento)
+            const { data, error: transacaoError } = await supabase.functions.invoke(
+                'public-payment-request',
+                {
+                    body: {
+                        escola_id: school.id,
+                        plano: selectedPlano,
+                    },
+                },
+            )
 
-            // Calculate license dates
-            const dataInicio = new Date()
-            let dataFim = new Date()
-            switch (selectedPlano) {
-                case 'trimestral':
-                    dataFim.setMonth(dataFim.getMonth() + 3)
-                    break
-                case 'semestral':
-                    dataFim.setMonth(dataFim.getMonth() + 6)
-                    break
-                case 'anual':
-                    dataFim.setFullYear(dataFim.getFullYear() + 1)
-                    break
-            }
-
-            // Create payment transaction record (public insert may need RLS policy)
-            const { data: transacao, error: transacaoError } = await supabase
-                .from('transacoes_pagamento')
-                .insert({
-                    escola_id: school.id,
-                    provider: 'manual',
-                    provider_transaction_id: reference,
-                    valor: selectedPrice.valor,
-                    estado: 'pendente',
-                    moeda: 'AOA',
-                    descricao: `Licença ${selectedPlano} - ${school.nome} (${school.codigo_escola})`,
-                    metadata: {
-                    plano: selectedPlano,
-                    reference: reference,
-                    public_payment: true,
-                    tipo: 'manual_subscription_request',
-                    solicitado_em: new Date().toISOString(),
-                    data_inicio: dataInicio.toISOString().split('T')[0],
-                    data_fim: dataFim.toISOString().split('T')[0]
-                }
-                })
-                .select('id')
-                .single()
-
-            if (transacaoError) {
-                console.error('Payment creation error:', transacaoError)
-
-                // Fallback: Show payment info without creating record
-                // This allows user to contact support with payment details
+            if (transacaoError || !data?.success) {
+                console.error('Payment creation error:', transacaoError || data)
                 setPaymentResult({
-                    success: true,
-                    reference: reference,
-                    message: 'Utilize a referência abaixo para efectuar o pagamento. Após confirmação, contacte o suporte para activação.'
+                    success: false,
+                    message:
+                        data?.error ||
+                        'Não foi possível registar o pedido. Contacte o suporte com o código da escola.',
                 })
                 setStep('result')
                 return
             }
 
-            // Success with database record
             setPaymentResult({
                 success: true,
-                reference: reference,
-                message: 'Pagamento registado com sucesso! Utilize a referência abaixo para efectuar o pagamento.'
+                reference: data.reference,
+                message:
+                    data.message ||
+                    'Pagamento registado com sucesso! Utilize a referência abaixo para efectuar o pagamento.',
             })
 
             setStep('result')
         } catch (error) {
             console.error('Error creating payment:', error)
-
-            // Even on error, provide reference for manual follow-up
-            const fallbackRef = `REF-${Date.now()}`
             setPaymentResult({
                 success: false,
-                reference: fallbackRef,
-                message: 'Ocorreu um erro ao processar. Utilize esta referência para contactar o suporte.'
+                message: 'Ocorreu um erro ao processar. Contacte o suporte.',
             })
             setStep('result')
         } finally {

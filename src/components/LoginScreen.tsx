@@ -20,6 +20,11 @@ import { logSystemVisit } from '../utils/superadmin'
 import { sendSuggestionToSuperAdmin } from '../utils/notificationApi'
 import { AuthBackdrop } from './auth/AuthShell'
 import { getPendingAdminNotify, isAdminNotifyLocked, pathForPendingType } from '../utils/pendingAdminNotify'
+import {
+    getLoginBlockMessage,
+    registerLoginFailure,
+    registerLoginSuccess,
+} from '../utils/loginThrottle'
 
 type AuthMode = 'login' | 'signup' | 'school-registration' | 'direcao-municipal' | 'direcao-provincial'
 
@@ -199,12 +204,24 @@ export const LoginScreen: React.FC = () => {
         setError(null)
 
         try {
+            const blockedMsg = getLoginBlockMessage()
+            if (blockedMsg) {
+                setError(blockedMsg)
+                setLoading(false)
+                return
+            }
+
             const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             })
 
-            if (signInError) throw signInError
+            if (signInError) {
+                const throttleMsg = registerLoginFailure()
+                throw new Error(throttleMsg || signInError.message)
+            }
+
+            registerLoginSuccess()
 
             // After successful authentication, check user profile and escola status
             if (signInData.user) {

@@ -23,6 +23,7 @@
         "db:apply-conselho-membros": "node scripts/apply-conselho-membros-propostas.mjs",
         "db:apply-conselho-notif": "node scripts/apply-conselho-notificacoes.mjs",
         "db:apply-security-hardening": "node scripts/apply-security-hardening-20261108.mjs",
+        "db:apply-security-close-public": "node scripts/apply-security-close-public-payment.mjs",
         "verify:delete-escola": "node scripts/verify-delete-escola-responsavel.mjs"
     },
     "dependencies": {

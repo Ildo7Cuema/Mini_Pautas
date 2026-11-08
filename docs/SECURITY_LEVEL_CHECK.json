@@ -1,0 +1,136 @@
+{
+  "generatedAt": "2026-11-08T14:28:22.280Z",
+  "score": 100,
+  "level": "BOM",
+  "passed": 18,
+  "failed": 0,
+  "total": 18,
+  "results": [
+    {
+      "id": "rpc-is-conselho-gestor-exists",
+      "area": "Hardening",
+      "expected": "function available",
+      "passed": true,
+      "detail": "ok"
+    },
+    {
+      "id": "seed-escola",
+      "area": "Setup",
+      "expected": "seed school present",
+      "passed": true,
+      "detail": "Escola Primária Seed Luanda"
+    },
+    {
+      "id": "seed-emails",
+      "area": "Setup",
+      "expected": "ESCOLA + PROFESSOR emails",
+      "passed": true,
+      "detail": "[object Object]"
+    },
+    {
+      "id": "anon-cannot-aprovar-conselho",
+      "area": "Authz RPC",
+      "expected": "reject unauthenticated approve",
+      "passed": true,
+      "detail": "Não autenticado"
+    },
+    {
+      "id": "professor-is-not-gestor",
+      "area": "Authz RPC",
+      "expected": "is_conselho_gestor=false for professor",
+      "passed": true,
+      "detail": "is_conselho_gestor=false"
+    },
+    {
+      "id": "professor-cannot-aprovar",
+      "area": "Authz RPC",
+      "expected": "aprovar blocked for professor",
+      "passed": true,
+      "detail": "Sem permissão para aprovar este Conselho (apenas direcção)"
+    },
+    {
+      "id": "professor-cannot-notify-aprovado",
+      "area": "Authz RPC",
+      "expected": "notify aprovado blocked for professor",
+      "passed": true,
+      "detail": "Apenas a direcção pode notificar a aprovação do Conselho"
+    },
+    {
+      "id": "professor-cannot-spam-arbitrary-dest",
+      "area": "Notificacoes RLS",
+      "expected": "INSERT arbitrary destinatario blocked",
+      "passed": true,
+      "detail": "new row violates row-level security policy for table \"notificacoes\""
+    },
+    {
+      "id": "professor-cannot-insert-membro",
+      "area": "Conselho RLS",
+      "expected": "membro INSERT blocked for non-gestor",
+      "passed": true,
+      "detail": "new row violates row-level security policy for table \"conselho_notas_membros\""
+    },
+    {
+      "id": "escola-is-gestor",
+      "area": "Authz RPC",
+      "expected": "is_conselho_gestor=true for ESCOLA",
+      "passed": true,
+      "detail": "is_conselho_gestor=true"
+    },
+    {
+      "id": "anon-cannot-upload-cabecalhos",
+      "area": "Storage",
+      "expected": "anon blocked outside inscricoes/",
+      "passed": true,
+      "detail": "new row violates row-level security policy"
+    },
+    {
+      "id": "anon-can-upload-inscricoes",
+      "area": "Storage",
+      "expected": "anon allowed under inscricoes/ (inscription flow)",
+      "passed": true,
+      "detail": "upload ok"
+    },
+    {
+      "id": "auth-logo-requires-uid-prefix",
+      "area": "Storage",
+      "expected": "logo path without auth.uid() blocked",
+      "passed": true,
+      "detail": "new row violates row-level security policy"
+    },
+    {
+      "id": "auth-logo-with-uid-allowed",
+      "area": "Storage",
+      "expected": "logo path with auth.uid() allowed",
+      "passed": true,
+      "detail": "upload ok"
+    },
+    {
+      "id": "circulares-flat-path-blocked",
+      "area": "Storage",
+      "expected": "flat circulares path blocked",
+      "passed": true,
+      "detail": "new row violates row-level security policy"
+    },
+    {
+      "id": "circulares-uid-path-allowed",
+      "area": "Storage",
+      "expected": "uid/ path allowed",
+      "passed": true,
+      "detail": "upload ok"
+    },
+    {
+      "id": "conselho-notif-no-token",
+      "area": "Tokens",
+      "expected": "no token in dados_adicionais",
+      "passed": true,
+      "detail": "checked=6 withToken=0"
+    },
+    {
+      "id": "frontend-uses-anon-only",
+      "area": "Secrets",
+      "expected": "supabaseClient uses anon key only",
+      "passed": true,
+      "detail": "anon only"
+    }
+  ]
+}

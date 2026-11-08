@@ -1,8 +1,67 @@
-import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin, type Connect } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { superadminDeleteEscola } from './scripts/superadmin-delete-escola-core.mjs'
 import { getSuperAdminUsageStats } from './scripts/superadmin-usage-stats-core.mjs'
+
+function isLocalDevRequest(req: Connect.IncomingMessage): boolean {
+    const ip = req.socket?.remoteAddress || ''
+    return (
+        ip === '127.0.0.1' ||
+        ip === '::1' ||
+        ip === '::ffff:127.0.0.1' ||
+        ip.endsWith('127.0.0.1')
+    )
+}
+
+function setLocalDevCors(res: Connect.ServerResponse) {
+    res.setHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:3000')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+    res.setHeader('Vary', 'Origin')
+}
+
+/** Security headers for Vite dev/preview (defense in depth). */
+function securityHeadersPlugin(): Plugin {
+    const apply = (res: Connect.ServerResponse) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        res.setHeader('X-Frame-Options', 'DENY')
+        res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+        res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+        // CSP report-friendly baseline; Supabase + fonts + Vite HMR
+        res.setHeader(
+            'Content-Security-Policy',
+            [
+                "default-src 'self'",
+                "base-uri 'self'",
+                "object-src 'none'",
+                "frame-ancestors 'none'",
+                "img-src 'self' data: blob: https:",
+                "font-src 'self' https://fonts.gstatic.com data:",
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                "connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*",
+            ].join('; '),
+        )
+    }
+
+    return {
+        name: 'security-headers',
+        configureServer(server) {
+            server.middlewares.use((_req, res, next) => {
+                apply(res)
+                next()
+            })
+        },
+        configurePreviewServer(server) {
+            server.middlewares.use((_req, res, next) => {
+                apply(res)
+                next()
+            })
+        },
+    }
+}
 
 /**
  * Dev-only API: eliminates school + responsável auth accounts.
@@ -15,16 +74,26 @@ function superadminDeleteEscolaApi(): Plugin {
         configureServer(server) {
             server.middlewares.use(async (req, res, next) => {
                 if (req.method === 'OPTIONS' && req.url?.startsWith('/api/superadmin-delete-escola')) {
+                    if (!isLocalDevRequest(req)) {
+                        res.statusCode = 403
+                        res.end('Forbidden')
+                        return
+                    }
                     res.statusCode = 204
-                    res.setHeader('Access-Control-Allow-Origin', '*')
-                    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-                    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+                    setLocalDevCors(res)
                     res.end()
                     return
                 }
 
                 if (req.method !== 'POST' || req.url?.split('?')[0] !== '/api/superadmin-delete-escola') {
                     next()
+                    return
+                }
+
+                if (!isLocalDevRequest(req)) {
+                    res.statusCode = 403
+                    res.setHeader('Content-Type', 'application/json')
+                    res.end(JSON.stringify({ success: false, error: 'Dev API only on localhost' }))
                     return
                 }
 
@@ -103,10 +172,13 @@ function superadminUsageStatsApi(): Plugin {
         configureServer(server) {
             server.middlewares.use(async (req, res, next) => {
                 if (req.method === 'OPTIONS' && req.url?.startsWith('/api/superadmin-usage-stats')) {
+                    if (!isLocalDevRequest(req)) {
+                        res.statusCode = 403
+                        res.end('Forbidden')
+                        return
+                    }
                     res.statusCode = 204
-                    res.setHeader('Access-Control-Allow-Origin', '*')
-                    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-                    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
+                    setLocalDevCors(res)
                     res.end()
                     return
                 }
@@ -117,6 +189,13 @@ function superadminUsageStatsApi(): Plugin {
                     pathOnly !== '/api/superadmin-usage-stats'
                 ) {
                     next()
+                    return
+                }
+
+                if (!isLocalDevRequest(req)) {
+                    res.statusCode = 403
+                    res.setHeader('Content-Type', 'application/json')
+                    res.end(JSON.stringify({ success: false, error: 'Dev API only on localhost' }))
                     return
                 }
 
@@ -205,9 +284,10 @@ function superadminUsageStatsApi(): Plugin {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
     plugins: [
         react(),
+        securityHeadersPlugin(),
         superadminDeleteEscolaApi(),
         superadminUsageStatsApi(),
         VitePWA({
@@ -257,10 +337,18 @@ export default defineConfig({
     ],
     server: {
         port: 3000,
+        // Evita expor o Vite (e APIs com service role) na rede local por omissão
+        host: '127.0.0.1',
+        strictPort: true,
+    },
+    preview: {
+        port: 3000,
+        host: '127.0.0.1',
     },
     build: {
         outDir: 'dist',
-        sourcemap: true,
+        // Sourcemaps em produção facilitam engenharia reversa
+        sourcemap: mode !== 'production',
         // Optimize chunk splitting for better caching
         rollupOptions: {
             output: {
@@ -277,4 +365,4 @@ export default defineConfig({
         // Increase chunk size warning limit (we're intentionally splitting)
         chunkSizeWarningLimit: 500,
     },
-})
+}))
