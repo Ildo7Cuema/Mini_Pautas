@@ -14,6 +14,7 @@ import {
     type PautaGeralMetricDisciplina,
 } from './pautaGeralExportUtils'
 import { isPautaLancamentoComponent, formatComponentePautaLabel } from './pautaGeralFieldUtils'
+import { getApprovalThreshold } from './angolaGradeScale'
 import type {
     ConselhoMembroPapel,
     ConselhoNotasMembro,
@@ -331,7 +332,7 @@ export async function loadConselhoTurmaSnapshot(turmaId: string): Promise<Consel
         const obs = m.observacao as StatusTransicao
         const critico = isCasoCritico(obs, raw.frequencia_anual)
         let riscoNomes = [...m.disciplinas_em_risco]
-        const limiar = (turmaData.nivel_ensino || '').toLowerCase().includes('prim') ? 5 : 10
+        const limiar = getApprovalThreshold(turmaData.nivel_ensino)
         let detalhe = buildDisciplinasRiscoDetalhe(
             riscoNomes,
             raw.notas_por_disciplina,

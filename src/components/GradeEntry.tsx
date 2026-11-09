@@ -4,6 +4,14 @@ import { Turma, Disciplina, ComponenteAvaliacao, Aluno, Nota } from '../types'
 import { validateGrade } from '../utils/formulaParser'
 import { evaluateConfiguredComponent, type GradesByTrimestre } from '../utils/formulaUtils'
 import { isManualGradeEntryComponent } from '../utils/gradeUtils'
+import { useAuth } from '../contexts/AuthContext'
+import {
+    EscolaNatureza,
+    getApprovalThreshold,
+    getEffectiveGradeScale,
+    getEscolaNaturezaFromConfig,
+    validateGradeAgainstPolicy,
+} from '../utils/angolaGradeScale'
 
 interface GradeEntryProps {
     turma: Turma
@@ -11,6 +19,7 @@ interface GradeEntryProps {
 }
 
 export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => {
+    const { escolaProfile, professorProfile, secretarioProfile } = useAuth()
     const [componentes, setComponentes] = useState<ComponenteAvaliacao[]>([])
     const [selectedComponente, setSelectedComponente] = useState<ComponenteAvaliacao | null>(null)
     const [alunos, setAlunos] = useState<Aluno[]>([])
@@ -20,6 +29,37 @@ export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => 
     const [saving, setSaving] = useState(false)
     const [loading, setLoading] = useState(false)
     const [trimestre, setTrimestre] = useState<1 | 2 | 3>(turma.trimestre)
+    const [escolaNatureza, setEscolaNatureza] = useState<EscolaNatureza | null>(
+        () => getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>)
+    )
+
+    useEffect(() => {
+        const loadNatureza = async () => {
+            const fromProfile = getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>)
+            if (fromProfile) {
+                setEscolaNatureza(fromProfile)
+                return
+            }
+            const escolaId =
+                escolaProfile?.id || professorProfile?.escola_id || secretarioProfile?.escola_id
+            if (!escolaId) return
+            const { data } = await supabase
+                .from('escolas')
+                .select('configuracoes')
+                .eq('id', escolaId)
+                .maybeSingle()
+            setEscolaNatureza(getEscolaNaturezaFromConfig(data?.configuracoes as Record<string, unknown>))
+        }
+        loadNatureza()
+    }, [escolaProfile, professorProfile?.escola_id, secretarioProfile?.escola_id])
+
+    const nivelEnsino = turma.nivel_ensino || turma.nome
+    const activeScale = getEffectiveGradeScale({
+        natureza: escolaNatureza,
+        nivelEnsino,
+        componenteMin: selectedComponente?.escala_minima,
+        componenteMax: selectedComponente?.escala_maxima,
+    })
 
     useEffect(() => {
         loadComponentes()
@@ -222,10 +262,18 @@ export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => 
 
         if (!selectedComponente) return
 
+        const policy = validateGradeAgainstPolicy(numericValue, {
+            natureza: escolaNatureza,
+            nivelEnsino,
+            componenteMin: selectedComponente.escala_minima,
+            componenteMax: selectedComponente.escala_maxima,
+        })
+
         const validation = validateGrade(
             numericValue,
-            selectedComponente.escala_minima,
-            selectedComponente.escala_maxima
+            policy.min,
+            policy.max,
+            policy.message
         )
 
         if (!validation.valida) {
@@ -314,11 +362,12 @@ export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => 
         const valores = Object.values(notas).filter(v => !isNaN(v))
         if (valores.length === 0) return null
 
+        const limiar = getApprovalThreshold(nivelEnsino)
         const sum = valores.reduce((a, b) => a + b, 0)
         const avg = sum / valores.length
         const min = Math.min(...valores)
         const max = Math.max(...valores)
-        const aprovados = valores.filter(v => v >= 10).length
+        const aprovados = valores.filter(v => v >= limiar).length
 
         return {
             total: valores.length,
@@ -396,7 +445,8 @@ export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => 
                                 )}
                             </div>
                             <div className="text-xs text-gray-600 mt-1">
-                                {comp.peso_percentual}% • {comp.escala_minima}-{comp.escala_maxima}
+                                {comp.peso_percentual}% • {activeScale.min}-{activeScale.max}
+                                {selectedComponente?.id === comp.id && activeScale.enforced ? ' (RAA)' : ''}
                             </div>
                             {comp.is_calculated && comp.formula_expression && (
                                 <div className="text-xs text-purple-600 mt-1 font-mono">
@@ -481,8 +531,8 @@ export const GradeEntry: React.FC<GradeEntryProps> = ({ turma, disciplina }) => 
                                                         <input
                                                             type="number"
                                                             step="0.01"
-                                                            min={selectedComponente?.escala_minima}
-                                                            max={selectedComponente?.escala_maxima}
+                                                            min={activeScale.min}
+                                                            max={activeScale.max}
                                                             value={notas[aluno.id] ?? ''}
                                                             onChange={(e) => handleGradeChange(aluno.id, e.target.value)}
                                                             className={`w-24 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${hasError ? 'border-red-500' : 'border-gray-300'}`}

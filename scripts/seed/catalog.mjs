@@ -457,10 +457,17 @@ const GRADE_RANGES = {
 }
 
 /**
- * Nota (0–20) com perfil por aluno + variação por disciplina/trimestre.
+ * Nota com perfil por aluno + variação por disciplina/trimestre.
+ * Escala base 0–20; se maxScale=10 (primário RAA), converte com /2 e clamp 1–10.
  * Mistura realista: ~25–35% insuficientes, não só positivas.
  */
-export function buildGradeValue(studentIndex, disciplinaOrdem, trimestre, componentSalt = 0) {
+export function buildGradeValue(
+    studentIndex,
+    disciplinaOrdem,
+    trimestre,
+    componentSalt = 0,
+    maxScale = 20
+) {
     const perfil = studentPerformanceProfile(studentIndex)
     const range = GRADE_RANGES[perfil]
     const noise =
@@ -491,7 +498,14 @@ export function buildGradeValue(studentIndex, disciplinaOrdem, trimestre, compon
         valor += ((studentIndex + disciplinaOrdem) % 2 === 0 ? -0.8 : 0.6)
     }
 
-    return round1(valor)
+    valor = round1(valor)
+
+    if (Number(maxScale) === 10) {
+        const converted = Math.round((valor / 2) * 10) / 10
+        return Math.min(10, Math.max(1, converted))
+    }
+
+    return Math.min(20, Math.max(0, valor))
 }
 
 const OBS_NOTA_NEG = [

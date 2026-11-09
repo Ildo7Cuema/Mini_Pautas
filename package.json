@@ -24,6 +24,8 @@
         "db:apply-conselho-notif": "node scripts/apply-conselho-notificacoes.mjs",
         "db:apply-security-hardening": "node scripts/apply-security-hardening-20261108.mjs",
         "db:apply-security-close-public": "node scripts/apply-security-close-public-payment.mjs",
+        "db:apply-raa-primary-scale": "node scripts/apply-raa-primary-grade-scale.mjs",
+        "db:migrate-raa-primary-scale": "node scripts/migrate-raa-primary-grade-scale.mjs",
         "verify:delete-escola": "node scripts/verify-delete-escola-responsavel.mjs"
     },
     "dependencies": {

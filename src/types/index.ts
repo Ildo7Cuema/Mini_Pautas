@@ -6,6 +6,16 @@
 // DATABASE ENTITIES
 // ============================================
 
+/** Natureza jurídica da instituição (escolas.configuracoes.natureza). */
+export type EscolaNatureza = 'publica' | 'publico_privada' | 'privada';
+
+export interface EscolaConfiguracoes {
+    natureza?: EscolaNatureza;
+    perfil_configurado?: boolean;
+    data_configuracao?: string;
+    [key: string]: unknown;
+}
+
 export interface Escola {
     id: string;
     nome: string;
@@ -15,7 +25,8 @@ export interface Escola {
     endereco?: string;
     telefone?: string;
     email?: string;
-    configuracoes?: Record<string, any>;
+    /** Inclui `natureza`: publica | publico_privada | privada (obrigatória para escalas RAA). */
+    configuracoes?: EscolaConfiguracoes | Record<string, any>;
     ativo?: boolean;
     bloqueado?: boolean;
     bloqueado_motivo?: string;

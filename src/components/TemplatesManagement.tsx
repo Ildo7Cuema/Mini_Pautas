@@ -26,12 +26,17 @@ import {
     nextOrdemForTrimestre,
     syncComponenteCatalogSafely,
 } from '../utils/templateComponenteSync'
-
-// Available classes in the Angolan education system
-const CLASSES_PRIMARIO = ['1ª Classe', '2ª Classe', '3ª Classe', '4ª Classe', '5ª Classe', '6ª Classe']
-const CLASSES_SECUNDARIO_I = ['7ª Classe', '8ª Classe', '9ª Classe']
-const CLASSES_SECUNDARIO_II = ['10ª Classe', '11ª Classe', '12ª Classe', '13ª Classe']
-const ALL_CLASSES = [...CLASSES_PRIMARIO, ...CLASSES_SECUNDARIO_I, ...CLASSES_SECUNDARIO_II]
+import {
+    defaultScaleForNewComponent,
+    getEscolaNaturezaFromConfig,
+    getOfficialGradeScale,
+    isPrivateInstitution,
+} from '../utils/angolaGradeScale'
+import {
+    resolveTipoEscolaCenso,
+    templateClassGroupsForTipo,
+    type TipoEscolaCenso,
+} from '../modules/censo_escolar/utils/escolaModalidade'
 
 interface TemplatesManagementProps {
     onClose?: () => void
@@ -94,6 +99,21 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
 
     // Classes with templates count
     const [classesWithTemplates, setClassesWithTemplates] = useState<Record<string, number>>({})
+    const [tipoEscola, setTipoEscola] = useState<TipoEscolaCenso>('desconhecido')
+    const [niveisTurmas, setNiveisTurmas] = useState<string[]>([])
+
+    const escolaNatureza = getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>)
+    const scaleLocked = !isPrivateInstitution(escolaNatureza)
+    const officialScaleForClasse = getOfficialGradeScale({
+        natureza: escolaNatureza,
+        nivelEnsino: selectedClasse,
+    })
+    const defaultEscala = defaultScaleForNewComponent({
+        natureza: escolaNatureza,
+        nivelEnsino: selectedClasse,
+    })
+    const classGroups = templateClassGroupsForTipo(tipoEscola)
+    const allowedClasses = new Set(classGroups.flatMap((g) => [...g.classes]))
 
     // Apply to turma modal states
     const [showApplyModal, setShowApplyModal] = useState(false)
@@ -106,8 +126,23 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
     useEffect(() => {
         if (escolaProfile?.id) {
             loadClassesWithTemplates()
+            loadTipoEscola()
         }
-    }, [escolaProfile?.id])
+    }, [escolaProfile?.id, escolaProfile?.configuracoes])
+
+    useEffect(() => {
+        const resolved = resolveTipoEscolaCenso({
+            configuracoes: escolaProfile?.configuracoes as Record<string, unknown>,
+            niveisTurmas,
+        })
+        setTipoEscola(resolved.tipo)
+    }, [escolaProfile?.configuracoes, niveisTurmas])
+
+    useEffect(() => {
+        if (selectedClasse && !allowedClasses.has(selectedClasse)) {
+            setSelectedClasse(null)
+        }
+    }, [selectedClasse, tipoEscola])
 
     useEffect(() => {
         if (selectedClasse && escolaProfile?.id) {
@@ -131,6 +166,24 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             setClassesWithTemplates(counts)
         } catch (err) {
             console.error('Erro ao carregar classes:', err)
+        }
+    }
+
+    const loadTipoEscola = async () => {
+        if (!escolaProfile?.id) return
+        try {
+            const { data, error } = await supabase
+                .from('turmas')
+                .select('nivel_ensino, nome')
+                .eq('escola_id', escolaProfile.id)
+            if (error) throw error
+            const niveis = (data || [])
+                .map((t) => t.nivel_ensino || t.nome || '')
+                .filter(Boolean)
+            setNiveisTurmas(niveis)
+        } catch (err) {
+            console.error('Erro ao resolver tipo de escola:', err)
+            setNiveisTurmas([])
         }
     }
 
@@ -397,13 +450,18 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             // Position is always system-assigned per disciplina/trimestre (1, 2, 3…)
             const ordem = nextOrdemForTrimestre(siblingComponents, trimestre)
 
+            const escalas = resolveComponenteEscalas(
+                componenteFormData.escala_minima,
+                componenteFormData.escala_maxima,
+            )
+
             const insertPayload = {
                 disciplina_template_id: selectedTemplate.id,
                 nome: componenteFormData.nome,
                 codigo_componente: componenteFormData.codigo_componente.trim().toUpperCase(),
                 peso_percentual: pesoPercentual,
-                escala_minima: parseFloat(componenteFormData.escala_minima),
-                escala_maxima: parseFloat(componenteFormData.escala_maxima),
+                escala_minima: escalas.escala_minima,
+                escala_maxima: escalas.escala_maxima,
                 obrigatorio: componenteFormData.obrigatorio,
                 ordem,
                 descricao: componenteFormData.descricao || null,
@@ -500,12 +558,17 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                     ? oldOrdem
                     : nextOrdemForTrimestre(siblings, newTrimestre)
 
+            const escalas = resolveComponenteEscalas(
+                componenteFormData.escala_minima,
+                componenteFormData.escala_maxima,
+            )
+
             const payload = {
                 nome: newNome,
                 codigo_componente: newCodigo || componenteFormData.codigo_componente,
                 peso_percentual: pesoPercentual,
-                escala_minima: parseFloat(componenteFormData.escala_minima),
-                escala_maxima: parseFloat(componenteFormData.escala_maxima),
+                escala_minima: escalas.escala_minima,
+                escala_maxima: escalas.escala_maxima,
                 obrigatorio: componenteFormData.obrigatorio,
                 ordem,
                 descricao: componenteFormData.descricao || null,
@@ -643,6 +706,19 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
         }
     }
 
+    const resolveComponenteEscalas = (minRaw: string, maxRaw: string) => {
+        if (scaleLocked) {
+            return {
+                escala_minima: officialScaleForClasse.min,
+                escala_maxima: officialScaleForClasse.max,
+            }
+        }
+        return {
+            escala_minima: parseFloat(minRaw),
+            escala_maxima: parseFloat(maxRaw),
+        }
+    }
+
     const openAddComponenteModal = (template: DisciplinaTemplate) => {
         setSelectedTemplate(template)
         const existing = componentes[template.id] || []
@@ -651,8 +727,8 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             nome: '',
             codigo_componente: '',
             peso_percentual: '',
-            escala_minima: '0',
-            escala_maxima: '20',
+            escala_minima: String(defaultEscala.escala_minima),
+            escala_maxima: String(defaultEscala.escala_maxima),
             obrigatorio: true,
             ordem: String(nextOrdemForTrimestre(existing, defaultTrimestre)),
             descricao: '',
@@ -667,12 +743,15 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
     const openEditComponenteModal = (componente: ComponenteTemplate, template: DisciplinaTemplate) => {
         setSelectedTemplate(template)
         setSelectedComponente(componente)
+        const locked = scaleLocked
+            ? { min: officialScaleForClasse.min, max: officialScaleForClasse.max }
+            : { min: componente.escala_minima, max: componente.escala_maxima }
         setComponenteFormData({
             nome: componente.nome,
             codigo_componente: componente.codigo_componente,
             peso_percentual: componente.peso_percentual.toString(),
-            escala_minima: componente.escala_minima.toString(),
-            escala_maxima: componente.escala_maxima.toString(),
+            escala_minima: locked.min.toString(),
+            escala_maxima: locked.max.toString(),
             obrigatorio: componente.obrigatorio,
             ordem: componente.ordem.toString(),
             descricao: componente.descricao || '',
@@ -695,8 +774,8 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             nome: '',
             codigo_componente: '',
             peso_percentual: '',
-            escala_minima: '0',
-            escala_maxima: '20',
+            escala_minima: String(defaultEscala.escala_minima),
+            escala_maxima: String(defaultEscala.escala_maxima),
             obrigatorio: true,
             ordem: '1',
             descricao: '',
@@ -792,6 +871,11 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             const existing = componentes[selectedTemplate.id] || []
             const ordem = nextOrdemForTrimestre(existing, trimestre)
 
+            const escalas = resolveComponenteEscalas(
+                String(data.componente.escala_minima ?? defaultEscala.escala_minima),
+                String(data.componente.escala_maxima ?? defaultEscala.escala_maxima),
+            )
+
             const payload = {
                 disciplina_template_id: selectedTemplate.id,
                 nome: data.componente.nome,
@@ -801,8 +885,8 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                 is_calculated: data.componente.is_calculated,
                 tipo_calculo: data.componente.tipo_calculo,
                 formula_expression: data.componente.formula_expression,
-                escala_minima: 0,
-                escala_maxima: 20,
+                escala_minima: escalas.escala_minima,
+                escala_maxima: escalas.escala_maxima,
                 obrigatorio: true,
                 ordem,
                 descricao: data.componente.descricao
@@ -949,84 +1033,54 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                 </div>
             )}
 
-            {/* Class Selection */}
+            {/* Class Selection — só classes do subsistema da escola */}
             <Card>
                 <CardHeader>
-                    <h3 className="text-lg font-semibold text-slate-900">Seleccione a Classe</h3>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <h3 className="text-lg font-semibold text-slate-900">Seleccione a Classe</h3>
+                        {tipoEscola !== 'desconhecido' && (
+                            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                                {tipoEscola === 'primario'
+                                    ? 'Ensino Primário'
+                                    : tipoEscola === 'secundario'
+                                      ? 'Ensino Secundário'
+                                      : 'Complexo Escolar'}
+                            </span>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardBody>
                     <div className="space-y-4">
-                        {/* Ensino Primário */}
-                        <div>
-                            <h4 className="text-sm font-medium text-slate-600 mb-2">Ensino Primário</h4>
-                            <div className="flex flex-wrap gap-2">
-                                {CLASSES_PRIMARIO.map(classe => (
-                                    <button
-                                        key={classe}
-                                        onClick={() => setSelectedClasse(classe)}
-                                        className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedClasse === classe
-                                            ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20'
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                            }`}
-                                    >
-                                        {classe}
-                                        {classesWithTemplates[classe] && (
-                                            <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
-                                                {classesWithTemplates[classe]}
-                                            </span>
-                                        )}
-                                    </button>
-                                ))}
+                        {classGroups.map((group) => (
+                            <div key={group.id}>
+                                <h4 className="text-sm font-medium text-slate-600 mb-2">{group.title}</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {group.classes.map((classe) => (
+                                        <button
+                                            key={classe}
+                                            type="button"
+                                            onClick={() => setSelectedClasse(classe)}
+                                            className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedClasse === classe
+                                                ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20'
+                                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                                }`}
+                                        >
+                                            {classe}
+                                            {classesWithTemplates[classe] ? (
+                                                <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
+                                                    {classesWithTemplates[classe]}
+                                                </span>
+                                            ) : null}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-
-                        {/* Ensino Secundário I Ciclo */}
-                        <div>
-                            <h4 className="text-sm font-medium text-slate-600 mb-2">Ensino Secundário - I Ciclo</h4>
-                            <div className="flex flex-wrap gap-2">
-                                {CLASSES_SECUNDARIO_I.map(classe => (
-                                    <button
-                                        key={classe}
-                                        onClick={() => setSelectedClasse(classe)}
-                                        className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedClasse === classe
-                                            ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20'
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                            }`}
-                                    >
-                                        {classe}
-                                        {classesWithTemplates[classe] && (
-                                            <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
-                                                {classesWithTemplates[classe]}
-                                            </span>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Ensino Secundário II Ciclo */}
-                        <div>
-                            <h4 className="text-sm font-medium text-slate-600 mb-2">Ensino Secundário - II Ciclo</h4>
-                            <div className="flex flex-wrap gap-2">
-                                {CLASSES_SECUNDARIO_II.map(classe => (
-                                    <button
-                                        key={classe}
-                                        onClick={() => setSelectedClasse(classe)}
-                                        className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedClasse === classe
-                                            ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20'
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                            }`}
-                                    >
-                                        {classe}
-                                        {classesWithTemplates[classe] && (
-                                            <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
-                                                {classesWithTemplates[classe]}
-                                            </span>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                        ))}
+                        {tipoEscola === 'desconhecido' && (
+                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                Tipo de escola ainda não identificado. Defina o tipo em Configurações para ocultar classes de outros subsistemas.
+                            </p>
+                        )}
                     </div>
                 </CardBody>
             </Card>
@@ -1446,6 +1500,8 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                             value={componenteFormData.escala_minima}
                             onChange={(e) => setComponenteFormData({ ...componenteFormData, escala_minima: e.target.value })}
                             required
+                            readOnly={scaleLocked}
+                            disabled={scaleLocked}
                         />
                         <Input
                             label="Escala Máxima"
@@ -1454,8 +1510,15 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                             value={componenteFormData.escala_maxima}
                             onChange={(e) => setComponenteFormData({ ...componenteFormData, escala_maxima: e.target.value })}
                             required
+                            readOnly={scaleLocked}
+                            disabled={scaleLocked}
                         />
                     </div>
+                    {scaleLocked && (
+                        <p className="text-xs text-slate-500 -mt-1">
+                            Escala oficial RAA — {officialScaleForClasse.label}
+                        </p>
+                    )}
 
                     <div className="flex items-center gap-2">
                         <input

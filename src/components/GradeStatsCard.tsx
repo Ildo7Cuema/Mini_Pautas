@@ -9,13 +9,15 @@ component-meta:
 import React from 'react'
 import { Card, CardBody, CardHeader } from './ui/Card'
 import { GradeStats } from '../utils/gradeUtils'
+import { getQualitativeBands } from '../utils/angolaGradeScale'
 
 interface GradeStatsCardProps {
     stats: GradeStats
     loading?: boolean
+    nivelEnsino?: string | null
 }
 
-export const GradeStatsCard: React.FC<GradeStatsCardProps> = ({ stats, loading = false }) => {
+export const GradeStatsCard: React.FC<GradeStatsCardProps> = ({ stats, loading = false, nivelEnsino = null }) => {
     if (loading) {
         return (
             <Card>
@@ -121,12 +123,15 @@ export const GradeStatsCard: React.FC<GradeStatsCardProps> = ({ stats, loading =
                     <div className="mt-4 pt-4 border-t border-slate-200">
                         <h4 className="text-sm font-semibold text-slate-700 mb-3">Distribuição de Classificações</h4>
                         <div className="space-y-2">
-                            {[
-                                { label: 'Excelente (17-20)', value: stats.distribution.excellent, color: 'bg-green-500', total: stats.filled },
-                                { label: 'Bom (14-16)', value: stats.distribution.good, color: 'bg-blue-500', total: stats.filled },
-                                { label: 'Suficiente (10-13)', value: stats.distribution.sufficient, color: 'bg-yellow-500', total: stats.filled },
-                                { label: 'Insuficiente (0-9)', value: stats.distribution.insufficient, color: 'bg-red-500', total: stats.filled }
-                            ].map((dist, index) => {
+                            {(() => {
+                                const bands = getQualitativeBands(nivelEnsino)
+                                return [
+                                { label: bands.labels.excellent, value: stats.distribution.excellent, color: 'bg-green-500', total: stats.filled },
+                                { label: bands.labels.good, value: stats.distribution.good, color: 'bg-blue-500', total: stats.filled },
+                                { label: bands.labels.sufficient, value: stats.distribution.sufficient, color: 'bg-yellow-500', total: stats.filled },
+                                { label: bands.labels.insufficient, value: stats.distribution.insufficient, color: 'bg-red-500', total: stats.filled }
+                            ]
+                            })().map((dist, index) => {
                                 const percentage = stats.filled > 0 ? (dist.value / dist.total) * 100 : 0
                                 return (
                                     <div key={index}>

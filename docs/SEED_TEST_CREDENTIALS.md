@@ -77,6 +77,7 @@ Documentos prontos para demonstração sem cadastro manual:
 | Templates | 1ª–6ª Classe |
 | Turmas | 1ª–6ª Classe A (6 turmas) |
 | Alunos | 72 (12 × 6) |
+| Natureza | Pública (escala RAA Primário **1–10**) |
 | Licença | Anual (activa) |
 
 ### Conta administrador
@@ -105,6 +106,7 @@ Documentos prontos para demonstração sem cadastro manual:
 | Nome | Escola Secundária Seed Benguela |
 | Código | `SEED-SEC-2026` |
 | Tipo | Ensino Secundário |
+| Natureza | Pública (escala RAA Secundário **0–20**) |
 | Província / Município | Benguela / Benguela |
 | Templates | 7ª–9ª + Ciências + Humanidades |
 | Turmas | 7ª A, 8ª A, 9ª A, 10ª Ciências A, 11ª Ciências A, 12ª Humanidades A |
@@ -138,6 +140,7 @@ Documentos prontos para demonstração sem cadastro manual:
 | Nome | Complexo Escolar Seed Huambo |
 | Código | `SEED-CMP-2026` |
 | Tipo | Primário + Secundário |
+| Natureza | Pública (escalas RAA por nível da turma) |
 | Província / Município | Huambo / Huambo |
 | Turmas | 2ª B, 4ª B, 6ª B, 8ª B, 10ª Ciências B, 12ª Humanidades B |
 | Alunos | 72 (12 × 6) |

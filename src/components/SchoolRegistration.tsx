@@ -25,6 +25,13 @@ import {
 import { AdminWhatsAppAlert, AdminAlertState } from './AdminWhatsAppAlert'
 import { generateUniqueSchoolCode } from '../utils/schoolCodeGenerator'
 import { AuthShell } from './auth/AuthShell'
+import { ESCOLA_NATUREZA_OPTIONS, EscolaNatureza } from '../utils/angolaGradeScale'
+import {
+    TIPO_ESCOLA_OPTIONS,
+    type TipoEscolaCenso,
+} from '../modules/censo_escolar/utils/escolaModalidade'
+
+type TipoEscolaConfig = Exclude<TipoEscolaCenso, 'desconhecido'>
 
 interface SchoolRegistrationForm {
     // Dados da Escola
@@ -35,6 +42,8 @@ interface SchoolRegistrationForm {
     endereco: string
     telefone: string
     email_escola: string
+    natureza: EscolaNatureza | ''
+    tipo_escola: TipoEscolaConfig | ''
 
     // Dados do Responsável/Administrador
     nome_responsavel: string
@@ -85,6 +94,8 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
         endereco: '',
         telefone: '',
         email_escola: '',
+        natureza: '',
+        tipo_escola: '',
         nome_responsavel: '',
         email_responsavel: '',
         senha: '',
@@ -205,6 +216,14 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
             setError('Telefone é obrigatório')
             return false
         }
+        if (!formData.natureza) {
+            setError('Natureza da instituição é obrigatória')
+            return false
+        }
+        if (!formData.tipo_escola) {
+            setError('Tipo / subsistema de ensino é obrigatório')
+            return false
+        }
         return true
     }
 
@@ -273,7 +292,10 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                     p_endereco: formData.endereco || null,
                     p_telefone: formData.telefone || null,
                     p_email: formData.email_escola || formData.email_responsavel,
-                    p_configuracoes: {}
+                    p_configuracoes: {
+                        natureza: formData.natureza,
+                        tipo_escola: formData.tipo_escola,
+                    }
                 })
 
             if (escolaError) {
@@ -465,6 +487,50 @@ export const SchoolRegistration: React.FC<SchoolRegistrationProps> = ({ onSucces
                                             required
                                             inputSize="md"
                                         />
+                                    </div>
+
+                                    <div className="input-glow rounded-xl">
+                                        <label className="form-label mb-2 block text-sm font-medium text-slate-700">
+                                            Natureza da Instituição <span className="text-error ml-1">*</span>
+                                        </label>
+                                        <select
+                                            value={formData.natureza}
+                                            onChange={(e) => handleChange('natureza', e.target.value)}
+                                            className="w-full px-4 py-3 border border-neutral-300 rounded-xl bg-white text-base focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all duration-200 appearance-none"
+                                            required
+                                        >
+                                            <option value="">Seleccione a natureza</option>
+                                            {ESCOLA_NATUREZA_OPTIONS.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-slate-500 mt-1.5">
+                                            Pública/Público-privada: escalas oficiais RAA. Privada: escala livre.
+                                        </p>
+                                    </div>
+
+                                    <div className="input-glow rounded-xl">
+                                        <label className="form-label mb-2 block text-sm font-medium text-slate-700">
+                                            Tipo / Subsistema de Ensino <span className="text-error ml-1">*</span>
+                                        </label>
+                                        <select
+                                            value={formData.tipo_escola}
+                                            onChange={(e) => handleChange('tipo_escola', e.target.value)}
+                                            className="w-full px-4 py-3 border border-neutral-300 rounded-xl bg-white text-base focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all duration-200 appearance-none"
+                                            required
+                                        >
+                                            <option value="">Seleccione o tipo</option>
+                                            {TIPO_ESCOLA_OPTIONS.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-slate-500 mt-1.5">
+                                            Define que classes aparecem nos Templates (ex.: Primário → 1ª–6ª).
+                                        </p>
                                     </div>
 
                                     <div className="input-glow rounded-xl">

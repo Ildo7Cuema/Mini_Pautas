@@ -290,6 +290,11 @@ export async function seedNotasForTurma(supabase, turma, alunos, defaultProfesso
     const notasRows = []
     const finaisRows = []
     const now = new Date().toISOString()
+    const nivel = String(turma.nivel_ensino || turma.nome || '').toLowerCase()
+    const isPrimary =
+        nivel.includes('primar') ||
+        /[1-6]\s*[ªºa]/i.test(String(turma.nome || ''))
+    const maxScale = isPrimary ? 10 : 20
 
     disciplinas.forEach((disc, discIndex) => {
         const comps = compsByDisc.get(disc.id) || []
@@ -312,8 +317,8 @@ export async function seedNotasForTurma(supabase, turma, alunos, defaultProfesso
 
                 if (!mac || !npt) continue
 
-                const macVal = buildGradeValue(alunoIndex, discIndex, trim, 1)
-                const nptVal = buildGradeValue(alunoIndex, discIndex, trim, 2)
+                const macVal = buildGradeValue(alunoIndex, discIndex, trim, 1, maxScale)
+                const nptVal = buildGradeValue(alunoIndex, discIndex, trim, 2, maxScale)
                 const mtVal = Math.round(((macVal + nptVal) / 2) * 10) / 10
                 mtByAluno[trim] = mtVal
 

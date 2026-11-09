@@ -14,6 +14,12 @@ import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { Icons } from './ui/Icons'
 import { translateError } from '../utils/translations'
+import { useAuth } from '../contexts/AuthContext'
+import {
+    SECONDARY_OFFICIAL_SCALE,
+    getEscolaNaturezaFromConfig,
+    isPrivateInstitution,
+} from '../utils/angolaGradeScale'
 
 interface ComponenteCatalogo {
     id: string
@@ -36,6 +42,12 @@ interface ComponentesCatalogoManagerProps {
 }
 
 export function ComponentesCatalogoManager({ escolaId, onClose }: ComponentesCatalogoManagerProps) {
+    const { escolaProfile } = useAuth()
+    const escolaNatureza = getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>)
+    const scaleLocked = !isPrivateInstitution(escolaNatureza)
+    const catalogDefaultMin = String(SECONDARY_OFFICIAL_SCALE.min)
+    const catalogDefaultMax = String(SECONDARY_OFFICIAL_SCALE.max)
+
     const [componentes, setComponentes] = useState<ComponenteCatalogo[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -53,14 +65,27 @@ export function ComponentesCatalogoManager({ escolaId, onClose }: ComponentesCat
         codigo_componente: '',
         nome: '',
         peso_padrao: '100',
-        escala_minima: '0',
-        escala_maxima: '20',
+        escala_minima: catalogDefaultMin,
+        escala_maxima: catalogDefaultMax,
         is_calculated: false,
         formula_expression: '',
         depends_on_codes: [] as string[],
         tipo_calculo: 'trimestral' as 'trimestral' | 'anual',
         descricao: ''
     })
+
+    const resolveCatalogEscalas = () => {
+        if (scaleLocked) {
+            return {
+                escala_minima: SECONDARY_OFFICIAL_SCALE.min,
+                escala_maxima: SECONDARY_OFFICIAL_SCALE.max,
+            }
+        }
+        return {
+            escala_minima: parseFloat(formData.escala_minima),
+            escala_maxima: parseFloat(formData.escala_maxima),
+        }
+    }
 
     useEffect(() => {
         loadComponentes()
@@ -89,6 +114,7 @@ export function ComponentesCatalogoManager({ escolaId, onClose }: ComponentesCat
         setSuccess(null)
 
         try {
+            const escalas = resolveCatalogEscalas()
             const { error: insertError } = await supabase
                 .from('componentes_catalogo')
                 .insert({
@@ -96,8 +122,8 @@ export function ComponentesCatalogoManager({ escolaId, onClose }: ComponentesCat
                     codigo_componente: formData.codigo_componente.toUpperCase().trim(),
                     nome: formData.nome,
                     peso_padrao: parseFloat(formData.peso_padrao),
-                    escala_minima: parseFloat(formData.escala_minima),
-                    escala_maxima: parseFloat(formData.escala_maxima),
+                    escala_minima: escalas.escala_minima,
+                    escala_maxima: escalas.escala_maxima,
                     is_calculated: formData.is_calculated,
                     formula_expression: formData.is_calculated ? formData.formula_expression : null,
                     depends_on_codes: formData.is_calculated ? formData.depends_on_codes : [],
@@ -126,13 +152,14 @@ export function ComponentesCatalogoManager({ escolaId, onClose }: ComponentesCat
         setSuccess(null)
 
         try {
+            const escalas = resolveCatalogEscalas()
             const { error: updateError } = await supabase
                 .from('componentes_catalogo')
                 .update({
                     nome: formData.nome,
                     peso_padrao: parseFloat(formData.peso_padrao),
-                    escala_minima: parseFloat(formData.escala_minima),
-                    escala_maxima: parseFloat(formData.escala_maxima),
+                    escala_minima: escalas.escala_minima,
+                    escala_maxima: escalas.escala_maxima,
                     is_calculated: formData.is_calculated,
                     formula_expression: formData.is_calculated ? formData.formula_expression : null,
                     depends_on_codes: formData.is_calculated ? formData.depends_on_codes : [],
@@ -193,8 +220,8 @@ export function ComponentesCatalogoManager({ escolaId, onClose }: ComponentesCat
             codigo_componente: componente.codigo_componente,
             nome: componente.nome,
             peso_padrao: componente.peso_padrao.toString(),
-            escala_minima: componente.escala_minima.toString(),
-            escala_maxima: componente.escala_maxima.toString(),
+            escala_minima: scaleLocked ? catalogDefaultMin : componente.escala_minima.toString(),
+            escala_maxima: scaleLocked ? catalogDefaultMax : componente.escala_maxima.toString(),
             is_calculated: componente.is_calculated,
             formula_expression: componente.formula_expression || '',
             depends_on_codes: componente.depends_on_codes || [],
@@ -209,8 +236,8 @@ export function ComponentesCatalogoManager({ escolaId, onClose }: ComponentesCat
             codigo_componente: '',
             nome: '',
             peso_padrao: '100',
-            escala_minima: '0',
-            escala_maxima: '20',
+            escala_minima: catalogDefaultMin,
+            escala_maxima: catalogDefaultMax,
             is_calculated: false,
             formula_expression: '',
             depends_on_codes: [],
@@ -617,6 +644,8 @@ function ComponenteFormModal({
                                 value={formData.escala_minima}
                                 onChange={(e) => setFormData({ ...formData, escala_minima: e.target.value })}
                                 min="0"
+                                readOnly={scaleLocked}
+                                disabled={scaleLocked}
                             />
                         </div>
                         <div>
@@ -628,9 +657,16 @@ function ComponenteFormModal({
                                 value={formData.escala_maxima}
                                 onChange={(e) => setFormData({ ...formData, escala_maxima: e.target.value })}
                                 min="0"
+                                readOnly={scaleLocked}
+                                disabled={scaleLocked}
                             />
                         </div>
                     </div>
+                    {scaleLocked && (
+                        <p className="text-xs text-slate-500 -mt-2">
+                            Escala oficial RAA no catálogo (0–20). Nos templates do Ensino Primário a escala é forçada para 1–10.
+                        </p>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1.5">Descrição</label>

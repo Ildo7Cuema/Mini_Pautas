@@ -61,6 +61,7 @@ export function getAvaliacaoFrequenciaDocs(): AngolaLegalDoc[] {
  */
 export const AVALIACAO_FREQUENCIA_RESUMO = [
     'A decisão de Transita / Não Transita combina o resultado académico (notas) com a frequência anual.',
+    'Escala oficial RAA: Ensino Primário 1–10 valores; Ensino Secundário 0–20 valores (instituições privadas podem definir escala própria).',
     'Ensino Primário: transitam alunos com classificação final ≥ 5 valores em todas as disciplinas e frequência anual ≥ 66,67%.',
     'Ensino Secundário: aplicam-se os limiares e excepções do RAA (incluindo matrícula condicional quando prevista).',
     'Frequência anual inferior a 66,67% implica Não Transita, mesmo com médias positivas e sem disciplinas reprovadas.',

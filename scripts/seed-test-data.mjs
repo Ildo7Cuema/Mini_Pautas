@@ -131,14 +131,20 @@ async function createTemplates(supabase, escolaId, school) {
                 ? c.trimestres
                 : [1, 2, 3]
             const isCalculated = c.is_calculated === true
+            // RAA: Ensino Primário 1–10; Secundário 0–20
+            const classeNum = parseInt(String(t.classe).match(/(\d+)/)?.[1] || '0', 10)
+            const isPrimary = classeNum >= 1 && classeNum <= 6
+            const escalaMin = isPrimary ? 1 : 0
+            const escalaMax = isPrimary ? 10 : 20
+
             for (const trimestre of trimestres) {
                 componentesRows.push({
                     disciplina_template_id: disc.id,
                     nome: c.nome,
                     codigo_componente: c.codigo_componente,
                     peso_percentual: c.peso_percentual,
-                    escala_minima: 0,
-                    escala_maxima: 20,
+                    escala_minima: escalaMin,
+                    escala_maxima: escalaMax,
                     obrigatorio: true,
                     ordem: c.ordem,
                     trimestre,
@@ -230,6 +236,8 @@ async function seedSchool(supabase, school) {
                 perfil_configurado: true,
                 data_configuracao: new Date().toISOString(),
                 tipo_escola_seed: school.kind,
+                tipo_escola: school.kind,
+                natureza: 'publica',
             },
         })
             .select('id, codigo_escola, nome, user_id')

@@ -13,6 +13,18 @@ import { Card, CardBody, CardHeader } from './ui/Card'
 import { Button } from './ui/Button'
 import { translateError } from '../utils/translations'
 import { useAuth } from '../contexts/AuthContext'
+import {
+    ESCOLA_NATUREZA_OPTIONS,
+    EscolaNatureza,
+    getEscolaNaturezaFromConfig,
+} from '../utils/angolaGradeScale'
+import {
+    TIPO_ESCOLA_OPTIONS,
+    parseTipoEscolaFromConfig,
+    type TipoEscolaCenso,
+} from '../modules/censo_escolar/utils/escolaModalidade'
+
+type TipoEscolaConfig = Exclude<TipoEscolaCenso, 'desconhecido'>
 
 interface EscolaProfileSetupModalProps {
     onComplete: () => void
@@ -22,6 +34,12 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
     const { escolaProfile, refreshProfile } = useAuth()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [natureza, setNatureza] = useState<EscolaNatureza | ''>(
+        () => getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>) || ''
+    )
+    const [tipoEscola, setTipoEscola] = useState<TipoEscolaConfig | ''>(
+        () => parseTipoEscolaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>) || ''
+    )
 
     const handleComplete = async () => {
         if (!escolaProfile?.id) {
@@ -29,16 +47,27 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
             return
         }
 
+        if (!natureza) {
+            setError('Seleccione a natureza da instituição (Pública, Público-privada ou Privada)')
+            return
+        }
+
+        if (!tipoEscola) {
+            setError('Seleccione o tipo / subsistema de ensino da escola')
+            return
+        }
+
         setLoading(true)
         setError(null)
 
         try {
-            // Update escola configuracoes to mark profile as configured
             const currentConfig = escolaProfile.configuracoes || {}
             const updatedConfig = {
                 ...currentConfig,
+                natureza,
+                tipo_escola: tipoEscola,
                 perfil_configurado: true,
-                data_configuracao: new Date().toISOString()
+                data_configuracao: new Date().toISOString(),
             }
 
             const { error: updateError } = await supabase
@@ -48,10 +77,7 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
 
             if (updateError) throw updateError
 
-            // Refresh profile to get updated data
             await refreshProfile()
-
-            // Success!
             onComplete()
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar perfil'
@@ -71,7 +97,7 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
                             Bem-vindo ao EduGest Angola!
                         </h2>
                         <p className="text-sm md:text-base text-white/90">
-                            Complete seu perfil para começar a usar o sistema
+                            Complete o perfil da escola para começar
                         </p>
                     </div>
                 </CardHeader>
@@ -82,7 +108,6 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
                         </div>
                     )}
 
-                    {/* School info summary */}
                     <div className="space-y-4 mb-6">
                         <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
@@ -101,16 +126,51 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
                             </div>
                         </div>
 
-                        <div className="bg-primary-50 rounded-xl p-4 border border-primary-100">
-                            <h3 className="text-sm font-semibold text-primary-700 mb-2">
-                                📚 O que você pode fazer no EduGest:
-                            </h3>
-                            <ul className="text-sm text-primary-800 space-y-1">
-                                <li>• Gerenciar turmas e disciplinas</li>
-                                <li>• Cadastrar alunos e professores</li>
-                                <li>• Lançar e calcular notas</li>
-                                <li>• Gerar pautas e relatórios</li>
-                            </ul>
+                        <div>
+                            <label htmlFor="escola-natureza" className="block text-sm font-semibold text-slate-700 mb-2">
+                                Natureza da instituição <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                                id="escola-natureza"
+                                value={natureza}
+                                onChange={(e) => setNatureza(e.target.value as EscolaNatureza | '')}
+                                className="w-full px-3 py-3 border border-slate-300 rounded-xl bg-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                required
+                            >
+                                <option value="">Seleccione…</option>
+                                {ESCOLA_NATUREZA_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="text-xs text-slate-500 mt-2">
+                                Escolas públicas e público-privadas usam as escalas oficiais do RAA
+                                (Primário 1–10; Secundário 0–20). Instituições privadas podem definir a própria escala.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label htmlFor="escola-tipo" className="block text-sm font-semibold text-slate-700 mb-2">
+                                Tipo / Subsistema de ensino <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                                id="escola-tipo"
+                                value={tipoEscola}
+                                onChange={(e) => setTipoEscola(e.target.value as TipoEscolaConfig | '')}
+                                className="w-full px-3 py-3 border border-slate-300 rounded-xl bg-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                required
+                            >
+                                <option value="">Seleccione…</option>
+                                {TIPO_ESCOLA_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="text-xs text-slate-500 mt-2">
+                                Nos Templates só aparecem as classes deste subsistema.
+                            </p>
                         </div>
                     </div>
 
@@ -121,7 +181,7 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
                         onClick={handleComplete}
                         className="w-full py-3 text-base font-semibold"
                     >
-                        🚀 Começar a usar o sistema
+                        Começar a usar o sistema
                     </Button>
                 </CardBody>
             </Card>

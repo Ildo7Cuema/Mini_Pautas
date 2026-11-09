@@ -709,13 +709,11 @@ export const SubscriptionPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Manual Subscription Modal - Full Screen on Mobile */}
+            {/* Manual Subscription Modal - Medium, centered */}
             {showPaymentModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 animate-fade-in">
-                    <div className="bg-white w-full md:max-w-lg md:rounded-2xl rounded-t-3xl p-6 md:mx-4 animate-slide-up max-h-[90vh] overflow-y-auto">
-                        <div className="w-12 h-1 bg-neutral-300 rounded-full mx-auto mb-4 md:hidden" />
-
-                        <h2 className="text-xl font-bold text-neutral-800 mb-6">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
+                    <div className="bg-white w-full max-w-auth-md rounded-2xl p-6 shadow-xl animate-slide-up max-h-[90vh] overflow-y-auto">
+                        <h2 className="text-xl font-bold text-neutral-800 mb-6 text-center">
                             {licenseStatus?.valid ? '🔄 Renovar Licença' : '✨ Adquirir Licença'}
                         </h2>
 

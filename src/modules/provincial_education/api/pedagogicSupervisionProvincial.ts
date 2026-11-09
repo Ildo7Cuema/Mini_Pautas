@@ -4,11 +4,21 @@
  */
 
 import { supabase } from '../../../lib/supabaseClient';
+import { getApprovalThreshold, getQualitativeBands } from '../../../utils/angolaGradeScale';
 import type {
     IndicadoresPedagogicosProvinciais,
     IndicadoresPorMunicipio,
     ComparativoMunicipios
 } from '../types';
+
+async function loadNivelByTurmaIds(turmaIds: string[]): Promise<Map<string, string | null>> {
+    if (turmaIds.length === 0) return new Map()
+    const { data } = await supabase
+        .from('turmas')
+        .select('id, nivel_ensino, nome')
+        .in('id', turmaIds)
+    return new Map((data || []).map(t => [t.id, t.nivel_ensino || t.nome || null]))
+}
 
 /**
  * Fetch provincial pedagogic indicators
@@ -58,10 +68,13 @@ export async function fetchIndicadoresPedagogicosProvinciais(
     // Get turmas
     const { data: turmas } = await supabase
         .from('turmas')
-        .select('id')
+        .select('id, nivel_ensino, nome')
         .in('escola_id', escolaIds);
 
     const turmaIds = turmas?.map(t => t.id) || [];
+    const nivelByTurma = new Map(
+        (turmas || []).map(t => [t.id, t.nivel_ensino || t.nome || null])
+    )
 
     // Get alunos count
     const { count: totalAlunos } = await supabase
@@ -73,7 +86,7 @@ export async function fetchIndicadoresPedagogicosProvinciais(
     // Get notas_finais for aggregation
     let notasQuery = supabase
         .from('notas_finais')
-        .select('nota_final')
+        .select('nota_final, turma_id')
         .in('turma_id', turmaIds);
 
     if (trimestre) {
@@ -82,22 +95,31 @@ export async function fetchIndicadoresPedagogicosProvinciais(
 
     const { data: notas } = await notasQuery;
 
-    // Calculate statistics
+    // Calculate statistics (limiar RAA por subsistema da turma)
     const notasValues = notas?.map(n => n.nota_final) || [];
     const mediaGeral = notasValues.length > 0
         ? notasValues.reduce((a, b) => a + b, 0) / notasValues.length
         : 0;
 
-    const aprovados = notasValues.filter(n => n >= 10).length;
+    const aprovados = (notas || []).filter(n =>
+        n.nota_final >= getApprovalThreshold(nivelByTurma.get(n.turma_id))
+    ).length;
     const taxaAprovacao = notasValues.length > 0 ? (aprovados / notasValues.length) * 100 : 0;
 
     // Classification distribution
     const classificacoes = {
-        excelente: notasValues.filter(n => n >= 17).length,
-        bom: notasValues.filter(n => n >= 14 && n < 17).length,
-        suficiente: notasValues.filter(n => n >= 10 && n < 14).length,
-        insuficiente: notasValues.filter(n => n < 10).length
+        excelente: 0,
+        bom: 0,
+        suficiente: 0,
+        insuficiente: 0
     };
+    ;(notas || []).forEach(n => {
+        const bands = getQualitativeBands(nivelByTurma.get(n.turma_id))
+        if (n.nota_final >= bands.excellent) classificacoes.excelente++
+        else if (n.nota_final >= bands.good) classificacoes.bom++
+        else if (n.nota_final >= bands.sufficient) classificacoes.suficiente++
+        else classificacoes.insuficiente++
+    })
 
     return {
         provincia,
@@ -176,14 +198,17 @@ export async function fetchIndicadoresPorMunicipio(
             let mediaGeral = 0;
             let taxaAprovacao = 0;
             if (turmaIds.length > 0) {
+                const nivelByTurma = await loadNivelByTurmaIds(turmaIds)
                 const { data: notas } = await supabase
                     .from('notas_finais')
-                    .select('nota_final')
+                    .select('nota_final, turma_id')
                     .in('turma_id', turmaIds);
 
                 if (notas && notas.length > 0) {
                     mediaGeral = notas.reduce((a, b) => a + b.nota_final, 0) / notas.length;
-                    taxaAprovacao = (notas.filter(n => n.nota_final >= 10).length / notas.length) * 100;
+                    taxaAprovacao = (notas.filter(n =>
+                        n.nota_final >= getApprovalThreshold(nivelByTurma.get(n.turma_id))
+                    ).length / notas.length) * 100;
                 }
             }
 
@@ -274,9 +299,10 @@ export async function fetchTaxaAprovacaoPorMunicipio(
         }
 
         // Get notas
+        const nivelByTurma = await loadNivelByTurmaIds(turmaIds)
         let notasQuery = supabase
             .from('notas_finais')
-            .select('nota_final')
+            .select('nota_final, turma_id')
             .in('turma_id', turmaIds);
 
         if (trimestre) {
@@ -290,7 +316,9 @@ export async function fetchTaxaAprovacaoPorMunicipio(
             continue;
         }
 
-        const aprovados = notas.filter(n => n.nota_final >= 10).length;
+        const aprovados = notas.filter(n =>
+            n.nota_final >= getApprovalThreshold(nivelByTurma.get(n.turma_id))
+        ).length;
         const taxaAprovacao = (aprovados / notas.length) * 100;
 
         results.push({

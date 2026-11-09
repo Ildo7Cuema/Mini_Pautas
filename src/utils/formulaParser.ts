@@ -11,6 +11,8 @@
  * Security: Uses a sandboxed evaluator to prevent code injection
  */
 
+import { getQualitativeClassification } from './angolaGradeScale'
+
 export interface ComponentValue {
     codigo: string;
     valor: number;
@@ -249,14 +251,10 @@ export function calculateFinalGrade(
 }
 
 /**
- * Determines classification based on grade value
- * Default Angolan scale: 0-20
+ * Determines classification based on grade value and education subsystem (RAA)
  */
-export function getClassificacao(nota: number): string {
-    if (nota >= 17) return 'Excelente';
-    if (nota >= 14) return 'Bom';
-    if (nota >= 10) return 'Suficiente';
-    return 'Insuficiente';
+export function getClassificacao(nota: number, nivelEnsino?: string | null): string {
+    return getQualitativeClassification(nota, nivelEnsino);
 }
 
 /**
@@ -289,17 +287,20 @@ export function getExampleFormulas(): Record<string, string> {
 }
 
 /**
- * Validates grade value against component scale
+ * Validates grade value against component / official scale
  */
 export function validateGrade(
     valor: number,
     escalaMinima: number,
-    escalaMaxima: number
+    escalaMaxima: number,
+    mensagemCustom?: string
 ): { valida: boolean; mensagem: string } {
     if (valor < escalaMinima || valor > escalaMaxima) {
         return {
             valida: false,
-            mensagem: `Nota deve estar entre ${escalaMinima} e ${escalaMaxima}`,
+            mensagem:
+                mensagemCustom ||
+                `Nota deve estar entre ${escalaMinima} e ${escalaMaxima}`,
         };
     }
 

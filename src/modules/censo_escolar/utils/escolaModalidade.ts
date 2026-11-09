@@ -94,3 +94,67 @@ export function defaultModalidadeForTipo(tipo: TipoEscolaCenso): ModalidadeCenso
     const list = modalidadesParaTipoEscola(tipo)
     return list[0]?.codigo || 'ensino_primario_geral'
 }
+
+/** Classes oficiais por subsistema (Templates / mapas). */
+export const CLASSES_ENSINO_PRIMARIO = [
+    '1ª Classe',
+    '2ª Classe',
+    '3ª Classe',
+    '4ª Classe',
+    '5ª Classe',
+    '6ª Classe',
+] as const
+
+export const CLASSES_ENSINO_SECUNDARIO_I = ['7ª Classe', '8ª Classe', '9ª Classe'] as const
+
+export const CLASSES_ENSINO_SECUNDARIO_II = [
+    '10ª Classe',
+    '11ª Classe',
+    '12ª Classe',
+    '13ª Classe',
+] as const
+
+export const TIPO_ESCOLA_OPTIONS: Array<{ value: Exclude<TipoEscolaCenso, 'desconhecido'>; label: string }> = [
+    { value: 'primario', label: 'Ensino Primário' },
+    { value: 'secundario', label: 'Ensino Secundário' },
+    { value: 'complexo', label: 'Complexo Escolar (Primário + Secundário)' },
+]
+
+/**
+ * Quais grupos de classes mostrar nos Templates, conforme o tipo da escola.
+ * `desconhecido` → todos (até a escola declarar o tipo).
+ */
+export function templateClassGroupsForTipo(tipo: TipoEscolaCenso): Array<{
+    id: 'primario' | 'secundario_i' | 'secundario_ii'
+    title: string
+    classes: readonly string[]
+}> {
+    const primario = {
+        id: 'primario' as const,
+        title: 'Ensino Primário',
+        classes: CLASSES_ENSINO_PRIMARIO,
+    }
+    const secI = {
+        id: 'secundario_i' as const,
+        title: 'Ensino Secundário - I Ciclo',
+        classes: CLASSES_ENSINO_SECUNDARIO_I,
+    }
+    const secII = {
+        id: 'secundario_ii' as const,
+        title: 'Ensino Secundário - II Ciclo',
+        classes: CLASSES_ENSINO_SECUNDARIO_II,
+    }
+
+    if (tipo === 'primario') return [primario]
+    if (tipo === 'secundario') return [secI, secII]
+    // complexo ou desconhecido: todos os grupos
+    return [primario, secI, secII]
+}
+
+export function parseTipoEscolaFromConfig(
+    configuracoes?: Record<string, unknown> | null
+): Exclude<TipoEscolaCenso, 'desconhecido'> | null {
+    const resolved = resolveTipoEscolaCenso({ configuracoes, niveisTurmas: [] })
+    if (resolved.tipo === 'desconhecido') return null
+    return resolved.tipo
+}

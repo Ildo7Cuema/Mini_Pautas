@@ -88,12 +88,26 @@ function App() {
     const [reportsInitialTab, setReportsInitialTab] = useState<'conselho-notas' | undefined>()
     const [reportsInitialTurmaId, setReportsInitialTurmaId] = useState<string | undefined>()
 
-    // Check if escola needs to complete profile setup
+    // Check if escola needs to complete profile setup (natureza + tipo de ensino)
     useEffect(() => {
         if (user && isEscola && escolaProfile) {
             const config = escolaProfile.configuracoes as Record<string, any> | null
-            if (!config?.perfil_configurado) {
+            const naturezaOk =
+                config?.natureza === 'publica' ||
+                config?.natureza === 'publico_privada' ||
+                config?.natureza === 'privada'
+            const tipoRaw = String(
+                config?.tipo_escola || config?.tipo_escola_seed || config?.tipo_estabelecimento || ''
+            ).toLowerCase()
+            const tipoOk =
+                tipoRaw.includes('primar') ||
+                tipoRaw.includes('secund') ||
+                tipoRaw.includes('complexo') ||
+                tipoRaw.includes('misto')
+            if (!config?.perfil_configurado || !naturezaOk || !tipoOk) {
                 setShowEscolaSetup(true)
+            } else {
+                setShowEscolaSetup(false)
             }
         }
     }, [user, isEscola, escolaProfile])

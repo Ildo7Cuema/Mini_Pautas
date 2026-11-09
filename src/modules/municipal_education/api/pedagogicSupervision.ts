@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../../../lib/supabaseClient';
+import { getApprovalThreshold, getQualitativeBands } from '../../../utils/angolaGradeScale';
 import type { IndicadoresPedagogicos, PautaReadOnly } from '../types';
 
 /**
@@ -77,12 +78,12 @@ export async function fetchIndicadoresEscola(
         total_alunos = count || 0;
     }
 
-    // Get final grades
-    let notasFinais: { nota_final: number }[] = [];
+    // Get final grades with turma nivel for RAA thresholds
+    let notasFinais: { nota_final: number; turma_id: string }[] = [];
     if (turmaIds.length > 0) {
         let notasQuery = supabase
             .from('notas_finais')
-            .select('nota_final')
+            .select('nota_final, turma_id')
             .in('turma_id', turmaIds);
 
         if (trimestre) {
@@ -93,14 +94,23 @@ export async function fetchIndicadoresEscola(
         notasFinais = data || [];
     }
 
-    // Calculate statistics
+    const { data: turmasNivel } = turmaIds.length > 0
+        ? await supabase.from('turmas').select('id, nivel_ensino, nome').in('id', turmaIds)
+        : { data: [] as { id: string; nivel_ensino?: string | null; nome?: string | null }[] }
+    const nivelByTurma = new Map(
+        (turmasNivel || []).map(t => [t.id, t.nivel_ensino || t.nome || null])
+    )
+
+    // Calculate statistics (limiar RAA por subsistema da turma)
     const notas = notasFinais.map(n => n.nota_final);
     const media_geral = notas.length > 0
         ? notas.reduce((a, b) => a + b, 0) / notas.length
         : 0;
 
-    const aprovados = notas.filter(n => n >= 10).length;
-    const reprovados = notas.filter(n => n < 10).length;
+    const aprovados = notasFinais.filter(n =>
+        n.nota_final >= getApprovalThreshold(nivelByTurma.get(n.turma_id))
+    ).length;
+    const reprovados = notasFinais.length - aprovados;
     const total_com_nota = notas.length;
 
     const taxa_aprovacao = total_com_nota > 0
@@ -110,13 +120,20 @@ export async function fetchIndicadoresEscola(
         ? (reprovados / total_com_nota) * 100
         : 0;
 
-    // Classification breakdown
+    // Classification breakdown (faixas RAA por turma)
     const notas_por_classificacao = {
-        excelente: notas.filter(n => n >= 17).length,
-        bom: notas.filter(n => n >= 14 && n < 17).length,
-        suficiente: notas.filter(n => n >= 10 && n < 14).length,
-        insuficiente: notas.filter(n => n < 10).length
+        excelente: 0,
+        bom: 0,
+        suficiente: 0,
+        insuficiente: 0
     };
+    notasFinais.forEach(n => {
+        const bands = getQualitativeBands(nivelByTurma.get(n.turma_id))
+        if (n.nota_final >= bands.excellent) notas_por_classificacao.excelente++
+        else if (n.nota_final >= bands.good) notas_por_classificacao.bom++
+        else if (n.nota_final >= bands.sufficient) notas_por_classificacao.suficiente++
+        else notas_por_classificacao.insuficiente++
+    })
 
     return {
         escola_id: escolaId,
@@ -147,6 +164,7 @@ export async function fetchPautasEscola(
         .select(`
             id,
             nome,
+            nivel_ensino,
             trimestre,
             ano_lectivo,
             professor:professores(nome_completo)
@@ -215,6 +233,7 @@ export async function fetchPautasEscola(
             const media = notas.length > 0
                 ? notas.reduce((a, b) => a + b, 0) / notas.length
                 : 0;
+            const limiar = getApprovalThreshold(turma.nivel_ensino || turma.nome)
 
             pautas.push({
                 turma_id: turma.id,
@@ -225,8 +244,8 @@ export async function fetchPautasEscola(
                 alunos: alunosComNotas,
                 estatisticas: {
                     media: Math.round(media * 10) / 10,
-                    aprovados: notas.filter(n => n >= 10).length,
-                    reprovados: notas.filter(n => n < 10).length
+                    aprovados: notas.filter(n => n >= limiar).length,
+                    reprovados: notas.filter(n => n < limiar).length
                 }
             });
         }

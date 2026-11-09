@@ -29,12 +29,19 @@ import {
     GradeData
 } from '../utils/gradeUtils'
 import type { Aluno, ComponenteAvaliacao, Disciplina } from '../types'
+import {
+    EscolaNatureza,
+    getEffectiveGradeScale,
+    getEscolaNaturezaFromConfig,
+    validateGradeAgainstPolicy,
+} from '../utils/angolaGradeScale'
 
 interface Turma {
     id: string
     nome: string
     codigo_turma: string
     trimestre: number
+    nivel_ensino?: string
 }
 
 interface GradesPageProps {
@@ -42,7 +49,7 @@ interface GradesPageProps {
 }
 
 export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearchQuery = '' }) => {
-    const { isProfessor, professorProfile } = useAuth()
+    const { isProfessor, professorProfile, escolaProfile, secretarioProfile } = useAuth()
     // Selection state
     const [turmas, setTurmas] = useState<Turma[]>([])
     const [selectedTurma, setSelectedTurma] = useState<string>('')
@@ -51,6 +58,9 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
     const [componentes, setComponentes] = useState<ComponenteAvaliacao[]>([])
     const [selectedComponente, setSelectedComponente] = useState<string>('')
     const [trimestre, setTrimestre] = useState(1)
+    const [escolaNatureza, setEscolaNatureza] = useState<EscolaNatureza | null>(
+        () => getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>)
+    )
 
     // Data state
     const [alunos, setAlunos] = useState<Aluno[]>([])
@@ -75,7 +85,35 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
 
     useEffect(() => {
         loadTurmas()
+        loadEscolaNatureza()
     }, [])
+
+    useEffect(() => {
+        setEscolaNatureza(getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>))
+    }, [escolaProfile?.configuracoes])
+
+    const loadEscolaNatureza = async () => {
+        const fromProfile = getEscolaNaturezaFromConfig(escolaProfile?.configuracoes as Record<string, unknown>)
+        if (fromProfile) {
+            setEscolaNatureza(fromProfile)
+            return
+        }
+        const escolaId =
+            escolaProfile?.id ||
+            professorProfile?.escola_id ||
+            secretarioProfile?.escola_id
+        if (!escolaId) return
+        try {
+            const { data } = await supabase
+                .from('escolas')
+                .select('configuracoes')
+                .eq('id', escolaId)
+                .maybeSingle()
+            setEscolaNatureza(getEscolaNaturezaFromConfig(data?.configuracoes as Record<string, unknown>))
+        } catch {
+            /* ignore — validation falls back to official scales */
+        }
+    }
 
     useEffect(() => {
         if (selectedTurma) {
@@ -140,7 +178,8 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                             id,
                             nome,
                             codigo_turma,
-                            trimestre
+                            trimestre,
+                            nivel_ensino
                         )
                     `)
                     .eq('professor_id', professorProfile.id)
@@ -163,7 +202,8 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                 id: turma.id,
                                 nome: turma.nome,
                                 codigo_turma: turma.codigo_turma,
-                                trimestre: turma.trimestre
+                                trimestre: turma.trimestre,
+                                nivel_ensino: turma.nivel_ensino,
                             })
                         }
                     })
@@ -180,7 +220,8 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                 id,
                                 nome,
                                 codigo_turma,
-                                trimestre
+                                trimestre,
+                                nivel_ensino
                             )
                         `)
                         .eq('professor_id', professorProfile.id)
@@ -196,7 +237,8 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                 id: turma.id,
                                 nome: turma.nome,
                                 codigo_turma: turma.codigo_turma,
-                                trimestre: turma.trimestre
+                                trimestre: turma.trimestre,
+                                nivel_ensino: turma.nivel_ensino,
                             })
                         }
                     })
@@ -214,7 +256,7 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                 // For escola: load all turmas
                 const { data, error } = await supabase
                     .from('turmas')
-                    .select('id, nome, codigo_turma, trimestre')
+                    .select('id, nome, codigo_turma, trimestre, nivel_ensino')
                     .order('nome')
 
                 if (error) throw error
@@ -461,6 +503,19 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
         }
     }
 
+    const getTurmaNivelEnsino = () =>
+        turmas.find(t => t.id === selectedTurma)?.nivel_ensino ||
+        turmas.find(t => t.id === selectedTurma)?.nome ||
+        null
+
+    const getActiveGradeScale = (componente?: ComponenteAvaliacao | null) =>
+        getEffectiveGradeScale({
+            natureza: escolaNatureza,
+            nivelEnsino: getTurmaNivelEnsino(),
+            componenteMin: componente?.escala_minima,
+            componenteMax: componente?.escala_maxima,
+        })
+
     const handleNotaChange = (alunoId: string, valor: string) => {
         const numericValue = parseFloat(valor)
         const componente = componentes.find(c => c.id === selectedComponente)
@@ -478,10 +533,21 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
             return
         }
 
-        const validation = validateGradeValue(numericValue, componente.escala_minima, componente.escala_maxima)
+        const policy = validateGradeAgainstPolicy(numericValue, {
+            natureza: escolaNatureza,
+            nivelEnsino: getTurmaNivelEnsino(),
+            componenteMin: componente.escala_minima,
+            componenteMax: componente.escala_maxima,
+        })
+
+        const validation = policy.valid
+            ? { valid: true as const }
+            : validateGradeValue(numericValue, policy.min, policy.max, {
+                enforcedLabel: policy.message,
+            })
 
         if (!validation.valid) {
-            setErrors({ ...errors, [alunoId]: validation.message || 'Valor inválido' })
+            setErrors({ ...errors, [alunoId]: validation.message || policy.message || 'Valor inválido' })
         } else {
             const newErrors = { ...errors }
             delete newErrors[alunoId]
@@ -706,9 +772,11 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
             return 0
         })
 
-    const stats = calculateGradeStats(notas, alunos)
-    const selectedComponenteData = componentes.find(c => c.id === selectedComponente)
     const selectedTurmaData = turmas.find(t => t.id === selectedTurma)
+    const turmaNivelEnsino = getTurmaNivelEnsino()
+    const stats = calculateGradeStats(notas, alunos, turmaNivelEnsino)
+    const selectedComponenteData = componentes.find(c => c.id === selectedComponente)
+    const activeGradeScale = getActiveGradeScale(selectedComponenteData)
 
     return (
         <div className="space-y-4 md:space-y-6">
@@ -845,7 +913,7 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
 
             {/* Statistics */}
             {selectedComponente && alunos.length > 0 && (
-                <GradeStatsCard stats={stats} loading={loading} />
+                <GradeStatsCard stats={stats} loading={loading} nivelEnsino={turmaNivelEnsino} />
             )}
 
             {/* Grades Table */}
@@ -859,7 +927,8 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                 </h3>
                                 {selectedComponenteData && (
                                     <p className="text-sm text-slate-600 mt-1">
-                                        Escala: {selectedComponenteData.escala_minima} - {selectedComponenteData.escala_maxima} •
+                                        Escala: {activeGradeScale.min} - {activeGradeScale.max}
+                                        {activeGradeScale.enforced ? ' (oficial RAA)' : ''} •
                                         Peso: {selectedComponenteData.peso_percentual}%
                                     </p>
                                 )}
@@ -947,7 +1016,7 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                         return (
                                             <div
                                                 key={aluno.id}
-                                                className={`p-4 ${hasNota ? getGradeBgColor(nota) : ''}`}
+                                                className={`p-4 ${hasNota ? getGradeBgColor(nota, turmaNivelEnsino) : ''}`}
                                             >
                                                 <div className="flex items-start gap-3">
                                                     {/* Number Badge */}
@@ -987,15 +1056,15 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                                         <input
                                                             type="number"
                                                             step="0.5"
-                                                            min={selectedComponenteData?.escala_minima}
-                                                            max={selectedComponenteData?.escala_maxima}
+                                                            min={activeGradeScale.min}
+                                                            max={activeGradeScale.max}
                                                             value={nota ?? ''}
                                                             onChange={(e) => handleNotaChange(aluno.id, e.target.value)}
                                                             className={`w-full h-12 text-center text-lg font-bold rounded-xl border-2 transition-all focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                                                                 ${hasError
                                                                     ? 'border-red-500 bg-red-50 text-red-700'
                                                                     : hasNota
-                                                                        ? `border-slate-200 ${getGradeColor(nota)}`
+                                                                        ? `border-slate-200 ${getGradeColor(nota, turmaNivelEnsino)}`
                                                                         : 'border-slate-200 bg-white'
                                                                 }`}
                                                             placeholder="0"
@@ -1029,7 +1098,7 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                                 const hasNota = nota !== undefined
 
                                                 return (
-                                                    <tr key={aluno.id} className={hasNota ? getGradeBgColor(nota) : ''}>
+                                                    <tr key={aluno.id} className={hasNota ? getGradeBgColor(nota, turmaNivelEnsino) : ''}>
                                                         <td className="sticky left-0 bg-inherit font-medium text-center">{index + 1}</td>
                                                         <td className="sticky left-16 bg-inherit text-left">{aluno.nome_completo}</td>
                                                         <td className="text-slate-600 text-left">{aluno.numero_processo}</td>
@@ -1038,12 +1107,12 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
                                                                 <input
                                                                     type="number"
                                                                     step="0.5"
-                                                                    min={selectedComponenteData?.escala_minima}
-                                                                    max={selectedComponenteData?.escala_maxima}
+                                                                    min={activeGradeScale.min}
+                                                                    max={activeGradeScale.max}
                                                                     value={nota ?? ''}
                                                                     onChange={(e) => handleNotaChange(aluno.id, e.target.value)}
                                                                     className={`table-excel-input ${hasError ? 'border-red-500 bg-red-50' : ''
-                                                                        } ${hasNota ? getGradeColor(nota) : ''}`}
+                                                                        } ${hasNota ? getGradeColor(nota, turmaNivelEnsino) : ''}`}
                                                                     placeholder="0.0"
                                                                 />
                                                                 {hasError && (
@@ -1148,8 +1217,8 @@ export const GradesPage: React.FC<GradesPageProps> = ({ searchQuery: topbarSearc
             {showImportModal && selectedComponenteData && (
                 <GradeImportModal
                     alunos={alunos}
-                    minScale={selectedComponenteData.escala_minima}
-                    maxScale={selectedComponenteData.escala_maxima}
+                    minScale={activeGradeScale.min}
+                    maxScale={activeGradeScale.max}
                     componenteNome={selectedComponenteData.nome}
                     onImport={handleImport}
                     onClose={() => setShowImportModal(false)}

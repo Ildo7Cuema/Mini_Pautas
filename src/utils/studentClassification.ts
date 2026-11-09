@@ -10,6 +10,8 @@
  * - 9ª, 12ª: Terminal classes, no conditional allowed
  */
 
+import { getApprovalThreshold, resolveEducationSubsystem } from './angolaGradeScale'
+
 export interface DisciplinaGrade {
     id: string
     nome: string
@@ -113,8 +115,7 @@ function generateObservacao(
     frequencia?: number,
     _limiar?: number
 ): string {
-    const isPrimary = nivelEnsino?.toLowerCase().includes('primário') || nivelEnsino?.toLowerCase().includes('primario')
-    const limiarNota = isPrimary ? 5 : 10
+    const limiarNota = getApprovalThreshold(nivelEnsino)
 
     // Nota: retenção por frequência é tratada fora desta função (buildObservacaoFrequenciaInsuficiente),
     // para não misturar resultado académico com a decisão final.
@@ -435,11 +436,8 @@ export function classifyStudent(
     mandatoryDisciplineIds?: string[],
     frequencia?: number
 ): ClassificationResult {
-    // Determine if Primary or Secondary education
-    const isPrimary = nivelEnsino?.toLowerCase().includes('primário') ||
-        nivelEnsino?.toLowerCase().includes('primario')
-
-    if (isPrimary) {
+    // Determine if Primary or Secondary education (RAA)
+    if (resolveEducationSubsystem(nivelEnsino) === 'primario') {
         return classifyEnsinoPrimario(disciplinas, frequencia)
     } else {
         // Assume Secondary (Ensino Secundário I e II Ciclo)

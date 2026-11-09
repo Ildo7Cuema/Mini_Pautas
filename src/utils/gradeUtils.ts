@@ -3,6 +3,12 @@
  */
 
 import { Aluno } from '../types'
+import {
+    getApprovalThreshold,
+    getQualitativeBands,
+    getQualitativeClassification,
+    isGradePassing,
+} from './angolaGradeScale'
 
 /**
  * Column header for Mini-Pauta / PDF / Excel.
@@ -107,17 +113,19 @@ export interface ImportError {
 }
 
 /**
- * Calculate statistics from grades
+ * Calculate statistics from grades (limiar e faixas RAA por subsistema de ensino)
  */
 export const calculateGradeStats = (
     notas: Record<string, number>,
     alunos: Aluno[],
-    approvalThreshold: number = 10
+    nivelEnsino?: string | null
 ): GradeStats => {
     const valores = Object.values(notas).filter(v => v !== undefined && v !== null && !isNaN(v))
     const total = alunos.length
     const filled = valores.length
     const pending = total - filled
+    const approvalThreshold = getApprovalThreshold(nivelEnsino)
+    const bands = getQualitativeBands(nivelEnsino)
 
     if (valores.length === 0) {
         return {
@@ -147,12 +155,12 @@ export const calculateGradeStats = (
     const failed = valores.filter(v => v < approvalThreshold).length
     const approvalRate = (approved / valores.length) * 100
 
-    // Distribution based on Angolan grading system
+    // Distribuição qualitativa RAA por subsistema
     const distribution = {
-        excellent: valores.filter(v => v >= 17).length, // 17-20
-        good: valores.filter(v => v >= 14 && v < 17).length, // 14-16
-        sufficient: valores.filter(v => v >= 10 && v < 14).length, // 10-13
-        insufficient: valores.filter(v => v < 10).length // 0-9
+        excellent: valores.filter(v => v >= bands.excellent).length,
+        good: valores.filter(v => v >= bands.good && v < bands.excellent).length,
+        sufficient: valores.filter(v => v >= bands.sufficient && v < bands.good).length,
+        insufficient: valores.filter(v => v < bands.sufficient).length
     }
 
     return {
@@ -170,22 +178,25 @@ export const calculateGradeStats = (
 }
 
 /**
- * Validate a grade value
+ * Validate a grade value against an effective min/max scale.
  */
 export const validateGradeValue = (
     value: number,
     minScale: number,
-    maxScale: number
+    maxScale: number,
+    options?: { enforcedLabel?: string }
 ): { valid: boolean; message?: string } => {
     if (isNaN(value)) {
         return { valid: false, message: 'Valor inválido' }
     }
 
-    if (value < minScale) {
-        return { valid: false, message: `Mínimo: ${minScale}` }
-    }
-
-    if (value > maxScale) {
+    if (value < minScale || value > maxScale) {
+        if (options?.enforcedLabel) {
+            return { valid: false, message: options.enforcedLabel }
+        }
+        if (value < minScale) {
+            return { valid: false, message: `Mínimo: ${minScale}` }
+        }
         return { valid: false, message: `Máximo: ${maxScale}` }
     }
 
@@ -341,34 +352,36 @@ export const parseGradesFromCSV = (
 }
 
 /**
- * Get classification based on grade
+ * Get classification based on grade and education subsystem (RAA)
  */
-export const getClassification = (grade: number): string => {
-    if (grade >= 17) return 'Excelente'
-    if (grade >= 14) return 'Bom'
-    if (grade >= 10) return 'Suficiente'
-    return 'Insuficiente'
+export const getClassification = (grade: number, nivelEnsino?: string | null): string => {
+    return getQualitativeClassification(grade, nivelEnsino)
 }
 
 /**
- * Get color for grade
+ * Get color for grade (faixas RAA por subsistema)
  */
-export const getGradeColor = (grade: number): string => {
-    if (grade >= 17) return 'text-green-600'
-    if (grade >= 14) return 'text-blue-600'
-    if (grade >= 10) return 'text-yellow-600'
+export const getGradeColor = (grade: number, nivelEnsino?: string | null): string => {
+    const bands = getQualitativeBands(nivelEnsino)
+    if (grade >= bands.excellent) return 'text-green-600'
+    if (grade >= bands.good) return 'text-blue-600'
+    if (grade >= bands.sufficient) return 'text-yellow-600'
     return 'text-red-600'
 }
 
 /**
- * Get background color for grade
+ * Get background color for grade (faixas RAA por subsistema)
  */
-export const getGradeBgColor = (grade: number): string => {
-    if (grade >= 17) return 'bg-green-50 border-green-200'
-    if (grade >= 14) return 'bg-blue-50 border-blue-200'
-    if (grade >= 10) return 'bg-yellow-50 border-yellow-200'
+export const getGradeBgColor = (grade: number, nivelEnsino?: string | null): string => {
+    const bands = getQualitativeBands(nivelEnsino)
+    if (grade >= bands.excellent) return 'bg-green-50 border-green-200'
+    if (grade >= bands.good) return 'bg-blue-50 border-blue-200'
+    if (grade >= bands.sufficient) return 'bg-yellow-50 border-yellow-200'
     return 'bg-red-50 border-red-200'
 }
+
+/** Re-export for callers that only need pass/fail against RAA limiar */
+export { isGradePassing, getApprovalThreshold }
 
 /**
  * Generate CSV template

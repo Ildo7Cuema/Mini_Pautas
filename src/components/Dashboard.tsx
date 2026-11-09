@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabaseClient'
 import { Card, CardBody, CardHeader } from './ui/Card'
 import { translateError } from '../utils/translations'
 import { useAuth } from '../contexts/AuthContext'
+import { getApprovalThreshold, getQualitativeBands } from '../utils/angolaGradeScale'
 
 interface DashboardStats {
     totalTurmas: number
@@ -25,6 +26,7 @@ interface RecentClass {
     nome: string
     total_alunos: number
     media: number
+    nivel_ensino?: string | null
 }
 
 interface DashboardProps {
@@ -157,6 +159,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                 .select(`
                     id,
                     nome,
+                    nivel_ensino,
                     alunos(count)
                 `)
                 .order('created_at', { ascending: false })
@@ -177,6 +180,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                     .from('alunos')
                     .select('id, turma_id')
                     .in('turma_id', turmaIdList)
+
+                const { data: turmasNivel } = await supabase
+                    .from('turmas')
+                    .select('id, nivel_ensino, nome')
+                    .in('id', turmaIdList)
+
+                const nivelByTurma = new Map(
+                    (turmasNivel || []).map(t => [t.id, t.nivel_ensino || t.nome || null])
+                )
+                const alunoTurma = new Map((alunosData || []).map(a => [a.id, a.turma_id]))
 
                 if (!alunosDataError && alunosData && alunosData.length > 0) {
                     const alunoIds = alunosData.map(a => a.id)
@@ -215,14 +228,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                             let alunosAprovados = 0
                             let totalAlunosComNotas = 0
 
-                            Object.entries(notasPorAluno).forEach(([, notas]) => {
+                            Object.entries(notasPorAluno).forEach(([alunoId, notas]) => {
                                 if (notas.length > 0) {
                                     const mediaAluno = notas.reduce((sum, n) => sum + n, 0) / notas.length
                                     mediasAlunos.push(mediaAluno)
                                     totalAlunosComNotas++
 
-                                    // In Angolan system, >= 10 is passing
-                                    if (mediaAluno >= 10) {
+                                    const nivel = nivelByTurma.get(alunoTurma.get(alunoId) || '') || null
+                                    if (mediaAluno >= getApprovalThreshold(nivel)) {
                                         alunosAprovados++
                                     }
                                 }
@@ -290,6 +303,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                         nome: turma.nome,
                         total_alunos: turma.alunos?.[0]?.count || 0,
                         media: mediaTurma,
+                        nivel_ensino: turma.nivel_ensino,
                     }
                 })
             )
@@ -556,12 +570,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                                                 </div>
                                                 <div className="flex items-center gap-3">
                                                     {cls.media > 0 ? (
-                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${cls.media >= 14 ? 'bg-green-100 text-green-700' :
-                                                            cls.media >= 10 ? 'bg-yellow-100 text-yellow-700' :
+                                                        (() => {
+                                                            const bands = getQualitativeBands(cls.nivel_ensino || cls.nome)
+                                                            return (
+                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${cls.media >= bands.good ? 'bg-green-100 text-green-700' :
+                                                            cls.media >= bands.sufficient ? 'bg-yellow-100 text-yellow-700' :
                                                                 'bg-red-100 text-red-700'
                                                             }`}>
                                                             {cls.media.toFixed(1)}
                                                         </span>
+                                                            )
+                                                        })()
                                                     ) : (
                                                         <span className="text-slate-300 text-xs font-medium bg-slate-50 px-2 py-1 rounded-lg">--</span>
                                                     )}
@@ -602,16 +621,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                                                         </td>
                                                         <td className="px-6 py-4">
                                                             {cls.media > 0 ? (
+                                                                (() => {
+                                                                    const bands = getQualitativeBands(cls.nivel_ensino || cls.nome)
+                                                                    const scaleMax = bands.excellent >= 17 ? 20 : 10
+                                                                    return (
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="flex-1 w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                                                         <div
-                                                                            className={`h-full rounded-full ${cls.media >= 14 ? 'bg-green-500' : 'bg-yellow-500'
+                                                                            className={`h-full rounded-full ${cls.media >= bands.good ? 'bg-green-500' : 'bg-yellow-500'
                                                                                 }`}
-                                                                            style={{ width: `${(cls.media / 20) * 100}%` }}
+                                                                            style={{ width: `${Math.min(100, (cls.media / scaleMax) * 100)}%` }}
                                                                         />
                                                                     </div>
                                                                     <span className="text-xs font-bold text-slate-600">{cls.media.toFixed(1)}</span>
                                                                 </div>
+                                                                    )
+                                                                })()
                                                             ) : (
                                                                 <span className="text-slate-400 text-sm">--</span>
                                                             )}
@@ -859,7 +884,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, searchQuery = 
                                             </svg>
                                         </summary>
                                         <div className="px-3 pb-3 text-sm text-slate-600">
-                                            O sistema usa a escala de 0-20 pontos. A nota mínima de aprovação é 10 valores. As avaliações incluem MAC (Média de Avaliação Contínua), NPP (Nota da Prova do Professor), NPT (Nota da Prova Trimestral) e MT (Média Trimestral).
+                                            Escalas oficiais RAA: Ensino Primário 1–10 (aprovação ≥ 5); Ensino Secundário 0–20 (aprovação ≥ 10). Instituições privadas podem definir escala própria. Avaliações tipicamente incluem MAC, NPT e MT.
                                         </div>
                                     </details>
                                 </div>

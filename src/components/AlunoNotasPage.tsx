@@ -10,6 +10,7 @@ component-meta:
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../contexts/AuthContext'
+import { getApprovalThreshold, getQualitativeBands } from '../utils/angolaGradeScale'
 import type { Disciplina, Nota, NotaFinal, ComponenteAvaliacao } from '../types'
 
 interface DisciplinaWithGrades extends Disciplina {
@@ -28,6 +29,7 @@ export const AlunoNotasPage: React.FC = () => {
     const [selectedTrimestre, setSelectedTrimestre] = useState<1 | 2 | 3>(1)
     const [activeTab, setActiveTab] = useState<TabType>('notas')
     const [expandedDisciplina, setExpandedDisciplina] = useState<string | null>(null)
+    const [nivelEnsino, setNivelEnsino] = useState<string | null>(null)
 
     useEffect(() => {
         if (isAluno && alunoProfile) {
@@ -43,6 +45,13 @@ export const AlunoNotasPage: React.FC = () => {
 
         try {
             const turmaId = alunoProfile.turma_id
+
+            const { data: turmaData } = await supabase
+                .from('turmas')
+                .select('nivel_ensino, nome')
+                .eq('id', turmaId)
+                .maybeSingle()
+            setNivelEnsino(turmaData?.nivel_ensino || turmaData?.nome || null)
 
             const { data: disciplinasData, error: disciplinasError } = await supabase
                 .from('disciplinas')
@@ -107,25 +116,28 @@ export const AlunoNotasPage: React.FC = () => {
     }
 
     const getGradeColor = (nota: number): string => {
-        if (nota >= 17) return 'text-emerald-600'
-        if (nota >= 14) return 'text-blue-600'
-        if (nota >= 10) return 'text-amber-600'
+        const bands = getQualitativeBands(nivelEnsino)
+        if (nota >= bands.excellent) return 'text-emerald-600'
+        if (nota >= bands.good) return 'text-blue-600'
+        if (nota >= bands.sufficient) return 'text-amber-600'
         return 'text-red-600'
     }
 
     const getGradeBgColor = (nota: number): string => {
-        if (nota >= 17) return 'bg-emerald-50 border-emerald-200'
-        if (nota >= 14) return 'bg-blue-50 border-blue-200'
-        if (nota >= 10) return 'bg-amber-50 border-amber-200'
+        const bands = getQualitativeBands(nivelEnsino)
+        if (nota >= bands.excellent) return 'bg-emerald-50 border-emerald-200'
+        if (nota >= bands.good) return 'bg-blue-50 border-blue-200'
+        if (nota >= bands.sufficient) return 'bg-amber-50 border-amber-200'
         return 'bg-red-50 border-red-200'
     }
 
+    const limiar = getApprovalThreshold(nivelEnsino)
     const disciplinasWithFinal = disciplinas.filter(d => d.notaFinal)
     const mediaGeral = disciplinasWithFinal.length > 0
         ? disciplinasWithFinal.reduce((acc, d) => acc + (d.notaFinal?.nota_final || 0), 0) / disciplinasWithFinal.length
         : null
-    const aprovadas = disciplinas.filter(d => d.notaFinal && d.notaFinal.nota_final >= 10).length
-    const reprovadas = disciplinas.filter(d => d.notaFinal && d.notaFinal.nota_final < 10).length
+    const aprovadas = disciplinas.filter(d => d.notaFinal && d.notaFinal.nota_final >= limiar).length
+    const reprovadas = disciplinas.filter(d => d.notaFinal && d.notaFinal.nota_final < limiar).length
 
     if (!isAluno || !alunoProfile) {
         return (

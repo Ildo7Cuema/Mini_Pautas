@@ -2,6 +2,12 @@
  * Utility functions for calculating final grades and classifications
  */
 
+import {
+    getApprovalThreshold,
+    getQualitativeClassification,
+    isGradePassing,
+} from './angolaGradeScale'
+
 interface ComponenteAvaliacao {
     id: string
     codigo_componente: string
@@ -30,7 +36,8 @@ export interface NotaFinalCalculada {
  */
 export function calculateNotaFinal(
     notas: Nota[],
-    componentes: ComponenteAvaliacao[]
+    componentes: ComponenteAvaliacao[],
+    nivelEnsino?: string | null
 ): NotaFinalCalculada {
     const notasMap = new Map(notas.map(n => [n.componente_id, n.valor]))
     const detalhes: Record<string, any> = {}
@@ -57,8 +64,8 @@ export function calculateNotaFinal(
     // Calculate final grade using all component weights
     const nota_final = somaPesos > 0 ? (somaContribuicoes / somaPesos) * 100 : 0
 
-    const classificacao = getClassificacao(nota_final)
-    const aprovado = nota_final >= 10
+    const classificacao = getClassificacao(nota_final, nivelEnsino)
+    const aprovado = isGradePassing(nota_final, nivelEnsino)
 
     return {
         nota_final,
@@ -70,14 +77,10 @@ export function calculateNotaFinal(
 
 
 /**
- * Get classification based on grade
- * Based on Angolan education system
+ * Get classification based on grade and education subsystem (RAA)
  */
-export function getClassificacao(nota: number): string {
-    if (nota >= 17) return 'Excelente'
-    if (nota >= 14) return 'Bom'
-    if (nota >= 10) return 'Suficiente'
-    return 'Insuficiente'
+export function getClassificacao(nota: number, nivelEnsino?: string | null): string {
+    return getQualitativeClassification(nota, nivelEnsino)
 }
 
 /**
@@ -94,7 +97,10 @@ export interface TurmaStatistics {
     distribuicao: Record<string, number>
 }
 
-export function calculateStatistics(notasFinais: number[]): TurmaStatistics {
+export function calculateStatistics(
+    notasFinais: number[],
+    nivelEnsino?: string | null
+): TurmaStatistics {
     if (notasFinais.length === 0) {
         return {
             total_alunos: 0,
@@ -108,8 +114,9 @@ export function calculateStatistics(notasFinais: number[]): TurmaStatistics {
         }
     }
 
+    const limiar = getApprovalThreshold(nivelEnsino)
     const total_alunos = notasFinais.length
-    const aprovados = notasFinais.filter(n => n >= 10).length
+    const aprovados = notasFinais.filter(n => n >= limiar).length
     const reprovados = total_alunos - aprovados
     const taxa_aprovacao = (aprovados / total_alunos) * 100
 
@@ -127,7 +134,7 @@ export function calculateStatistics(notasFinais: number[]): TurmaStatistics {
     }
 
     notasFinais.forEach(nota => {
-        const classificacao = getClassificacao(nota)
+        const classificacao = getClassificacao(nota, nivelEnsino)
         distribuicao[classificacao]++
     })
 

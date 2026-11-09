@@ -18,6 +18,7 @@ import { TurmaStatistics } from './TurmaStatistics'
 import { generateMiniPautaPDF } from '../utils/pdfGenerator'
 import { generateMiniPautaExcel, generateCSV } from '../utils/excelGenerator'
 import { calculateNotaFinal, calculateStatistics, getClassificacao } from '../utils/gradeCalculations'
+import { getApprovalThreshold } from '../utils/angolaGradeScale'
 import {
     evaluateConfiguredComponent,
     type GradesByTrimestre,
@@ -517,11 +518,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         : null
                 }
 
-                // Determine pass/fail based on education level
-                // Ensino Primário: MF >= 5 transita, Ensino Secundário: MF >= 10 transita
-                const isPrimary = turmaData.nivel_ensino?.toLowerCase().includes('primário') ||
-                    turmaData.nivel_ensino?.toLowerCase().includes('primario')
-                const limiarTransicao = isPrimary ? 5 : 10
+                // Pass/fail RAA por subsistema: Primário ≥5 · Secundário ≥10
+                const limiarTransicao = getApprovalThreshold(turmaData.nivel_ensino)
                 const transita = notaFinal !== null && notaFinal >= limiarTransicao
 
                 console.log(`[TERMO DEBUG] Final componentesPorTrimestre[3] for ${disciplina.nome}:`, componentesPorTrimestre[3].map(c => `${c.codigo}=${c.nota}`))
@@ -533,7 +531,9 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     notas_trimestrais: notasTrimestrais,
                     componentesPorTrimestre: componentesPorTrimestre,
                     nota_final: notaFinal,
-                    classificacao: notaFinal !== null ? (notaFinal >= limiarTransicao ? 'Aprovado' : 'Reprovado') : 'N/A',
+                    classificacao: notaFinal !== null
+                        ? getClassificacao(notaFinal, turmaData.nivel_ensino)
+                        : 'N/A',
                     transita
                 }
             })
@@ -669,10 +669,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
             .eq('trimestre', trimestreSel)
         if (notasError) throw notasError
 
-        const isPrimary = turmaData.nivel_ensino?.toLowerCase().includes('primário') ||
-            turmaData.nivel_ensino?.toLowerCase().includes('primario') ||
-            false
-        const limiar = isPrimary ? 5 : 10
+        const limiar = getApprovalThreshold(turmaData.nivel_ensino)
+        const isPrimary = limiar === 5
 
         const disciplinasProcessadas = disciplinasData.map(disciplina => {
             const componentesDisciplina = (componentesData || []).filter(c => c.disciplina_id === disciplina.id)
@@ -744,9 +742,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
             const aprovado = notaTrimestral !== null && notaTrimestral >= limiar
             let classificacao = 'N/A'
             if (notaTrimestral !== null) {
-                classificacao = isPrimary
-                    ? (aprovado ? 'Aprovado' : 'Reprovado')
-                    : getClassificacao(notaTrimestral)
+                classificacao = getClassificacao(notaTrimestral, turmaData.nivel_ensino)
             }
 
             return {
@@ -1395,7 +1391,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     const notas = Object.values(a.notas).filter(n => n > 0)
                     return notas.length > 0 ? notas.reduce((sum, n) => sum + n, 0) / notas.length : 0
                 }).filter(n => n > 0)
-                const estatisticas = calculateStatistics(notasFinais)
+                const estatisticas = calculateStatistics(notasFinais, turmaData.nivel_ensino)
 
                 // Load escola info (optional)
                 const { data: escolaData } = await supabase
@@ -1536,7 +1532,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     }
                     return nfs.length > 0 ? nfs.reduce((sum, n) => sum + n, 0) / nfs.length : 0
                 }).filter(n => n > 0)
-                const estatisticas = calculateStatistics(notasFinais)
+                const estatisticas = calculateStatistics(notasFinais, turmaData.nivel_ensino)
 
                 // Load escola info (optional)
                 const { data: escolaData } = await supabase
@@ -1719,8 +1715,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         })
                     }
 
-                    // Calculate final grade
-                    const resultado = calculateNotaFinal(notasAluno, componentesData)
+                    // Calculate final grade (classificação RAA por subsistema)
+                    const resultado = calculateNotaFinal(notasAluno, componentesData, turmaData.nivel_ensino)
 
                     return {
                         numero_processo: aluno.numero_processo,
@@ -1736,7 +1732,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
 
                 // Calculate statistics
                 const notasFinais = alunosComNotas.map(a => a.nota_final)
-                const estatisticas = calculateStatistics(notasFinais)
+                const estatisticas = calculateStatistics(notasFinais, turmaData.nivel_ensino)
 
                 // MT is no longer calculated automatically
                 // It should be configured as a calculated component if needed
@@ -2087,10 +2083,8 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         ? notasValidas.reduce((sum, n) => sum + n, 0) / notasValidas.length
                         : null
 
-                    // Determine pass/fail based on education level
-                    const isPrimary = selectedTurmaData.nivel_ensino?.toLowerCase().includes('primário') ||
-                        selectedTurmaData.nivel_ensino?.toLowerCase().includes('primario')
-                    const limiarTransicao = isPrimary ? 5 : 10
+                    // Pass/fail RAA por subsistema: Primário ≥5 · Secundário ≥10
+                    const limiarTransicao = getApprovalThreshold(selectedTurmaData.nivel_ensino)
                     const transita = notaFinal !== null && notaFinal >= limiarTransicao
 
                     return {
@@ -2100,7 +2094,9 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         notas_trimestrais: notasTrimestrais,
                         componentesPorTrimestre: componentesPorTrimestre,
                         nota_final: notaFinal,
-                        classificacao: notaFinal !== null ? (notaFinal >= limiarTransicao ? 'Aprovado' : 'Reprovado') : 'N/A',
+                        classificacao: notaFinal !== null
+                            ? getClassificacao(notaFinal, selectedTurmaData.nivel_ensino)
+                            : 'N/A',
                         transita
                     }
                 })
@@ -2325,9 +2321,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     let frequentaramM = 0, frequentaramF = 0
                     const notas: number[] = []
 
-                    const isPrimary = (turma.nivel_ensino || '').toLowerCase().includes('primár') ||
-                        (turma.nivel_ensino || '').toLowerCase().includes('primario')
-                    const limiar = isPrimary ? 5 : 10
+                    const limiar = getApprovalThreshold(turma.nivel_ensino)
 
                     for (const aluno of todosAlunos) {
                         const genM = aluno.genero === 'M'

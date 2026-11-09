@@ -179,6 +179,13 @@ async function renderPDFHeader(
     return currentY
 }
 
+/** Reserved bottom space so content never overlaps the standard footer */
+const MINI_PAUTA_FOOTER_CLEARANCE_MM = 16
+/** Compact stats table approximate height (title row + values) */
+const MINI_PAUTA_STATS_BLOCK_MM = 14
+/** Signature lines + labels */
+const MINI_PAUTA_SIGNATURES_BLOCK_MM = 18
+
 /**
  * Adds footer to PDF page
  */
@@ -196,48 +203,132 @@ function addPDFFooter(doc: jsPDF, pageWidth: number, pageHeight: number) {
 }
 
 /**
- * Adds statistics section to PDF
+ * Ensures enough vertical room below `y`; otherwise starts a new page with footer.
+ * Returns the Y position where the next block may start.
  */
-function addPDFStatistics(doc: jsPDF, data: MiniPautaData, finalY: number, pageHeight: number) {
-    if (finalY + 30 < pageHeight) {
-        doc.setFontSize(10)
-        doc.setFont('helvetica', 'bold')
-        doc.text('ESTATÍSTICAS DA TURMA', 14, finalY)
-
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(9)
-
-        const stats = [
-            `Total de Alunos: ${data.estatisticas.total_alunos}`,
-            `Aprovados: ${data.estatisticas.aprovados} (${data.estatisticas.taxa_aprovacao.toFixed(1)}%)`,
-            `Reprovados: ${data.estatisticas.reprovados}`,
-            `Média da Turma: ${data.estatisticas.media_turma.toFixed(2)}`,
-            `Nota Mínima: ${data.estatisticas.nota_minima.toFixed(2)}`,
-            `Nota Máxima: ${data.estatisticas.nota_maxima.toFixed(2)}`
-        ]
-
-        stats.forEach((stat, index) => {
-            doc.text(stat, 14, finalY + 7 + (index * 5))
-        })
+function ensureMiniPautaSpace(
+    doc: jsPDF,
+    y: number,
+    neededMm: number,
+    pageWidth: number,
+    pageHeight: number
+): number {
+    if (y + neededMm <= pageHeight - MINI_PAUTA_FOOTER_CLEARANCE_MM) {
+        return y
     }
+    doc.addPage()
+    addPDFFooter(doc, pageWidth, pageHeight)
+    return 12
 }
 
 /**
- * Adds signature section to PDF
+ * Adds statistics as a compact table with very small font.
+ * Returns the Y position after the block (for signatures).
  */
-function addPDFSignatures(doc: jsPDF, finalY: number, pageWidth: number, pageHeight: number) {
-    if (finalY + 60 < pageHeight) {
-        const signY = finalY + 50
-        doc.setFontSize(9)
-        doc.text('_____________________________', 14, signY)
-        doc.text('Professor(a)', 14, signY + 5)
+function addPDFStatistics(
+    doc: jsPDF,
+    data: MiniPautaData,
+    finalY: number,
+    pageWidth: number,
+    pageHeight: number
+): number {
+    const startY = ensureMiniPautaSpace(
+        doc,
+        finalY,
+        MINI_PAUTA_STATS_BLOCK_MM,
+        pageWidth,
+        pageHeight
+    )
 
-        doc.text('_____________________________', pageWidth / 2, signY)
-        doc.text('Diretor(a) Pedagógico(a)', pageWidth / 2, signY + 5)
+    const tableWidth = Math.min(pageWidth - 28, 240)
 
-        doc.text('_____________________________', pageWidth - 70, signY)
-        doc.text('Diretor(a) da Escola', pageWidth - 70, signY + 5)
-    }
+    autoTable(doc, {
+        startY,
+        head: [[
+            {
+                content: 'ESTATÍSTICAS DA TURMA',
+                colSpan: 6,
+                styles: {
+                    halign: 'left',
+                    fillColor: [51, 65, 85],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 6,
+                },
+            },
+        ]],
+        body: [[
+            { content: `Total\n${data.estatisticas.total_alunos}`, styles: { halign: 'center' } },
+            {
+                content: `Aprovados\n${data.estatisticas.aprovados} (${data.estatisticas.taxa_aprovacao.toFixed(1)}%)`,
+                styles: { halign: 'center', textColor: [37, 99, 235] },
+            },
+            {
+                content: `Reprovados\n${data.estatisticas.reprovados}`,
+                styles: { halign: 'center', textColor: [220, 38, 38] },
+            },
+            {
+                content: `Média\n${data.estatisticas.media_turma.toFixed(2)}`,
+                styles: { halign: 'center' },
+            },
+            {
+                content: `Mínima\n${data.estatisticas.nota_minima.toFixed(2)}`,
+                styles: { halign: 'center' },
+            },
+            {
+                content: `Máxima\n${data.estatisticas.nota_maxima.toFixed(2)}`,
+                styles: { halign: 'center' },
+            },
+        ]],
+        theme: 'grid',
+        styles: {
+            fontSize: 5.5,
+            cellPadding: 0.8,
+            lineWidth: 0.1,
+            valign: 'middle',
+            overflow: 'linebreak',
+        },
+        margin: { left: 14, right: pageWidth - 14 - tableWidth, bottom: MINI_PAUTA_FOOTER_CLEARANCE_MM },
+        tableWidth,
+        didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
+    })
+
+    return (doc as any).lastAutoTable.finalY + 6
+}
+
+/**
+ * Adds signature section to PDF without overlapping footer or prior content.
+ * Returns the Y position after the block.
+ */
+function addPDFSignatures(
+    doc: jsPDF,
+    finalY: number,
+    pageWidth: number,
+    pageHeight: number
+): number {
+    const startY = ensureMiniPautaSpace(
+        doc,
+        finalY,
+        MINI_PAUTA_SIGNATURES_BLOCK_MM,
+        pageWidth,
+        pageHeight
+    )
+
+    const signY = startY + 8
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(0, 0, 0)
+
+    doc.text('_____________________________', 14, signY)
+    doc.text('Professor(a)', 14, signY + 4)
+
+    doc.text('_____________________________', pageWidth / 2 - 20, signY)
+    doc.text('Diretor(a) Pedagógico(a)', pageWidth / 2 - 20, signY + 4)
+
+    doc.text('_____________________________', pageWidth - 70, signY)
+    doc.text('Diretor(a) da Escola', pageWidth - 70, signY + 4)
+
+    return signY + 8
 }
 
 export interface ConselhoNotasSignatureNames {
@@ -483,9 +574,9 @@ async function generatePrimaryEducationAllDisciplinesPDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    // Statistics and signatures
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    addPDFStatistics(doc, data, finalY, pageHeight)
+    // Statistics and signatures (compact table; never overlap footer)
+    let finalY = (doc as any).lastAutoTable.finalY + 6
+    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
     addPDFSignatures(doc, finalY, pageWidth, pageHeight)
 
     // Save
@@ -582,8 +673,8 @@ async function generatePrimaryEducationSingleDisciplinePDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    addPDFStatistics(doc, data, finalY, pageHeight)
+    let finalY = (doc as any).lastAutoTable.finalY + 6
+    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
     addPDFSignatures(doc, finalY, pageWidth, pageHeight)
 
     const trimestreStr = `${data.trimestre}trim`
@@ -748,8 +839,8 @@ async function generateSecondaryEducationAllTrimestersPDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    addPDFStatistics(doc, data, finalY, pageHeight)
+    let finalY = (doc as any).lastAutoTable.finalY + 6
+    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
     addPDFSignatures(doc, finalY, pageWidth, pageHeight)
 
     const filename = `mini-pauta_${data.turma.codigo_turma}_${data.disciplina.codigo_disciplina}_todos.pdf`
@@ -845,8 +936,8 @@ async function generateSecondaryEducationSingleTrimesterPDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    addPDFStatistics(doc, data, finalY, pageHeight)
+    let finalY = (doc as any).lastAutoTable.finalY + 6
+    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
     addPDFSignatures(doc, finalY, pageWidth, pageHeight)
 
     const trimestreStr = `${data.trimestre}trim`

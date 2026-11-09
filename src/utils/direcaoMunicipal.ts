@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { getApprovalThreshold } from './angolaGradeScale'
 import type {
     Escola,
     MunicipioStats,
@@ -139,13 +140,16 @@ export async function fetchEscolaStats(escolaId: string): Promise<EscolaStats> {
             .select('*', { count: 'exact', head: true })
             .eq('escola_id', escolaId)
 
-        // Get turma IDs
+        // Get turma IDs + nível de ensino (RAA)
         const { data: turmas } = await supabase
             .from('turmas')
-            .select('id')
+            .select('id, nivel_ensino, nome')
             .eq('escola_id', escolaId)
 
         const turmaIds = turmas?.map(t => t.id) || []
+        const nivelByTurma = new Map(
+            (turmas || []).map(t => [t.id, t.nivel_ensino || t.nome || null])
+        )
 
         // Count alunos and get gender breakdown
         let total_alunos = 0
@@ -193,14 +197,16 @@ export async function fetchEscolaStats(escolaId: string): Promise<EscolaStats> {
         if (turmaIds.length > 0) {
             const { data: notasFinais } = await supabase
                 .from('notas_finais')
-                .select('nota_final')
+                .select('nota_final, turma_id')
                 .in('turma_id', turmaIds)
 
             if (notasFinais && notasFinais.length > 0) {
                 const soma = notasFinais.reduce((acc, n) => acc + (n.nota_final || 0), 0)
                 media_geral = soma / notasFinais.length
 
-                const aprovados = notasFinais.filter(n => (n.nota_final || 0) >= 10).length
+                const aprovados = notasFinais.filter(n =>
+                    (n.nota_final || 0) >= getApprovalThreshold(nivelByTurma.get(n.turma_id))
+                ).length
                 taxa_aprovacao = (aprovados / notasFinais.length) * 100
             }
         }
