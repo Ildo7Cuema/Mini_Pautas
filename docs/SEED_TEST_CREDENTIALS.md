@@ -237,4 +237,16 @@ A seed só apaga dados marcados:
 
 Não remove escolas, direções ou utilizadores reais fora destes marcadores.
 
-`super admin: superadmin@edugest.ao`
+---
+
+## SUPERADMIN (conta de sistema)
+
+Criada pela migração `supabase/migrations/20251216_seed_superadmin.sql` (não faz parte do `npm run seed:test`).
+
+| Campo | Valor |
+|--------|--------|
+| Email | `superadmin@edugest.ao` |
+| Password | `EduGest@2024!ChangeMe` |
+| Perfil | SUPERADMIN |
+
+> Em produção, altere esta password assim que possível.

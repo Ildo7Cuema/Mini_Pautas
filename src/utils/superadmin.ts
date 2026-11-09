@@ -8,6 +8,7 @@ import type {
     SystemVisit,
     SystemVisitStats,
 } from '../types'
+import { isSeedDirecao, isSeedEscola } from './seedFilters'
 
 /**
  * SUPERADMIN Utility Functions
@@ -270,7 +271,9 @@ async function fetchSuperAdminUsageStatsClientFallback(options?: {
         notasRecentesRes,
         visitasRes,
     ] = await Promise.all([
-        supabase.from('escolas').select('id, nome, codigo_escola, provincia, municipio, ativo, bloqueado'),
+        supabase
+            .from('escolas')
+            .select('id, nome, codigo_escola, provincia, municipio, ativo, bloqueado, configuracoes'),
         supabase.from('professores').select('escola_id, created_at, ativo'),
         supabase.from('turmas').select('id, escola_id'),
         supabase.from('alunos').select('turma_id, created_at, ativo'),
@@ -293,12 +296,26 @@ async function fetchSuperAdminUsageStatsClientFallback(options?: {
     if (notasRecentesRes.error) throw notasRecentesRes.error
     if (visitasRes.error) console.warn('Usage visits fallback:', visitasRes.error.message)
 
-    const escolas = escolasRes.data || []
-    const professores = professoresRes.data || []
-    const turmas = turmasRes.data || []
-    const alunos = alunosRes.data || []
-    const notasRecentes = notasRecentesRes.data || []
-    const visitas = visitasRes.data || []
+    const escolasAll = escolasRes.data || []
+    const seedEscolaIds = new Set(
+        escolasAll.filter((e) => isSeedEscola(e)).map((e) => e.id),
+    )
+    const escolas = escolasAll.filter((e) => !seedEscolaIds.has(e.id))
+    const professores = (professoresRes.data || []).filter((p) => !seedEscolaIds.has(p.escola_id))
+    const turmas = (turmasRes.data || []).filter((t) => !seedEscolaIds.has(t.escola_id))
+    const turmaToEscolaAll = new Map<string, string>()
+    for (const t of turmasRes.data || []) turmaToEscolaAll.set(t.id, t.escola_id)
+    const alunos = (alunosRes.data || []).filter((a) => {
+        const escolaId = turmaToEscolaAll.get(a.turma_id)
+        return Boolean(escolaId && !seedEscolaIds.has(escolaId))
+    })
+    const notasRecentes = (notasRecentesRes.data || []).filter((n) => {
+        const escolaId = turmaToEscolaAll.get(n.turma_id)
+        return Boolean(escolaId && !seedEscolaIds.has(escolaId))
+    })
+    const visitas = (visitasRes.data || []).filter(
+        (v) => !v.escola_id || !seedEscolaIds.has(v.escola_id),
+    )
 
     const turmaToEscola = new Map<string, string>()
     for (const t of turmas) turmaToEscola.set(t.id, t.escola_id)
@@ -306,7 +323,10 @@ async function fetchSuperAdminUsageStatsClientFallback(options?: {
     // Totals of notes per school require a broader fetch; use recent window + presence flag
     const notasAllLight = await supabase.from('notas').select('turma_id')
     if (notasAllLight.error) console.warn('Usage notas totals fallback:', notasAllLight.error.message)
-    const notasAll = notasAllLight.data || []
+    const notasAll = (notasAllLight.data || []).filter((n) => {
+        const escolaId = turmaToEscolaAll.get(n.turma_id)
+        return Boolean(escolaId && !seedEscolaIds.has(escolaId))
+    })
 
     type Acc = {
         professores: number
@@ -1461,5 +1481,205 @@ export async function unblockDirecaoProvincial(direcaoId: string): Promise<void>
     } catch (error) {
         console.error('Error unblocking direção provincial:', error)
         throw error
+    }
+}
+
+// ============================================
+// BROADCAST NOTIFICATIONS
+// ============================================
+
+export type SuperAdminNotifAudience =
+    | 'escolas'
+    | 'direcoes_municipais'
+    | 'direcoes_provinciais'
+
+export interface SuperAdminBroadcastResult {
+    success: boolean
+    enviadas: number
+    escolas: number
+    direcoes_municipais: number
+    direcoes_provinciais: number
+    message?: string
+    error?: string
+}
+
+export interface SuperAdminAudienceCounts {
+    escolas: number
+    direcoes_municipais: number
+    direcoes_provinciais: number
+}
+
+export interface SuperAdminNotifTarget {
+    id: string
+    nome: string
+    subtitle: string
+    tipo: SuperAdminNotifAudience
+}
+
+export interface SuperAdminNotifTargets {
+    escolas: SuperAdminNotifTarget[]
+    direcoes_municipais: SuperAdminNotifTarget[]
+    direcoes_provinciais: SuperAdminNotifTarget[]
+}
+
+/**
+ * Lista destinatários activos (exclui seeds) para selecção particular.
+ */
+export async function fetchSuperAdminNotificationTargets(): Promise<SuperAdminNotifTargets> {
+    const [escolasRes, dmRes, dpRes] = await Promise.all([
+        supabase
+            .from('escolas')
+            .select('id, nome, codigo_escola, provincia, municipio, configuracoes, user_id, ativo, bloqueado')
+            .eq('ativo', true)
+            .eq('bloqueado', false)
+            .order('nome', { ascending: true }),
+        supabase
+            .from('direcoes_municipais')
+            .select('id, nome, email, numero_funcionario, provincia, municipio, user_id, ativo, bloqueado')
+            .eq('ativo', true)
+            .eq('bloqueado', false)
+            .order('nome', { ascending: true }),
+        supabase
+            .from('direcoes_provinciais')
+            .select('id, nome, email, numero_funcionario, provincia, user_id, ativo, bloqueado')
+            .eq('ativo', true)
+            .eq('bloqueado', false)
+            .order('nome', { ascending: true }),
+    ])
+
+    if (escolasRes.error) throw escolasRes.error
+    if (dmRes.error) throw dmRes.error
+    if (dpRes.error) throw dpRes.error
+
+    const escolasReais = (escolasRes.data || []).filter((e) => !isSeedEscola(e))
+    const escolaIds = escolasReais.map((e) => e.id)
+    const comPerfil = new Set<string>()
+
+    if (escolaIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+            .from('user_profiles')
+            .select('escola_id')
+            .eq('tipo_perfil', 'ESCOLA')
+            .eq('ativo', true)
+            .in('escola_id', escolaIds)
+
+        if (profilesError) throw profilesError
+        for (const p of profiles || []) {
+            if (p.escola_id) comPerfil.add(p.escola_id)
+        }
+    }
+
+    return {
+        escolas: escolasReais
+            .filter((e) => comPerfil.has(e.id) || Boolean(e.user_id))
+            .map((e) => ({
+                id: e.id,
+                nome: e.nome,
+                subtitle: [e.codigo_escola, e.municipio, e.provincia].filter(Boolean).join(' · '),
+                tipo: 'escolas' as const,
+            })),
+        direcoes_municipais: (dmRes.data || [])
+            .filter((d) => d.user_id && !isSeedDirecao(d))
+            .map((d) => ({
+                id: d.id,
+                nome: d.nome,
+                subtitle: [d.municipio, d.provincia, d.email].filter(Boolean).join(' · '),
+                tipo: 'direcoes_municipais' as const,
+            })),
+        direcoes_provinciais: (dpRes.data || [])
+            .filter((d) => d.user_id && !isSeedDirecao(d))
+            .map((d) => ({
+                id: d.id,
+                nome: d.nome,
+                subtitle: [d.provincia, d.email].filter(Boolean).join(' · '),
+                tipo: 'direcoes_provinciais' as const,
+            })),
+    }
+}
+
+/**
+ * Contagem aproximada de destinatários activos (exclui seeds).
+ */
+export async function fetchSuperAdminAudienceCounts(): Promise<SuperAdminAudienceCounts> {
+    const targets = await fetchSuperAdminNotificationTargets()
+    return {
+        escolas: targets.escolas.length,
+        direcoes_municipais: targets.direcoes_municipais.length,
+        direcoes_provinciais: targets.direcoes_provinciais.length,
+    }
+}
+
+/**
+ * Envia notificação in-app para escolas / DMs / DPs (SUPERADMIN).
+ * Sem IDs = broadcast por audiência; com IDs = envio particular.
+ */
+export async function broadcastSuperAdminNotification(params: {
+    titulo: string
+    mensagem: string
+    audiencias: SuperAdminNotifAudience[]
+    tipo?: string
+    link?: string
+    escolaIds?: string[]
+    direcaoMunicipalIds?: string[]
+    direcaoProvincialIds?: string[]
+}): Promise<SuperAdminBroadcastResult> {
+    const titulo = params.titulo.trim()
+    const mensagem = params.mensagem.trim()
+    const escolaIds = [...new Set((params.escolaIds || []).filter(Boolean))]
+    const dmIds = [...new Set((params.direcaoMunicipalIds || []).filter(Boolean))]
+    const dpIds = [...new Set((params.direcaoProvincialIds || []).filter(Boolean))]
+    const hasParticular = escolaIds.length > 0 || dmIds.length > 0 || dpIds.length > 0
+
+    const audiencias = [...new Set(params.audiencias)]
+    if (escolaIds.length > 0 && !audiencias.includes('escolas')) audiencias.push('escolas')
+    if (dmIds.length > 0 && !audiencias.includes('direcoes_municipais')) audiencias.push('direcoes_municipais')
+    if (dpIds.length > 0 && !audiencias.includes('direcoes_provinciais')) audiencias.push('direcoes_provinciais')
+
+    if (!titulo) {
+        return { success: false, enviadas: 0, escolas: 0, direcoes_municipais: 0, direcoes_provinciais: 0, error: 'Indique um título.' }
+    }
+    if (!mensagem) {
+        return { success: false, enviadas: 0, escolas: 0, direcoes_municipais: 0, direcoes_provinciais: 0, error: 'Indique a mensagem.' }
+    }
+    if (!hasParticular && audiencias.length === 0) {
+        return { success: false, enviadas: 0, escolas: 0, direcoes_municipais: 0, direcoes_provinciais: 0, error: 'Seleccione pelo menos um destinatário.' }
+    }
+    if (hasParticular && escolaIds.length === 0 && dmIds.length === 0 && dpIds.length === 0) {
+        return { success: false, enviadas: 0, escolas: 0, direcoes_municipais: 0, direcoes_provinciais: 0, error: 'Seleccione pelo menos uma entidade.' }
+    }
+
+    const { data, error } = await supabase.rpc('superadmin_broadcast_notification', {
+        p_titulo: titulo,
+        p_mensagem: mensagem,
+        p_audiencias: audiencias,
+        p_tipo: params.tipo || 'sistema',
+        p_link: params.link || null,
+        p_incluir_seeds: false,
+        p_escola_ids: escolaIds.length > 0 ? escolaIds : null,
+        p_direcao_municipal_ids: dmIds.length > 0 ? dmIds : null,
+        p_direcao_provincial_ids: dpIds.length > 0 ? dpIds : null,
+    })
+
+    if (error) {
+        console.error('superadmin_broadcast_notification:', error)
+        return {
+            success: false,
+            enviadas: 0,
+            escolas: 0,
+            direcoes_municipais: 0,
+            direcoes_provinciais: 0,
+            error: error.message || 'Falha ao enviar notificações. Confirme se a migração foi aplicada.',
+        }
+    }
+
+    const payload = (data || {}) as SuperAdminBroadcastResult
+    return {
+        success: payload.success !== false,
+        enviadas: Number(payload.enviadas || 0),
+        escolas: Number(payload.escolas || 0),
+        direcoes_municipais: Number(payload.direcoes_municipais || 0),
+        direcoes_provinciais: Number(payload.direcoes_provinciais || 0),
+        message: payload.message,
+        error: payload.error,
     }
 }

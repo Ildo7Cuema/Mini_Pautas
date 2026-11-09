@@ -354,6 +354,7 @@ export async function fetchPrices(): Promise<PrecoLicenca[]> {
 
 /**
  * Update a global license price (SUPERADMIN only)
+ * Usa RPC SECURITY DEFINER para evitar 406 (PGRST116) do PATCH+select.single sob RLS.
  */
 export async function updatePrice(
     priceId: string,
@@ -365,18 +366,18 @@ export async function updatePrice(
     }
 ): Promise<PrecoLicenca> {
     try {
-        const { data, error } = await supabase
-            .from('precos_licenca')
-            .update({
-                ...updates,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', priceId)
-            .select()
-            .single()
+        const { data, error } = await supabase.rpc('atualizar_preco_licenca', {
+            p_id: priceId,
+            p_valor: updates.valor ?? null,
+            p_desconto_percentual: updates.desconto_percentual ?? null,
+            p_descricao: updates.descricao ?? null,
+            p_ativo: updates.ativo ?? null,
+        })
 
         if (error) throw error
-        return data as PrecoLicenca
+        if (!data) throw new Error('Resposta vazia ao actualizar preço')
+        const { notificacao: _notif, ...price } = data as PrecoLicenca & { notificacao?: unknown }
+        return price as PrecoLicenca
     } catch (error) {
         console.error('Error updating price:', error)
         throw error
@@ -447,6 +448,7 @@ export async function resolvePricesForInstitution(
 
 /**
  * Create or update institution-specific plan price (SUPERADMIN)
+ * RPC notifica automaticamente a instituição afectada.
  */
 export async function upsertInstitutionPrice(input: {
     tipo_instituicao: TipoInstituicaoAssinatura
@@ -458,26 +460,20 @@ export async function upsertInstitutionPrice(input: {
     ativo?: boolean
 }): Promise<PrecoLicencaInstituicao> {
     try {
-        const { data, error } = await supabase
-            .from('precos_licenca_instituicao')
-            .upsert(
-                {
-                    tipo_instituicao: input.tipo_instituicao,
-                    instituicao_id: input.instituicao_id,
-                    plano: input.plano,
-                    valor: input.valor,
-                    desconto_percentual: input.desconto_percentual ?? 0,
-                    descricao: input.descricao || null,
-                    ativo: input.ativo ?? true,
-                    updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'tipo_instituicao,instituicao_id,plano' }
-            )
-            .select()
-            .single()
+        const { data, error } = await supabase.rpc('upsert_preco_licenca_instituicao', {
+            p_tipo_instituicao: input.tipo_instituicao,
+            p_instituicao_id: input.instituicao_id,
+            p_plano: input.plano,
+            p_valor: input.valor,
+            p_desconto_percentual: input.desconto_percentual ?? 0,
+            p_descricao: input.descricao || null,
+            p_ativo: input.ativo ?? true,
+        })
 
         if (error) throw error
-        return data as PrecoLicencaInstituicao
+        if (!data) throw new Error('Resposta vazia ao guardar preço institucional')
+        const { notificacao: _notif, ...price } = data as PrecoLicencaInstituicao & { notificacao?: unknown }
+        return price as PrecoLicencaInstituicao
     } catch (error) {
         console.error('Error upserting institution price:', error)
         throw error
@@ -486,6 +482,7 @@ export async function upsertInstitutionPrice(input: {
 
 /**
  * Remove institution override (reverts to global price)
+ * RPC notifica automaticamente a instituição afectada.
  */
 export async function clearInstitutionPrice(
     tipo: TipoInstituicaoAssinatura,
@@ -493,12 +490,11 @@ export async function clearInstitutionPrice(
     plano: PlanoLicenca
 ): Promise<void> {
     try {
-        const { error } = await supabase
-            .from('precos_licenca_instituicao')
-            .delete()
-            .eq('tipo_instituicao', tipo)
-            .eq('instituicao_id', instituicaoId)
-            .eq('plano', plano)
+        const { error } = await supabase.rpc('remover_preco_licenca_instituicao', {
+            p_tipo_instituicao: tipo,
+            p_instituicao_id: instituicaoId,
+            p_plano: plano,
+        })
 
         if (error) throw error
     } catch (error) {

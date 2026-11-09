@@ -31,6 +31,7 @@ const EscolaManagement = lazy(() => import('./components/EscolaManagement').then
 const SuperAdminAuditLog = lazy(() => import('./components/SuperAdminAuditLog').then(m => ({ default: m.SuperAdminAuditLog })))
 const SystemAccessLog = lazy(() => import('./components/SystemAccessLog').then(m => ({ default: m.SystemAccessLog })))
 const SuperAdminUsageStats = lazy(() => import('./components/SuperAdminUsageStats').then(m => ({ default: m.SuperAdminUsageStats })))
+const SuperAdminNotifications = lazy(() => import('./components/SuperAdminNotifications').then(m => ({ default: m.SuperAdminNotifications })))
 const LicenseManagement = lazy(() => import('./components/LicenseManagement').then(m => ({ default: m.LicenseManagement })))
 const AlunoNotasPage = lazy(() => import('./components/AlunoNotasPage').then(m => ({ default: m.AlunoNotasPage })))
 const EncarregadoNotasPage = lazy(() => import('./components/EncarregadoNotasPage').then(m => ({ default: m.EncarregadoNotasPage })))
@@ -342,6 +343,8 @@ function App() {
                     return <SystemAccessLog />
                 case 'superadmin-uso':
                     return <SuperAdminUsageStats />
+                case 'superadmin-notificacoes':
+                    return <SuperAdminNotifications />
                 case 'settings':
                     return <SettingsPage />
                 default:

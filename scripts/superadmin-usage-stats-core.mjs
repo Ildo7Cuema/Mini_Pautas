@@ -19,6 +19,15 @@ function maxIso(...values) {
     return best
 }
 
+function isSeedEscola(e) {
+    const codigo = String(e?.codigo_escola || '')
+    if (codigo.toUpperCase().startsWith('SEED-')) return true
+    const cfg = e?.configuracoes || {}
+    if (cfg.seed_marker === 'edugest-test-seed') return true
+    if (cfg.seed === true || cfg.seed === 'true' || cfg.seed === 1) return true
+    return false
+}
+
 /**
  * @param {{
  *  url: string
@@ -93,7 +102,7 @@ export async function getSuperAdminUsageStats(opts) {
         notasRes,
         visitasRes,
     ] = await Promise.all([
-        admin.from('escolas').select('id, nome, codigo_escola, provincia, municipio, ativo, bloqueado'),
+        admin.from('escolas').select('id, nome, codigo_escola, provincia, municipio, ativo, bloqueado, configuracoes'),
         admin.from('professores').select('escola_id, created_at, ativo'),
         admin.from('turmas').select('id, escola_id'),
         admin.from('alunos').select('turma_id, created_at, ativo'),
@@ -116,12 +125,24 @@ export async function getSuperAdminUsageStats(opts) {
         console.warn('usage visits:', visitasRes.error.message)
     }
 
-    const escolas = escolasRes.data || []
-    const professores = professoresRes.data || []
-    const turmas = turmasRes.data || []
-    const alunos = alunosRes.data || []
-    const notas = notasRes.data || []
-    const visitas = visitasRes.data || []
+    const escolasAll = escolasRes.data || []
+    const seedEscolaIds = new Set(escolasAll.filter(isSeedEscola).map((e) => e.id))
+    const escolas = escolasAll.filter((e) => !seedEscolaIds.has(e.id))
+    const professores = (professoresRes.data || []).filter((p) => !seedEscolaIds.has(p.escola_id))
+    const turmas = (turmasRes.data || []).filter((t) => !seedEscolaIds.has(t.escola_id))
+    const turmaToEscolaAll = new Map()
+    for (const t of turmasRes.data || []) turmaToEscolaAll.set(t.id, t.escola_id)
+    const alunos = (alunosRes.data || []).filter((a) => {
+        const escolaId = turmaToEscolaAll.get(a.turma_id)
+        return escolaId && !seedEscolaIds.has(escolaId)
+    })
+    const notas = (notasRes.data || []).filter((n) => {
+        const escolaId = turmaToEscolaAll.get(n.turma_id)
+        return escolaId && !seedEscolaIds.has(escolaId)
+    })
+    const visitas = (visitasRes.data || []).filter(
+        (v) => !v.escola_id || !seedEscolaIds.has(v.escola_id),
+    )
 
     const turmaToEscola = new Map()
     for (const t of turmas) turmaToEscola.set(t.id, t.escola_id)

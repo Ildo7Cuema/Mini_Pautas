@@ -254,6 +254,30 @@ export const SuperAdminDashboard: React.FC = () => {
                     <span className="text-emerald-200 text-sm">→</span>
                 </button>
 
+                <button
+                    onClick={() => navigateTo('superadmin-notificacoes')}
+                    className="w-full rounded-2xl p-4 flex items-center gap-3 text-left transition-all active:scale-[0.98] animate-slide-up"
+                    style={{
+                        background: 'linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(139,92,246,0.12) 100%)',
+                        border: '1px solid rgba(59,130,246,0.3)',
+                        animationDelay: '190ms',
+                    }}
+                >
+                    <div
+                        className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' }}
+                    >
+                        <span className="text-lg">🔔</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-blue-100 text-sm">Enviar Notificações</h3>
+                        <p className="text-xs text-blue-200/70 mt-0.5">
+                            Avisar escolas, Direções Municipais e Provinciais
+                        </p>
+                    </div>
+                    <span className="text-blue-200 text-sm">→</span>
+                </button>
+
                 {(alertCount > 0 || alertLicencas > 0) && (
                     <div className="space-y-2 animate-slide-up" style={{ animationDelay: '200ms' }}>
                         {alertCount > 0 && (
