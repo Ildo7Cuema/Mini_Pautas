@@ -37,6 +37,7 @@ import {
     templateClassGroupsForTipo,
     type TipoEscolaCenso,
 } from '../modules/censo_escolar/utils/escolaModalidade'
+import { applyMedCurriculumTemplates } from '../utils/applyMedCurriculumTemplates'
 
 interface TemplatesManagementProps {
     onClose?: () => void
@@ -122,6 +123,8 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
     const [selectedTurmaId, setSelectedTurmaId] = useState('')
     const [selectedProfessorId, setSelectedProfessorId] = useState('')
     const [applyingTemplate, setApplyingTemplate] = useState(false)
+    const [loadingMedCurriculum, setLoadingMedCurriculum] = useState(false)
+    const totalTemplatesCount = Object.values(classesWithTemplates).reduce((sum, n) => sum + (n || 0), 0)
 
     useEffect(() => {
         if (escolaProfile?.id) {
@@ -939,6 +942,36 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
         }
     }
 
+    const handleLoadMedCurriculum = async () => {
+        if (!escolaProfile?.id) return
+        if (tipoEscola === 'desconhecido') {
+            setError('Defina primeiro o tipo / subsistema de ensino em Configurações.')
+            return
+        }
+
+        setLoadingMedCurriculum(true)
+        setError(null)
+        setSuccess(null)
+
+        try {
+            const result = await applyMedCurriculumTemplates({
+                supabase,
+                escolaId: escolaProfile.id,
+                tipoEscola,
+                natureza: escolaNatureza,
+                mode: 'fill_missing',
+            })
+            setSuccess(result.message)
+            await loadClassesWithTemplates()
+            if (selectedClasse) await loadTemplates()
+            setTimeout(() => setSuccess(null), 5000)
+        } catch (err: any) {
+            setError(translateError(err?.message || 'Erro ao carregar currículo oficial MED'))
+        } finally {
+            setLoadingMedCurriculum(false)
+        }
+    }
+
     const handleApplyToTurma = async () => {
         if (!selectedTemplate || !selectedTurmaId || !selectedProfessorId) {
             setApplyError('Seleccione uma turma e um professor.')
@@ -988,7 +1021,7 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-violet-500/20">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1000,17 +1033,40 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
                         <p className="text-sm text-slate-500">Configure disciplinas padrão por classe</p>
                     </div>
                 </div>
-                {onClose && (
-                    <button
-                        onClick={onClose}
-                        className="min-h-touch min-w-touch flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                    >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                    {tipoEscola !== 'desconhecido' && (
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            loading={loadingMedCurriculum}
+                            onClick={handleLoadMedCurriculum}
+                            className="whitespace-nowrap"
+                        >
+                            {totalTemplatesCount === 0
+                                ? 'Carregar currículo oficial MED'
+                                : 'Completar disciplinas oficiais'}
+                        </Button>
+                    )}
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="min-h-touch min-w-touch flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
+                </div>
             </div>
+
+            {tipoEscola !== 'desconhecido' && totalTemplatesCount === 0 && (
+                <div className="bg-sky-50 border border-sky-200 text-sky-900 px-4 py-3 rounded-xl text-sm">
+                    Ainda não há templates. Clique em <strong>Carregar currículo oficial MED</strong> para
+                    pré-cadastrar as disciplinas e componentes de avaliação (MAC, NPT, MT, MF) por classe,
+                    conforme o Ministério da Educação. Depois pode editar, apagar ou adicionar.
+                </div>
+            )}
 
             {/* Messages */}
             {error && (

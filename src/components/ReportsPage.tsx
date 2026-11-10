@@ -3138,7 +3138,11 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
 
                 </div>
             ) : activeTab === 'pauta-geral' ? (
-                <PautaGeralPage onGoToConselho={() => setActiveTab('conselho-notas')} />
+                <PautaGeralPage
+                    onGoToConselho={() => setActiveTab('conselho-notas')}
+                    mapHeaderColor={mapHeaderColor}
+                    headerConfigFromParent={headerConfig}
+                />
             ) : activeTab === 'conselho-notas' ? (
                 <ConselhoNotasPage initialTurmaId={initialConselhoTurmaId} />
             ) : activeTab === 'quadro-honra' ? (
@@ -3713,7 +3717,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                                     Imprimir Boletim (PDF)
                                 </Button>
                             </div>
-                            <BoletimNotasPreview data={boletimData} colorConfig={colorConfig} />
+                            <BoletimNotasPreview data={boletimData} colorConfig={colorConfig} mapHeaderColor={mapHeaderColor} />
                         </>
                     )}
 
@@ -4169,7 +4173,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     {termoFrequenciaData && !loadingTermo && (
                         <>
                             {/* Preview */}
-                            <TermoFrequenciaPreview data={termoFrequenciaData} colorConfig={colorConfig} componentAlignment={componentAlignment} componentOrder={availableComponents.map(c => c.codigo)} />
+                            <TermoFrequenciaPreview data={termoFrequenciaData} colorConfig={colorConfig} componentAlignment={componentAlignment} componentOrder={availableComponents.map(c => c.codigo)} mapHeaderColor={mapHeaderColor} />
 
                             {/* Actions */}
                             <Card>

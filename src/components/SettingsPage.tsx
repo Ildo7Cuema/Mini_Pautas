@@ -23,6 +23,7 @@ import {
     parseTipoEscolaFromConfig,
     type TipoEscolaCenso,
 } from '../modules/censo_escolar/utils/escolaModalidade'
+import { applyMedCurriculumTemplates } from '../utils/applyMedCurriculumTemplates'
 import { Alert } from './ui/Alert'
 import { Icons } from './ui/Icons'
 
@@ -185,8 +186,25 @@ export const SettingsPage: React.FC = () => {
                 .eq('id', escolaProfile.id)
 
             if (updateError) throw updateError
+
+            let curriculumMsg = ''
+            try {
+                const result = await applyMedCurriculumTemplates({
+                    supabase,
+                    escolaId: escolaProfile.id,
+                    tipoEscola,
+                    natureza,
+                    mode: 'fill_missing',
+                })
+                if (result.createdDisciplinas > 0) {
+                    curriculumMsg = ` ${result.message}`
+                }
+            } catch (seedErr) {
+                console.warn('Currículo MED não aplicado:', seedErr)
+            }
+
             await refreshProfile()
-            setSuccess('Perfil institucional actualizado.')
+            setSuccess(`Perfil institucional actualizado.${curriculumMsg}`)
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Erro ao actualizar perfil institucional'
             setError(translateError(errorMessage))
@@ -476,7 +494,8 @@ export const SettingsPage: React.FC = () => {
                                     ))}
                                 </select>
                                 <p className={helpClass}>
-                                    Nos Templates só aparecem as classes deste subsistema.
+                                    Ao guardar, o sistema completa as disciplinas oficiais MED/INADE
+                                    em falta (sem alterar as que já editou).
                                 </p>
                             </div>
                         </div>

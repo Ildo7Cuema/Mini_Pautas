@@ -23,6 +23,7 @@ import {
     parseTipoEscolaFromConfig,
     type TipoEscolaCenso,
 } from '../modules/censo_escolar/utils/escolaModalidade'
+import { applyMedCurriculumTemplates } from '../utils/applyMedCurriculumTemplates'
 
 type TipoEscolaConfig = Exclude<TipoEscolaCenso, 'desconhecido'>
 
@@ -76,6 +77,19 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
                 .eq('id', escolaProfile.id)
 
             if (updateError) throw updateError
+
+            // Pré-cadastrar disciplinas e componentes oficiais MED/INADE por classe
+            try {
+                await applyMedCurriculumTemplates({
+                    supabase,
+                    escolaId: escolaProfile.id,
+                    tipoEscola,
+                    natureza,
+                    mode: 'fill_missing',
+                })
+            } catch (seedErr) {
+                console.warn('Currículo MED não aplicado automaticamente:', seedErr)
+            }
 
             await refreshProfile()
             onComplete()
@@ -169,7 +183,9 @@ export const EscolaProfileSetupModal: React.FC<EscolaProfileSetupModalProps> = (
                                 ))}
                             </select>
                             <p className="text-xs text-slate-500 mt-2">
-                                Nos Templates só aparecem as classes deste subsistema.
+                                O sistema pré-cadastra as disciplinas e componentes de avaliação
+                                oficiais (MED/INADE) para as classes deste subsistema. Poderá editar,
+                                apagar ou adicionar depois em Templates.
                             </p>
                         </div>
                     </div>

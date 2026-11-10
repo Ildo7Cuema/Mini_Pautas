@@ -20,7 +20,7 @@ import {
     evaluateConfiguredComponent,
     type GradesByTrimestre,
 } from '../utils/formulaUtils'
-import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
+import { HeaderConfig, loadHeaderConfig, resolveMapHeaderColor } from '../utils/headerConfigUtils'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
 import { classifyStudent, DisciplinaGrade } from '../utils/studentClassification'
 import { useAuth } from '../contexts/AuthContext'
@@ -35,6 +35,8 @@ import { ConfirmModal } from './ui/ConfirmModal'
 
 interface PautaGeralPageProps {
     onGoToConselho?: () => void
+    mapHeaderColor?: string
+    headerConfigFromParent?: HeaderConfig | null
 }
 
 interface Turma {
@@ -112,7 +114,11 @@ interface FieldSelection {
     componenteParaMediaGeral: string // Component code to use for média geral (e.g., 'MF', 'MT', 'NF')
 }
 
-export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({ onGoToConselho }) => {
+export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({
+    onGoToConselho,
+    mapHeaderColor: mapHeaderColorProp,
+    headerConfigFromParent,
+}) => {
     const { escolaProfile, professorProfile, secretarioProfile } = useAuth()
     const [turmas, setTurmas] = useState<Turma[]>([])
     const [selectedTurma, setSelectedTurma] = useState<string>('')
@@ -122,6 +128,8 @@ export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({ onGoToConselho }
     const [pautaGeralData, setPautaGeralData] = useState<PautaGeralData | null>(null)
     const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null)
     const [colorConfig, setColorConfig] = useState<GradeColorConfig | null>(null)
+    const effectiveHeaderConfig = headerConfigFromParent ?? headerConfig
+    const mapHeaderColor = mapHeaderColorProp || resolveMapHeaderColor(effectiveHeaderConfig)
     const [showExportMenu, setShowExportMenu] = useState(false)
 
     const [fieldSelection, setFieldSelection] = useState<FieldSelection>({
@@ -792,7 +800,7 @@ export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({ onGoToConselho }
             // Export uses academic data only; preview row highlight is not part of the payload.
             await generatePautaGeralPDF(
                 bundle.data,
-                headerConfig,
+                effectiveHeaderConfig,
                 colorConfig,
                 bundle.exportConfig,
                 bundle.metricSourceComponentes,
@@ -1161,6 +1169,7 @@ export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({ onGoToConselho }
                         fieldSelection={fieldSelection}
                         disciplinasObrigatorias={disciplinasObrigatorias}
                         disciplinasMetricas={pautaGeralData.disciplinas}
+                        mapHeaderColor={mapHeaderColor}
                     />
                 </div>
             )}

@@ -10,6 +10,7 @@ component-meta:
 import { useState } from 'react'
 import { Card, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
+import { DEFAULT_MAP_HEADER_COLOR, darkenHexColor } from '../utils/headerConfigUtils'
 import { formatComponentePautaLabel } from '../utils/pautaGeralFieldUtils'
 import { computePautaGeralAlunoMetrics } from '../utils/pautaGeralExportUtils'
 
@@ -85,6 +86,7 @@ interface Props {
     disciplinasObrigatorias?: string[]
     /** Full disciplinas (all components) for MG/OBS — respects componenteParaMediaGeral even if column hidden. */
     disciplinasMetricas?: DisciplinaComComponentes[]
+    mapHeaderColor?: string
 }
 
 export const PautaGeralPreview: React.FC<Props> = ({
@@ -94,10 +96,13 @@ export const PautaGeralPreview: React.FC<Props> = ({
     fieldSelection,
     disciplinasObrigatorias,
     disciplinasMetricas,
+    mapHeaderColor,
 }) => {
     const [expandedStudent, setExpandedStudent] = useState<string | null>(null)
     // UI-only observation aid in preview — never passed to PDF/Excel/CSV export.
     const [highlightedStudent, setHighlightedStudent] = useState<string | null>(null)
+    const headerBg = mapHeaderColor || DEFAULT_MAP_HEADER_COLOR
+    const headerBgAlt = darkenHexColor(headerBg, 0.12)
 
     const toggleStudentHighlight = (studentKey: string) => {
         setHighlightedStudent((prev) => (prev === studentKey ? null : studentKey))
@@ -362,18 +367,18 @@ export const PautaGeralPreview: React.FC<Props> = ({
                     <table className="min-w-full border-collapse text-sm">
                         <thead>
                             {/* First row: Discipline headers */}
-                            <tr className="bg-gradient-to-r from-slate-50 to-slate-100">
+                            <tr className="text-white" style={{ backgroundColor: headerBg }}>
                                 {fieldSelection.showNumeroProcesso && (
-                                    <th rowSpan={2} className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider bg-slate-50 sticky left-0 z-10">
+                                    <th rowSpan={2} className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider sticky left-0 z-10" style={{ backgroundColor: headerBg }}>
                                         Nº
                                     </th>
                                 )}
                                 {fieldSelection.showNomeCompleto && (
-                                    <th rowSpan={2} className="border border-slate-200 px-4 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider bg-slate-50 sticky left-12 z-10 min-w-[200px]">
+                                    <th rowSpan={2} className="border border-slate-200 px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider sticky left-12 z-10 min-w-[200px]" style={{ backgroundColor: headerBg }}>
                                         Nome do Aluno
                                     </th>
                                 )}
-                                <th rowSpan={2} className="border border-slate-200 px-2 py-2 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider bg-slate-50">
+                                <th rowSpan={2} className="border border-slate-200 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wider" style={{ backgroundColor: headerBg }}>
                                     GÊN
                                 </th>
                                 {visibleDisciplinas.map((disciplina) => {
@@ -386,7 +391,8 @@ export const PautaGeralPreview: React.FC<Props> = ({
                                         <th
                                             key={disciplina.id}
                                             colSpan={visibleComponentes.length}
-                                            className="border border-slate-200 px-2 py-2 text-center text-xs font-bold text-white uppercase tracking-wider bg-gradient-to-r from-blue-600 to-blue-700"
+                                            className="border border-slate-200 px-2 py-2 text-center text-xs font-bold text-white uppercase tracking-wider"
+                                            style={{ backgroundColor: headerBg }}
                                         >
                                             {disciplina.nome}
                                         </th>
@@ -401,13 +407,13 @@ export const PautaGeralPreview: React.FC<Props> = ({
                                     Freq. %
                                 </th>
                                 {fieldSelection.showObservacao && (
-                                    <th rowSpan={2} className="border border-slate-200 px-4 py-2 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider bg-slate-50">
+                                    <th rowSpan={2} className="border border-slate-200 px-4 py-2 text-center text-xs font-semibold uppercase tracking-wider" style={{ backgroundColor: headerBg }}>
                                         Observação
                                     </th>
                                 )}
                             </tr>
                             {/* Second row: Component codes */}
-                            <tr className="bg-slate-100">
+                            <tr className="text-white" style={{ backgroundColor: headerBgAlt }}>
                                 {visibleDisciplinas.map((disciplina) => {
                                     const visibleComponentes = disciplina.componentes.filter(c =>
                                         fieldSelection.componentes.includes(c.id)
@@ -417,8 +423,13 @@ export const PautaGeralPreview: React.FC<Props> = ({
                                             key={componente.id}
                                             className={`border border-slate-200 px-2 py-1.5 text-center text-xs font-semibold ${['MF', 'MFD', 'MEC'].includes(componente.codigo_componente)
                                                 ? 'bg-amber-100 text-amber-700'
-                                                : 'bg-slate-100 text-slate-600'
+                                                : 'text-white'
                                                 }`}
+                                            style={
+                                                ['MF', 'MFD', 'MEC'].includes(componente.codigo_componente)
+                                                    ? undefined
+                                                    : { backgroundColor: headerBgAlt }
+                                            }
                                         >
                                             {formatComponentePautaLabel(componente)}
                                         </th>

@@ -10,6 +10,7 @@ component-meta:
 import React from 'react'
 import { Card, CardHeader, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
+import { DEFAULT_MAP_HEADER_COLOR } from '../utils/headerConfigUtils'
 
 export interface BoletimComponenteNota {
     codigo: string
@@ -63,6 +64,7 @@ export interface BoletimNotasData {
 interface BoletimNotasPreviewProps {
     data: BoletimNotasData
     colorConfig?: GradeColorConfig | null
+    mapHeaderColor?: string
 }
 
 const TRIMESTRE_LABELS: Record<1 | 2 | 3, string> = {
@@ -71,7 +73,8 @@ const TRIMESTRE_LABELS: Record<1 | 2 | 3, string> = {
     3: '3º Trimestre',
 }
 
-export const BoletimNotasPreview: React.FC<BoletimNotasPreviewProps> = ({ data, colorConfig }) => {
+export const BoletimNotasPreview: React.FC<BoletimNotasPreviewProps> = ({ data, colorConfig, mapHeaderColor }) => {
+    const headerBg = mapHeaderColor || DEFAULT_MAP_HEADER_COLOR
     const extractClasse = (turmaName: string): string | undefined => {
         const match = turmaName.match(/(\d+[ªº]\s*Classe)/i)
         return match ? match[1] : undefined
@@ -181,19 +184,20 @@ export const BoletimNotasPreview: React.FC<BoletimNotasPreviewProps> = ({ data, 
                     <div className="overflow-x-auto">
                         <table className="w-full border-collapse min-w-[640px]">
                             <thead>
-                                <tr className="bg-blue-600 text-white">
-                                    <th className="border border-slate-300 px-2 py-1.5 text-center text-sm font-semibold w-10">Nº</th>
-                                    <th className="border border-slate-300 px-3 py-1.5 text-left text-sm font-semibold">Disciplina</th>
+                                <tr className="text-white" style={{ backgroundColor: headerBg }}>
+                                    <th className="border border-slate-300 px-2 py-1.5 text-center text-sm font-semibold w-10" style={{ backgroundColor: headerBg }}>Nº</th>
+                                    <th className="border border-slate-300 px-3 py-1.5 text-left text-sm font-semibold" style={{ backgroundColor: headerBg }}>Disciplina</th>
                                     {componentCodes.map((comp) => (
                                         <th
                                             key={comp.codigo}
                                             className="border border-slate-300 px-2 py-1.5 text-center text-xs font-semibold"
+                                            style={{ backgroundColor: headerBg }}
                                             title={comp.nome}
                                         >
                                             {comp.codigo}
                                         </th>
                                     ))}
-                                    <th className="border border-slate-300 px-2 py-1.5 text-center text-sm font-semibold">Classificação</th>
+                                    <th className="border border-slate-300 px-2 py-1.5 text-center text-sm font-semibold" style={{ backgroundColor: headerBg }}>Classificação</th>
                                 </tr>
                             </thead>
                             <tbody>
