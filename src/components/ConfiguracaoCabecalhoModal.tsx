@@ -6,7 +6,10 @@ import {
     uploadLogo,
     deleteLogo,
     getDefaultHeaderConfig,
-    getOrgaoEducacao
+    getOrgaoEducacao,
+    DEFAULT_MAP_HEADER_COLOR,
+    DEFAULT_MAP_HEADER_COLOR_PRIMARY,
+    DEFAULT_MAP_HEADER_COLOR_MAPA,
 } from '../utils/headerConfigUtils'
 import { translateError } from '../utils/translations'
 
@@ -345,6 +348,60 @@ export const ConfiguracaoCabecalhoModal: React.FC<ConfiguracaoCabecalhoModalProp
                                         min="8"
                                         max="16"
                                     />
+                                </div>
+                            </div>
+
+                            {/* Map / table header color */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">
+                                    Cor do cabeçalho dos mapas
+                                </label>
+                                <p className="text-xs text-slate-500 mb-3">
+                                    Aplica-se ao cabeçalho das tabelas em pautas, mini-pautas, mapas e documentos semelhantes.
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <input
+                                        type="color"
+                                        value={config.cor_cabecalho_mapa || DEFAULT_MAP_HEADER_COLOR}
+                                        onChange={(e) => setConfig({ ...config, cor_cabecalho_mapa: e.target.value })}
+                                        className="h-10 w-14 cursor-pointer rounded border border-slate-300 bg-white p-1"
+                                        aria-label="Seleccionar cor do cabeçalho dos mapas"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={config.cor_cabecalho_mapa || DEFAULT_MAP_HEADER_COLOR}
+                                        onChange={(e) => setConfig({ ...config, cor_cabecalho_mapa: e.target.value })}
+                                        className="w-28 px-3 py-2 border border-slate-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="#1e40af"
+                                        maxLength={7}
+                                    />
+                                    <div className="flex flex-wrap gap-2">
+                                        {[
+                                            { label: 'Azul', value: DEFAULT_MAP_HEADER_COLOR },
+                                            { label: 'Verde', value: DEFAULT_MAP_HEADER_COLOR_PRIMARY },
+                                            { label: 'Navy', value: DEFAULT_MAP_HEADER_COLOR_MAPA },
+                                            { label: 'Cinza', value: '#334155' },
+                                        ].map((preset) => (
+                                            <button
+                                                key={preset.value}
+                                                type="button"
+                                                onClick={() => setConfig({ ...config, cor_cabecalho_mapa: preset.value })}
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 hover:bg-slate-50 transition"
+                                            >
+                                                <span
+                                                    className="w-3.5 h-3.5 rounded-sm border border-slate-300"
+                                                    style={{ backgroundColor: preset.value }}
+                                                />
+                                                {preset.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div
+                                    className="mt-3 rounded-md px-3 py-2 text-center text-xs font-semibold text-white"
+                                    style={{ backgroundColor: config.cor_cabecalho_mapa || DEFAULT_MAP_HEADER_COLOR }}
+                                >
+                                    Pré-visualização do cabeçalho da tabela
                                 </div>
                             </div>
 

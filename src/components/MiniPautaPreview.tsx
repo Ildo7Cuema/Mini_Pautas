@@ -50,6 +50,7 @@ export interface MiniPautaPreviewProps {
     }
     loading?: boolean
     colorConfig?: GradeColorConfig | null
+    mapHeaderColor?: string
 }
 
 /**
@@ -59,7 +60,7 @@ export interface MiniPautaPreviewProps {
  * - Primary Education (Ensino Primário) -> MiniPautaPreviewPrimario
  * - Secondary Education (Ensino Secundário) -> MiniPautaPreviewSecundario
  */
-export const MiniPautaPreview: React.FC<MiniPautaPreviewProps> = ({ data, loading, colorConfig }) => {
+export const MiniPautaPreview: React.FC<MiniPautaPreviewProps> = ({ data, loading, colorConfig, mapHeaderColor }) => {
     // Detect if this is Primary Education
     const isPrimaryEducation = data.nivel_ensino?.toLowerCase().includes('primário') ||
         data.nivel_ensino?.toLowerCase().includes('primario')
@@ -70,6 +71,7 @@ export const MiniPautaPreview: React.FC<MiniPautaPreviewProps> = ({ data, loadin
                 data={data}
                 loading={loading}
                 colorConfig={colorConfig}
+                mapHeaderColor={mapHeaderColor}
             />
         )
     }
@@ -80,6 +82,7 @@ export const MiniPautaPreview: React.FC<MiniPautaPreviewProps> = ({ data, loadin
             data={data}
             loading={loading}
             colorConfig={colorConfig}
+            mapHeaderColor={mapHeaderColor}
         />
     )
 }

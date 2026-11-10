@@ -27,8 +27,58 @@ export interface HeaderConfig {
     tamanho_fonte_mini_pauta?: number
     tamanho_fonte_outros?: number
 
+    /** Hex color for table/map headers in pautas, mini-pautas and related docs */
+    cor_cabecalho_mapa?: string | null
+
     created_at?: string
     updated_at?: string
+}
+
+/** Default map/table header colors by document context */
+export const DEFAULT_MAP_HEADER_COLOR = '#1e40af'
+export const DEFAULT_MAP_HEADER_COLOR_PRIMARY = '#16a34a'
+export const DEFAULT_MAP_HEADER_COLOR_MAPA = '#0f2864'
+
+/**
+ * Resolve map/table header color from school header config.
+ */
+export function resolveMapHeaderColor(
+    headerConfig?: Pick<HeaderConfig, 'cor_cabecalho_mapa'> | null,
+    fallback: string = DEFAULT_MAP_HEADER_COLOR
+): string {
+    const raw = headerConfig?.cor_cabecalho_mapa?.trim()
+    if (raw && /^#([0-9a-fA-F]{6})$/.test(raw)) return raw
+    return fallback
+}
+
+/**
+ * Darken a hex color by a factor (0–1) for secondary header rows.
+ */
+export function darkenHexColor(hex: string, factor = 0.15): string {
+    const clean = hex.replace('#', '')
+    if (clean.length !== 6) return hex
+    const channel = (i: number) => {
+        const value = parseInt(clean.substring(i, i + 2), 16)
+        return Math.max(0, Math.min(255, Math.round(value * (1 - factor))))
+            .toString(16)
+            .padStart(2, '0')
+    }
+    return `#${channel(0)}${channel(2)}${channel(4)}`
+}
+
+/**
+ * Lighten a hex color by a factor (0–1).
+ */
+export function lightenHexColor(hex: string, factor = 0.2): string {
+    const clean = hex.replace('#', '')
+    if (clean.length !== 6) return hex
+    const channel = (i: number) => {
+        const value = parseInt(clean.substring(i, i + 2), 16)
+        return Math.max(0, Math.min(255, Math.round(value + (255 - value) * factor)))
+            .toString(16)
+            .padStart(2, '0')
+    }
+    return `#${channel(0)}${channel(2)}${channel(4)}`
 }
 
 /**
@@ -214,6 +264,7 @@ export function getDefaultHeaderConfig(): Partial<HeaderConfig> {
         tamanho_fonte_mini_pauta: 16,
         tamanho_fonte_outros: 10,
         logo_width: 50,
-        logo_height: 50
+        logo_height: 50,
+        cor_cabecalho_mapa: DEFAULT_MAP_HEADER_COLOR,
     }
 }

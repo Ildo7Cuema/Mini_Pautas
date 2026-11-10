@@ -6,6 +6,11 @@ component-meta:
 */
 
 import React from 'react'
+import {
+    DEFAULT_MAP_HEADER_COLOR_MAPA,
+    darkenHexColor,
+    resolveMapHeaderColor,
+} from '../utils/headerConfigUtils'
 
 export interface MapaAproveitamentoTurmaData {
     turma_id: string
@@ -56,6 +61,7 @@ interface Props {
         texto_republica?: string
         mostrar_governo_provincial?: boolean
         mostrar_orgao_educacao?: boolean
+        cor_cabecalho_mapa?: string | null
     } | null
 }
 
@@ -73,6 +79,8 @@ export const MapaAproveitamentoPreview: React.FC<Props> = ({ data, headerConfig 
     const provincia = headerConfig?.provincia || data.escola.provincia
     const municipio = headerConfig?.municipio || data.escola.municipio
     const trimLabel = getTrimLabel(data.trimestre)
+    const headerBg = resolveMapHeaderColor(headerConfig, DEFAULT_MAP_HEADER_COLOR_MAPA)
+    const headerBgAlt = darkenHexColor(headerBg, 0.12)
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -148,35 +156,35 @@ export const MapaAproveitamentoPreview: React.FC<Props> = ({ data, headerConfig 
                             <div className="overflow-x-auto">
                                 <table className="w-full text-xs border-collapse border border-slate-300 min-w-[900px]">
                                     <thead>
-                                        <tr className="bg-blue-900 text-white">
-                                            <th rowSpan={2} className="border border-blue-700 px-2 py-1.5 text-left font-semibold text-xs w-32">
+                                        <tr className="text-white" style={{ backgroundColor: headerBg }}>
+                                            <th rowSpan={2} className="border border-black/20 px-2 py-1.5 text-left font-semibold text-xs w-32">
                                                 Disciplinas
                                             </th>
-                                            <th colSpan={3} className="border border-blue-700 px-1 py-1 text-center font-semibold text-xs">
+                                            <th colSpan={3} className="border border-black/20 px-1 py-1 text-center font-semibold text-xs">
                                                 Inscritos
                                             </th>
-                                            <th colSpan={3} className="border border-blue-700 px-1 py-1 text-center font-semibold text-xs">
+                                            <th colSpan={3} className="border border-black/20 px-1 py-1 text-center font-semibold text-xs">
                                                 Frequentaram
                                             </th>
-                                            <th colSpan={3} className="border border-blue-700 px-1 py-1 text-center font-semibold text-xs">
+                                            <th colSpan={3} className="border border-black/20 px-1 py-1 text-center font-semibold text-xs">
                                                 Aprovados
                                             </th>
-                                            <th colSpan={3} className="border border-blue-700 px-1 py-1 text-center font-semibold text-xs">
+                                            <th colSpan={3} className="border border-black/20 px-1 py-1 text-center font-semibold text-xs">
                                                 Reprovados
                                             </th>
-                                            <th colSpan={3} className="border border-blue-700 px-1 py-1 text-center font-semibold text-xs">
+                                            <th colSpan={3} className="border border-black/20 px-1 py-1 text-center font-semibold text-xs">
                                                 Desistentes
                                             </th>
-                                            <th colSpan={3} className="border border-blue-700 px-1 py-1 text-center font-semibold text-xs">
+                                            <th colSpan={3} className="border border-black/20 px-1 py-1 text-center font-semibold text-xs">
                                                 Transferidos
                                             </th>
-                                            <th rowSpan={2} className="border border-blue-700 px-1 py-1 text-center font-semibold text-xs w-14">
+                                            <th rowSpan={2} className="border border-black/20 px-1 py-1 text-center font-semibold text-xs w-14">
                                                 Média
                                             </th>
                                         </tr>
-                                        <tr className="bg-blue-800 text-white">
+                                        <tr className="text-white" style={{ backgroundColor: headerBgAlt }}>
                                             {['M', 'F', 'T', 'M', 'F', 'T', 'M', 'F', 'T', 'M', 'F', 'T', 'M', 'F', 'T', 'M', 'F', 'T'].map((h, i) => (
-                                                <th key={i} className="border border-blue-700 px-1 py-1 text-center font-medium text-xs w-8">
+                                                <th key={i} className="border border-black/20 px-1 py-1 text-center font-medium text-xs w-8">
                                                     {h}
                                                 </th>
                                             ))}
@@ -275,8 +283,11 @@ export const MapaAproveitamentoPreview: React.FC<Props> = ({ data, headerConfig 
                 })}
             </div>
 
-            {/* Signatures + print date */}
-            <div className="px-4 pt-6 pb-2 border-t border-slate-200 mt-2">
+            {/* Signatures + print date — keep together when printing */}
+            <div
+                className="px-4 pt-6 pb-2 border-t border-slate-200 mt-2"
+                style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+            >
                 <p className="text-xs text-slate-600 mb-6">
                     Data de impressão:{' '}
                     <strong>

@@ -11,6 +11,7 @@ import React, { useState } from 'react'
 import { Card, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
 import { getComponenteDisplayLabel, getComponenteTooltipLabel } from '../utils/gradeUtils'
+import { darkenHexColor } from '../utils/headerConfigUtils'
 
 interface TrimestreData {
     notas: Record<string, number>
@@ -59,6 +60,7 @@ interface MiniPautaPreviewSecundarioProps {
     }
     loading?: boolean
     colorConfig?: GradeColorConfig | null
+    mapHeaderColor?: string
 }
 
 /**
@@ -73,9 +75,12 @@ interface MiniPautaPreviewSecundarioProps {
 export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProps> = ({
     data,
     loading,
-    colorConfig
+    colorConfig,
+    mapHeaderColor
 }) => {
     const [expandedStudent, setExpandedStudent] = useState<string | null>(null)
+    const headerBg = mapHeaderColor || '#2563eb'
+    const headerBgAlt = darkenHexColor(headerBg, 0.12)
 
     // Loading state with skeleton
     if (loading) {
@@ -359,22 +364,22 @@ export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProp
                             {isAllTrimesters ? (
                                 // All Trimesters Header
                                 <>
-                                    <tr className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-                                        <th rowSpan={2} className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 bg-blue-600 z-10">Nº</th>
-                                        <th rowSpan={2} className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 bg-blue-600 z-10 min-w-[200px]">Nome do Aluno</th>
+                                    <tr className="text-white" style={{ backgroundColor: headerBg }}>
+                                        <th rowSpan={2} className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 z-10" style={{ backgroundColor: headerBg }}>Nº</th>
+                                        <th rowSpan={2} className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 z-10 min-w-[200px]" style={{ backgroundColor: headerBg }}>Nome do Aluno</th>
                                         <th rowSpan={2} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold">GÊN</th>
                                         {componentes1T.length > 0 && (
-                                            <th colSpan={componentes1T.length} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold bg-blue-700">
+                                            <th colSpan={componentes1T.length} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: headerBgAlt }}>
                                                 1º Trimestre
                                             </th>
                                         )}
                                         {componentes2T.length > 0 && (
-                                            <th colSpan={componentes2T.length} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold bg-blue-700">
+                                            <th colSpan={componentes2T.length} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: headerBgAlt }}>
                                                 2º Trimestre
                                             </th>
                                         )}
                                         {componentes3T.length > 0 && (
-                                            <th colSpan={componentes3T.length} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold bg-blue-700">
+                                            <th colSpan={componentes3T.length} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: headerBgAlt }}>
                                                 3º Trimestre
                                             </th>
                                         )}
@@ -400,9 +405,9 @@ export const MiniPautaPreviewSecundario: React.FC<MiniPautaPreviewSecundarioProp
                                 </>
                             ) : (
                                 // Single Trimester Header
-                                <tr className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-                                    <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 bg-blue-600 z-10">Nº</th>
-                                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 bg-blue-600 z-10 min-w-[200px]">Nome do Aluno</th>
+                                <tr className="text-white" style={{ backgroundColor: headerBg }}>
+                                    <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 z-10" style={{ backgroundColor: headerBg }}>Nº</th>
+                                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 z-10 min-w-[200px]" style={{ backgroundColor: headerBg }}>Nome do Aluno</th>
                                     <th className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold">GÊN</th>
                                     {data.componentes.map((comp) => (
                                         <th

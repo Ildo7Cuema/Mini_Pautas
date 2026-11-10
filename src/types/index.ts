@@ -111,6 +111,8 @@ export interface Aluno {
     // Dados Pessoais
     nome_completo: string;
     numero_processo: string;
+    /** URL da fotografia tipo passe (Storage) */
+    foto_url?: string | null;
     data_nascimento?: string;
     genero?: 'M' | 'F' | 'Outro';
     nacionalidade?: string;

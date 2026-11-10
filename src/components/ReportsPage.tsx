@@ -23,16 +23,23 @@ import {
     evaluateConfiguredComponent,
     type GradesByTrimestre,
 } from '../utils/formulaUtils'
-import { HeaderConfig, loadHeaderConfig } from '../utils/headerConfigUtils'
+import { HeaderConfig, loadHeaderConfig, resolveMapHeaderColor } from '../utils/headerConfigUtils'
 import { GradeColorConfig, loadGradeColorConfig } from '../utils/gradeColorConfigUtils'
 import { ConfiguracaoCoresModal } from './ConfiguracaoCoresModal'
+import { ConfiguracaoCorCabecalhoMapaModal } from './ConfiguracaoCorCabecalhoMapaModal'
 import { PautaGeralPage } from './PautaGeralPage'
 import { ConselhoNotasPage } from './ConselhoNotasPage'
 import { useAuth } from '../contexts/AuthContext'
 import { TermoFrequenciaPreview } from './TermoFrequenciaPreview'
 import { BoletimNotasPreview, BoletimNotasData } from './BoletimNotasPreview'
-import { generateTermoFrequenciaPDF, generateBatchTermosFrequenciaZip, generateMapaAproveitamentoPDF, generateBoletimNotasPDF, generateBatchBoletinsZip } from '../utils/pdfGenerator'
+import { generateTermoFrequenciaPDF, generateBatchTermosFrequenciaZip, generateMapaAproveitamentoPDF, generateBoletimNotasPDF, generateBatchBoletinsZip, generateQuadroHonraPDF } from '../utils/pdfGenerator'
 import { MapaAproveitamentoPreview, MapaAproveitamentoData, MapaAproveitamentoTurmaData } from './MapaAproveitamentoPreview'
+import { QuadroHonraPreview, QuadroHonraData } from './QuadroHonraPreview'
+import {
+    classifyQuadroHonra,
+    getDistincaoLabel,
+    type QuadroHonraPeriodo,
+} from '../utils/quadroHonra'
 import {
     classifyStudent,
     isAttendanceSufficient,
@@ -158,7 +165,7 @@ interface MiniPautaData {
 
 interface ReportsPageProps {
     searchQuery?: string
-    initialTab?: 'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas' | 'conselho-notas'
+    initialTab?: 'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas' | 'conselho-notas' | 'quadro-honra'
     initialConselhoTurmaId?: string
 }
 
@@ -182,9 +189,18 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     const [showOrdenarDisciplinasModal, setShowOrdenarDisciplinasModal] = useState(false)
     const [colorConfig, setColorConfig] = useState<GradeColorConfig | null>(null)
     const [showColorConfigModal, setShowColorConfigModal] = useState(false)
+    const [showMapHeaderColorModal, setShowMapHeaderColorModal] = useState(false)
+
+    const reportsEscolaId =
+        escolaProfile?.id ||
+        professorProfile?.escola_id ||
+        secretarioProfile?.escola_id ||
+        ''
+
+    const mapHeaderColor = resolveMapHeaderColor(headerConfig)
 
     // Tab state
-    const [activeTab, setActiveTab] = useState<'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas' | 'conselho-notas'>(
+    const [activeTab, setActiveTab] = useState<'mini-pauta' | 'pauta-geral' | 'termo-frequencia' | 'mapa-aproveitamento' | 'boletim-notas' | 'conselho-notas' | 'quadro-honra'>(
         initialTab || 'mini-pauta'
     )
 
@@ -202,6 +218,13 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     const [mapaLoading, setMapaLoading] = useState(false)
     const [mapaTrimestre, setMapaTrimestre] = useState<1 | 2 | 3 | 'anual'>(1)
     const [mapaSelectedTurmas] = useState<string[]>([])
+
+    // Quadro de Honra / Prémio de Mérito state (Dec. Ext. 76/24)
+    const [quadroHonraData, setQuadroHonraData] = useState<QuadroHonraData | null>(null)
+    const [quadroHonraLoading, setQuadroHonraLoading] = useState(false)
+    const [quadroHonraTrimestre, setQuadroHonraTrimestre] = useState<QuadroHonraPeriodo>(1)
+    const [quadroHonraDisciplina, setQuadroHonraDisciplina] = useState<string>('all')
+    const [quadroHonraMode, setQuadroHonraMode] = useState<'disciplina' | 'global'>('disciplina')
 
     // Boletim de Notas state
     const [boletimTrimestre, setBoletimTrimestre] = useState<1 | 2 | 3>(1)
@@ -2441,6 +2464,223 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
         }
     }
 
+    const resolveNotaDisciplinaQuadro = (
+        compDisciplina: Array<{
+            id: string
+            codigo_componente?: string | null
+            nome?: string | null
+            peso_percentual?: number | null
+            trimestre?: number | null
+            is_calculated?: boolean | null
+        }>,
+        alunoNotas: Array<{ aluno_id: string; componente_id: string; valor: number; trimestre?: number | null }>,
+        periodo: QuadroHonraPeriodo
+    ): number | null => {
+        const compsPeriodo = periodo === 'anual'
+            ? compDisciplina
+            : compDisciplina.filter((c) => Number(c.trimestre) === periodo)
+
+        const preferCodes = new Set(['MT', 'MF', 'MFD', 'NF', 'CF', 'MEC', 'MEDIA', 'MÉDIA'])
+        const rankedComps = [...compsPeriodo].sort((a, b) => {
+            const score = (c: typeof a) => {
+                const code = (c.codigo_componente || '').trim().toUpperCase()
+                if (preferCodes.has(code)) return 0
+                if (c.is_calculated) return 1
+                return 2
+            }
+            return score(a) - score(b)
+        })
+
+        for (const comp of rankedComps) {
+            const nota = alunoNotas.find((n) => n.componente_id === comp.id)
+            if (nota != null && typeof nota.valor === 'number') return nota.valor
+        }
+
+        const compsInput = compsPeriodo.filter((c) => !c.is_calculated)
+        const notasTrim = alunoNotas.filter((n) => compsInput.some((c) => c.id === n.componente_id))
+        if (notasTrim.length === 0) return null
+
+        const totalPeso = compsInput.reduce((s, c) => s + (c.peso_percentual || 0), 0)
+        if (totalPeso > 0) {
+            return notasTrim.reduce((s, n) => {
+                const comp = compsInput.find((c) => c.id === n.componente_id)
+                return s + n.valor * ((comp?.peso_percentual || 0) / totalPeso)
+            }, 0)
+        }
+
+        return notasTrim.reduce((s, n) => s + n.valor, 0) / notasTrim.length
+    }
+
+    const loadQuadroHonra = async () => {
+        if (!selectedTurma) {
+            setError('Seleccione uma turma')
+            return
+        }
+
+        try {
+            setQuadroHonraLoading(true)
+            setError(null)
+
+            let escola_id: string | undefined
+            if (escolaProfile) escola_id = escolaProfile.id
+            else if (professorProfile) escola_id = professorProfile.escola_id
+            else if (secretarioProfile) escola_id = secretarioProfile.escola_id
+
+            const { data: escolaData } = escola_id
+                ? await supabase.from('escolas').select('nome, provincia, municipio, codigo_escola').eq('id', escola_id).single()
+                : { data: null }
+
+            const { data: turmaData, error: turmaError } = await supabase
+                .from('turmas')
+                .select('id, nome, codigo_turma, ano_lectivo, nivel_ensino')
+                .eq('id', selectedTurma)
+                .single()
+
+            if (turmaError) throw turmaError
+            if (!turmaData) throw new Error('Turma não encontrada')
+
+            let discQuery = supabase
+                .from('disciplinas')
+                .select('id, nome, codigo_disciplina')
+                .eq('turma_id', selectedTurma)
+                .order('ordem')
+
+            if (quadroHonraMode === 'disciplina' && quadroHonraDisciplina !== 'all') {
+                discQuery = discQuery.eq('id', quadroHonraDisciplina)
+            }
+
+            const { data: discData, error: discError } = await discQuery
+            if (discError) throw discError
+            if (!discData || discData.length === 0) throw new Error('Nenhuma disciplina encontrada')
+
+            const { data: alunosData, error: alunosError } = await supabase
+                .from('alunos')
+                .select('id, numero_processo, nome_completo, genero, foto_url')
+                .eq('turma_id', selectedTurma)
+                .eq('ativo', true)
+                .order('nome_completo')
+
+            if (alunosError) throw alunosError
+            const alunosActivos = alunosData || []
+
+            const { data: compData, error: compError } = await supabase
+                .from('componentes_avaliacao')
+                .select('id, codigo_componente, nome, peso_percentual, trimestre, disciplina_id, is_calculated')
+                .eq('turma_id', selectedTurma)
+                .in('disciplina_id', discData.map((d) => d.id))
+
+            if (compError) throw compError
+
+            let notasQuery = supabase
+                .from('notas')
+                .select('aluno_id, componente_id, valor, trimestre')
+                .eq('turma_id', selectedTurma)
+
+            if (quadroHonraTrimestre !== 'anual') {
+                notasQuery = notasQuery.eq('trimestre', quadroHonraTrimestre)
+            }
+
+            const { data: notasData, error: notasError } = await notasQuery
+            if (notasError) throw notasError
+
+            const nivel = turmaData.nivel_ensino || ''
+            const disciplinasProcessadas = discData.map((disc) => {
+                const comps = (compData || []).filter((c) => c.disciplina_id === disc.id)
+                const inputs = alunosActivos
+                    .map((aluno) => {
+                        const alunoNotas = (notasData || []).filter((n) => n.aluno_id === aluno.id)
+                        const nota = resolveNotaDisciplinaQuadro(comps, alunoNotas, quadroHonraTrimestre)
+                        if (nota == null) return null
+                        return {
+                            aluno_id: aluno.id,
+                            numero_processo: aluno.numero_processo,
+                            nome_completo: aluno.nome_completo,
+                            genero: aluno.genero,
+                            foto_url: aluno.foto_url,
+                            nota,
+                        }
+                    })
+                    .filter((x): x is NonNullable<typeof x> => x != null)
+
+                return {
+                    disciplina_id: disc.id,
+                    disciplina_nome: disc.nome,
+                    disciplina_codigo: disc.codigo_disciplina || undefined,
+                    entries: classifyQuadroHonra(inputs, {
+                        nivelEnsino: nivel,
+                        mode: 'disciplina',
+                        onlyEligible: true,
+                    }),
+                }
+            })
+
+            let globalEntries: QuadroHonraData['globalEntries']
+            if (quadroHonraMode === 'global') {
+                const globalInputs = alunosActivos
+                    .map((aluno) => {
+                        const notasDisc: number[] = []
+                        for (const disc of discData) {
+                            const comps = (compData || []).filter((c) => c.disciplina_id === disc.id)
+                            const alunoNotas = (notasData || []).filter((n) => n.aluno_id === aluno.id)
+                            const nota = resolveNotaDisciplinaQuadro(comps, alunoNotas, quadroHonraTrimestre)
+                            if (nota != null) notasDisc.push(nota)
+                        }
+                        if (notasDisc.length === 0) return null
+                        const media = notasDisc.reduce((a, b) => a + b, 0) / notasDisc.length
+                        return {
+                            aluno_id: aluno.id,
+                            numero_processo: aluno.numero_processo,
+                            nome_completo: aluno.nome_completo,
+                            genero: aluno.genero,
+                            foto_url: aluno.foto_url,
+                            nota: media,
+                            notas_disciplinas: notasDisc,
+                        }
+                    })
+                    .filter((x): x is NonNullable<typeof x> => x != null)
+
+                globalEntries = classifyQuadroHonra(globalInputs, {
+                    nivelEnsino: nivel,
+                    mode: 'global',
+                    onlyEligible: true,
+                })
+            }
+
+            setQuadroHonraData({
+                escola: escolaData || { nome: 'Escola', provincia: '', municipio: '' },
+                turma: {
+                    id: turmaData.id,
+                    nome: turmaData.nome,
+                    codigo_turma: turmaData.codigo_turma,
+                    ano_lectivo: turmaData.ano_lectivo,
+                    nivel_ensino: nivel,
+                    classe: extractClasseFromTurmaNome(turmaData.nome),
+                },
+                trimestre: quadroHonraTrimestre,
+                mode: quadroHonraMode,
+                disciplinas: disciplinasProcessadas,
+                globalEntries,
+            })
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Erro ao carregar Quadro de Honra'
+            setError(msg)
+            setQuadroHonraData(null)
+        } finally {
+            setQuadroHonraLoading(false)
+        }
+    }
+
+    const handleGenerateQuadroHonraPDF = async () => {
+        if (!quadroHonraData) { setError('Gere o quadro primeiro'); return }
+        try {
+            await generateQuadroHonraPDF(quadroHonraData, headerConfig)
+            setSuccess(`PDF do ${getDistincaoLabel(quadroHonraData.trimestre)} gerado com sucesso!`)
+            setTimeout(() => setSuccess(null), 3000)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Erro ao gerar PDF do Quadro de Honra')
+        }
+    }
+
     const handleGenerateMapaPDF = async () => {
         if (!mapaData) { setError('Carregue o mapa primeiro'); return }
         try {
@@ -2457,8 +2697,26 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
         <div className="space-y-4 md:space-y-6 pb-24 md:pb-6">
             {/* Header with Tabs */}
             <div>
-                <h2 className="text-xl md:text-2xl font-bold text-slate-900">Relatórios e Pautas</h2>
-                <p className="text-sm md:text-base text-slate-600 mt-1">Gere relatórios e exporte dados das turmas</p>
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div>
+                        <h2 className="text-xl md:text-2xl font-bold text-slate-900">Relatórios e Pautas</h2>
+                        <p className="text-sm md:text-base text-slate-600 mt-1">Gere relatórios e exporte dados das turmas</p>
+                    </div>
+                    {reportsEscolaId && !isProfessor && (
+                        <button
+                            type="button"
+                            onClick={() => setShowMapHeaderColorModal(true)}
+                            className="inline-flex items-center gap-2 self-start px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg shadow-sm transition"
+                            title="Alterar cor do cabeçalho dos mapas"
+                        >
+                            <span
+                                className="w-4 h-4 rounded-sm border border-slate-300"
+                                style={{ backgroundColor: mapHeaderColor }}
+                            />
+                            Cor do cabeçalho dos mapas
+                        </button>
+                    )}
+                </div>
 
                 {/* Tab Navigation - Modern Pill Style */}
                 <div className="mt-4">
@@ -2541,6 +2799,21 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                                     Mapa de Aproveitamento
                                 </button>
                                 <button
+                                    onClick={() => setActiveTab('quadro-honra')}
+                                    className={`
+                                        flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 whitespace-nowrap touch-feedback min-h-touch
+                                        ${activeTab === 'quadro-honra'
+                                            ? 'bg-gradient-to-r from-amber-500 to-amber-700 text-white shadow-md shadow-amber-500/25'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-95'
+                                        }
+                                    `}
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                                    </svg>
+                                    Quadro de Honra
+                                </button>
+                                <button
                                     onClick={() => setActiveTab('conselho-notas')}
                                     className={`
                                         flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 whitespace-nowrap touch-feedback min-h-touch
@@ -2609,6 +2882,19 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                                             </svg>
                                             <span className="hidden sm:inline">Cores</span>
                                         </button>
+                                        {reportsEscolaId && (
+                                            <button
+                                                onClick={() => setShowMapHeaderColorModal(true)}
+                                                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-all duration-200 touch-feedback"
+                                                title="Cor do cabeçalho dos mapas"
+                                            >
+                                                <span
+                                                    className="w-4 h-4 rounded-sm border border-slate-300"
+                                                    style={{ backgroundColor: mapHeaderColor }}
+                                                />
+                                                <span className="hidden sm:inline">Cabeçalho mapa</span>
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -2783,7 +3069,12 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                                 </div>
                             </CardHeader>
                             <CardBody className="p-0 md:p-4">
-                                <MiniPautaPreview data={miniPautaData} loading={loadingData} colorConfig={colorConfig} />
+                                <MiniPautaPreview
+                                    data={miniPautaData}
+                                    loading={loadingData}
+                                    colorConfig={colorConfig}
+                                    mapHeaderColor={mapHeaderColor}
+                                />
                             </CardBody>
                         </Card>
                     )}
@@ -2844,11 +3135,207 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         nivelEnsino={selectedTurmaData?.nivel_ensino}
                         turmaId={selectedTurma}
                     />
+
                 </div>
             ) : activeTab === 'pauta-geral' ? (
                 <PautaGeralPage onGoToConselho={() => setActiveTab('conselho-notas')} />
             ) : activeTab === 'conselho-notas' ? (
                 <ConselhoNotasPage initialTurmaId={initialConselhoTurmaId} />
+            ) : activeTab === 'quadro-honra' ? (
+                <div className="space-y-4 md:space-y-6">
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+                            <span className="text-sm">{error}</span>
+                        </div>
+                    )}
+                    {success && (
+                        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">
+                            <span className="text-sm">{success}</span>
+                        </div>
+                    )}
+
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-700 rounded-lg flex items-center justify-center">
+                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-base md:text-lg font-semibold text-slate-900">
+                                        {getDistincaoLabel(quadroHonraTrimestre)}
+                                    </h3>
+                                    <p className="text-xs text-slate-500">
+                                        Classificação dos alunos com melhores notas por disciplina — Dec. Ext. n.º 76/24 (trimestral = Prémio de Mérito; anual = Quadro de Honra)
+                                    </p>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardBody className="p-3 md:p-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Turma</label>
+                                    <select
+                                        value={selectedTurma}
+                                        onChange={(e) => {
+                                            setSelectedTurma(e.target.value)
+                                            setQuadroHonraData(null)
+                                            setQuadroHonraDisciplina('all')
+                                        }}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                    >
+                                        <option value="">Seleccionar turma...</option>
+                                        {turmas.map((t) => (
+                                            <option key={t.id} value={t.id}>
+                                                {t.codigo_turma} — {t.nome} ({t.ano_lectivo})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Período</label>
+                                    <select
+                                        value={quadroHonraTrimestre}
+                                        onChange={(e) => {
+                                            const v = e.target.value
+                                            setQuadroHonraTrimestre(
+                                                v === 'anual' ? 'anual' : (Number(v) as 1 | 2 | 3)
+                                            )
+                                            setQuadroHonraData(null)
+                                        }}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                    >
+                                        <option value={1}>1º Trimestre (Prémio de Mérito)</option>
+                                        <option value={2}>2º Trimestre (Prémio de Mérito)</option>
+                                        <option value={3}>3º Trimestre (Prémio de Mérito)</option>
+                                        <option value="anual">Anual (Quadro de Honra)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Âmbito</label>
+                                    <select
+                                        value={quadroHonraMode}
+                                        onChange={(e) => {
+                                            setQuadroHonraMode(e.target.value as 'disciplina' | 'global')
+                                            setQuadroHonraData(null)
+                                        }}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                    >
+                                        <option value="disciplina">Por disciplina</option>
+                                        <option value="global">Geral da turma (Art. 9.º)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Disciplina</label>
+                                    <select
+                                        value={quadroHonraDisciplina}
+                                        onChange={(e) => {
+                                            setQuadroHonraDisciplina(e.target.value)
+                                            setQuadroHonraData(null)
+                                        }}
+                                        disabled={quadroHonraMode === 'global' || !selectedTurma}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-slate-100"
+                                    >
+                                        <option value="all">Todas as disciplinas</option>
+                                        {disciplinas.map((d) => (
+                                            <option key={d.id} value={d.id}>{d.nome}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex items-end">
+                                    <Button
+                                        onClick={loadQuadroHonra}
+                                        disabled={!selectedTurma || quadroHonraLoading}
+                                        className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                                    >
+                                        {quadroHonraLoading ? (
+                                            <span className="flex items-center gap-2">
+                                                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                </svg>
+                                                A classificar...
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-2">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                                                </svg>
+                                                Gerar Quadro
+                                            </span>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardBody>
+                    </Card>
+
+                    {quadroHonraData && (
+                        <>
+                            <div className="flex flex-wrap gap-3 justify-end">
+                                <Button
+                                    onClick={handleGenerateQuadroHonraPDF}
+                                    className="bg-red-600 hover:bg-red-700 text-white flex items-center gap-2"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Exportar PDF
+                                </Button>
+                            </div>
+                            <QuadroHonraPreview
+                                data={quadroHonraData}
+                                headerConfig={headerConfig}
+                                allowFotoUpload
+                                onFotoUpdated={(alunoId, fotoUrl) => {
+                                    setQuadroHonraData((prev) => {
+                                        if (!prev) return prev
+                                        const patchEntry = <T extends { aluno_id: string; foto_url?: string | null }>(
+                                            entries: T[]
+                                        ): T[] =>
+                                            entries.map((e) =>
+                                                e.aluno_id === alunoId ? { ...e, foto_url: fotoUrl } : e
+                                            )
+                                        return {
+                                            ...prev,
+                                            disciplinas: prev.disciplinas.map((d) => ({
+                                                ...d,
+                                                entries: patchEntry(d.entries),
+                                            })),
+                                            globalEntries: prev.globalEntries
+                                                ? patchEntry(prev.globalEntries)
+                                                : prev.globalEntries,
+                                        }
+                                    })
+                                }}
+                            />
+                        </>
+                    )}
+
+                    {!quadroHonraData && !quadroHonraLoading && (
+                        <Card>
+                            <CardBody>
+                                <div className="text-center py-12">
+                                    <svg className="mx-auto h-12 w-12 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                                    </svg>
+                                    <h3 className="mt-2 text-sm font-medium text-slate-900">Quadro de Honra / Prémio de Mérito</h3>
+                                    <p className="mt-1 text-sm text-slate-500 max-w-lg mx-auto">
+                                        Seleccione a turma, o período e a disciplina, depois clique em &quot;Gerar Quadro&quot; para ver os cartões de honra com fotografia tipo passe.
+                                    </p>
+                                    <p className="mt-2 text-xs text-slate-400 max-w-md mx-auto">
+                                        Em cada cartão pode inserir a foto passe do aluno. Critérios: Secundário ≥ 16 · Primário ≥ 8 (Dec. Ext. 76/24).
+                                    </p>
+                                </div>
+                            </CardBody>
+                        </Card>
+                    )}
+                </div>
             ) : activeTab === 'mapa-aproveitamento' ? (
                 // ── Mapa de Aproveitamento Tab ─────────────────────────────────────────
                 <div className="space-y-4 md:space-y-6">
@@ -3721,6 +4208,19 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                         </Card>
                     )}
                 </div>
+            )}
+
+            {reportsEscolaId && (
+                <ConfiguracaoCorCabecalhoMapaModal
+                    isOpen={showMapHeaderColorModal}
+                    onClose={() => setShowMapHeaderColorModal(false)}
+                    onSave={(saved) => {
+                        setHeaderConfig(saved)
+                        setShowMapHeaderColorModal(false)
+                    }}
+                    escolaId={reportsEscolaId}
+                    currentConfig={headerConfig}
+                />
             )}
         </div>
     )

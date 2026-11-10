@@ -11,6 +11,7 @@ import React, { useState } from 'react'
 import { Card, CardBody } from './ui/Card'
 import { GradeColorConfig, getGradeColorFromConfig } from '../utils/gradeColorConfigUtils'
 import { getComponenteDisplayLabel, getComponenteTooltipLabel } from '../utils/gradeUtils'
+import { darkenHexColor } from '../utils/headerConfigUtils'
 
 interface MiniPautaPreviewPrimarioProps {
     data: {
@@ -50,6 +51,7 @@ interface MiniPautaPreviewPrimarioProps {
     }
     loading?: boolean
     colorConfig?: GradeColorConfig | null
+    mapHeaderColor?: string
 }
 
 /**
@@ -106,9 +108,12 @@ const groupComponentsByDiscipline = (componentes: MiniPautaPreviewPrimarioProps[
 export const MiniPautaPreviewPrimario: React.FC<MiniPautaPreviewPrimarioProps> = ({
     data,
     loading,
-    colorConfig
+    colorConfig,
+    mapHeaderColor
 }) => {
     const [expandedStudent, setExpandedStudent] = useState<string | null>(null)
+    const headerBg = mapHeaderColor || '#16a34a'
+    const headerBgAlt = darkenHexColor(headerBg, 0.12)
 
     // Loading state with skeleton
     if (loading) {
@@ -354,15 +359,15 @@ export const MiniPautaPreviewPrimario: React.FC<MiniPautaPreviewPrimarioProps> =
                             {isAllDisciplines ? (
                                 // All Disciplines Header
                                 <>
-                                    <tr className="bg-gradient-to-r from-green-600 to-green-700 text-white">
-                                        <th rowSpan={2} className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 bg-green-600 z-10">Nº</th>
-                                        <th rowSpan={2} className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 bg-green-600 z-10 min-w-[200px]">Nome do Aluno</th>
+                                    <tr className="text-white" style={{ backgroundColor: headerBg }}>
+                                        <th rowSpan={2} className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 z-10" style={{ backgroundColor: headerBg }}>Nº</th>
+                                        <th rowSpan={2} className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 z-10 min-w-[200px]" style={{ backgroundColor: headerBg }}>Nome do Aluno</th>
                                         <th rowSpan={2} className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold">GÊN</th>
                                         {disciplineGroups.map((group) => (
                                             <th
                                                 key={group.disciplina_nome}
                                                 colSpan={group.componentes.length}
-                                                className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold bg-green-700"
+                                                className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: headerBgAlt }}
                                             >
                                                 {group.disciplina_nome}
                                             </th>
@@ -389,9 +394,9 @@ export const MiniPautaPreviewPrimario: React.FC<MiniPautaPreviewPrimarioProps> =
                                 </>
                             ) : (
                                 // Single Discipline Header
-                                <tr className="bg-gradient-to-r from-green-600 to-green-700 text-white">
-                                    <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 bg-green-600 z-10">Nº</th>
-                                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 bg-green-600 z-10 min-w-[200px]">Nome do Aluno</th>
+                                <tr className="text-white" style={{ backgroundColor: headerBg }}>
+                                    <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold sticky left-0 z-10" style={{ backgroundColor: headerBg }}>Nº</th>
+                                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-semibold sticky left-12 z-10 min-w-[200px]" style={{ backgroundColor: headerBg }}>Nome do Aluno</th>
                                     <th className="border border-slate-300 px-2 py-2 text-center text-xs font-semibold">GÊN</th>
                                     {data.componentes.map((comp) => (
                                         <th

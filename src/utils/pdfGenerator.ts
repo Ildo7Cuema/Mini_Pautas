@@ -1,7 +1,15 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import JSZip from 'jszip'
-import { HeaderConfig, getOrgaoEducacao } from './headerConfigUtils'
+import {
+    HeaderConfig,
+    getOrgaoEducacao,
+    resolveMapHeaderColor,
+    darkenHexColor,
+    DEFAULT_MAP_HEADER_COLOR,
+    DEFAULT_MAP_HEADER_COLOR_PRIMARY,
+    DEFAULT_MAP_HEADER_COLOR_MAPA,
+} from './headerConfigUtils'
 import { imageUrlToBase64, getImageFormat } from './imageUtils'
 import { GradeColorConfig, getGradeColorFromConfig, hexToRGB } from './gradeColorConfigUtils'
 import { drawStandardPdfFooter, APP_DOCUMENT_BRAND_LINE } from './pdfFooter'
@@ -86,6 +94,19 @@ const getGradeColorRGB = (
     const result = getGradeColorFromConfig(nota, nivelEnsino, classe, isCalculated, config)
     return hexToRGB(result.color)
 }
+
+/** RGB fill for map/table headers from school config (with document-type fallback). */
+const getMapHeaderRgb = (
+    headerConfig: HeaderConfig | null | undefined,
+    fallbackHex: string = DEFAULT_MAP_HEADER_COLOR
+): [number, number, number] => hexToRGB(resolveMapHeaderColor(headerConfig, fallbackHex))
+
+const getMapHeaderRgbAlt = (
+    headerConfig: HeaderConfig | null | undefined,
+    fallbackHex: string = DEFAULT_MAP_HEADER_COLOR,
+    darkenFactor = 0.12
+): [number, number, number] =>
+    hexToRGB(darkenHexColor(resolveMapHeaderColor(headerConfig, fallbackHex), darkenFactor))
 
 /**
  * Renders the PDF header (logo, school info, etc.)
@@ -222,24 +243,15 @@ function ensureMiniPautaSpace(
 }
 
 /**
- * Adds statistics as a compact table with very small font.
- * Returns the Y position after the block (for signatures).
+ * Draws statistics as a compact table at an absolute Y (no page-break decision).
  */
-function addPDFStatistics(
+function drawPDFStatisticsAt(
     doc: jsPDF,
     data: MiniPautaData,
-    finalY: number,
+    startY: number,
     pageWidth: number,
     pageHeight: number
 ): number {
-    const startY = ensureMiniPautaSpace(
-        doc,
-        finalY,
-        MINI_PAUTA_STATS_BLOCK_MM,
-        pageWidth,
-        pageHeight
-    )
-
     const tableWidth = Math.min(pageWidth - 28, 240)
 
     autoTable(doc, {
@@ -297,23 +309,13 @@ function addPDFStatistics(
 }
 
 /**
- * Adds signature section to PDF without overlapping footer or prior content.
- * Returns the Y position after the block.
+ * Draws signature lines at an absolute Y (no page-break decision).
  */
-function addPDFSignatures(
+function drawPDFSignaturesAt(
     doc: jsPDF,
-    finalY: number,
-    pageWidth: number,
-    pageHeight: number
+    startY: number,
+    pageWidth: number
 ): number {
-    const startY = ensureMiniPautaSpace(
-        doc,
-        finalY,
-        MINI_PAUTA_SIGNATURES_BLOCK_MM,
-        pageWidth,
-        pageHeight
-    )
-
     const signY = startY + 8
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
@@ -331,6 +333,28 @@ function addPDFSignatures(
     return signY + 8
 }
 
+/**
+ * Keeps statistics + signatures together so signatures never appear alone on a new page.
+ */
+function addPDFStatisticsAndSignatures(
+    doc: jsPDF,
+    data: MiniPautaData,
+    finalY: number,
+    pageWidth: number,
+    pageHeight: number
+): void {
+    const combinedNeeded = MINI_PAUTA_STATS_BLOCK_MM + MINI_PAUTA_SIGNATURES_BLOCK_MM
+    const startY = ensureMiniPautaSpace(
+        doc,
+        finalY,
+        combinedNeeded,
+        pageWidth,
+        pageHeight
+    )
+    const afterStats = drawPDFStatisticsAt(doc, data, startY, pageWidth, pageHeight)
+    drawPDFSignaturesAt(doc, afterStats, pageWidth)
+}
+
 export interface ConselhoNotasSignatureNames {
     coordenador_nome?: string | null
     secretario_nome?: string | null
@@ -346,16 +370,11 @@ function addConselhoNotasSignatures(
     doc: jsPDF,
     finalY: number,
     pageWidth: number,
-    pageHeight: number,
+    _pageHeight: number,
     members?: ConselhoNotasSignatureNames | null
 ) {
     const lineSpacing = 8
-
-    if (finalY + 50 > pageHeight) {
-        doc.addPage()
-        finalY = 20
-    }
-
+    // Caller must reserve space with preceding content so signatures are never alone on a page.
     const startY = finalY + 8
 
     doc.setFontSize(9)
@@ -477,7 +496,7 @@ async function generatePrimaryEducationAllDisciplinesPDF(
                 halign: 'center',
                 valign: 'middle',
                 fontStyle: 'bold',
-                fillColor: [21, 128, 61] // Darker green for discipline headers
+                fillColor: getMapHeaderRgbAlt(headerConfig, DEFAULT_MAP_HEADER_COLOR_PRIMARY)
             }
         })
     })
@@ -523,7 +542,7 @@ async function generatePrimaryEducationAllDisciplinesPDF(
             overflow: 'linebreak'
         },
         headStyles: {
-            fillColor: [22, 163, 74],  // Green for Primary Education
+            fillColor: getMapHeaderRgb(headerConfig, DEFAULT_MAP_HEADER_COLOR_PRIMARY),
             textColor: 255,
             fontStyle: 'bold',
             halign: 'center',
@@ -574,10 +593,14 @@ async function generatePrimaryEducationAllDisciplinesPDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    // Statistics and signatures (compact table; never overlap footer)
-    let finalY = (doc as any).lastAutoTable.finalY + 6
-    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
-    addPDFSignatures(doc, finalY, pageWidth, pageHeight)
+    // Statistics + signatures kept together (never orphan signatures alone on a page)
+    addPDFStatisticsAndSignatures(
+        doc,
+        data,
+        (doc as any).lastAutoTable.finalY + 6,
+        pageWidth,
+        pageHeight
+    )
 
     // Save
     const filename = `mini-pauta_${data.turma.codigo_turma}_todas-disciplinas_${data.trimestre}trim.pdf`
@@ -636,7 +659,7 @@ async function generatePrimaryEducationSingleDisciplinePDF(
             overflow: 'linebreak'
         },
         headStyles: {
-            fillColor: [22, 163, 74],  // Green for Primary Education
+            fillColor: getMapHeaderRgb(headerConfig, DEFAULT_MAP_HEADER_COLOR_PRIMARY),
             textColor: 255,
             fontStyle: 'bold',
             halign: 'center'
@@ -673,9 +696,13 @@ async function generatePrimaryEducationSingleDisciplinePDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    let finalY = (doc as any).lastAutoTable.finalY + 6
-    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
-    addPDFSignatures(doc, finalY, pageWidth, pageHeight)
+    addPDFStatisticsAndSignatures(
+        doc,
+        data,
+        (doc as any).lastAutoTable.finalY + 6,
+        pageWidth,
+        pageHeight
+    )
 
     const trimestreStr = `${data.trimestre}trim`
     const filename = `mini-pauta_${data.turma.codigo_turma}_${data.disciplina.codigo_disciplina}_${trimestreStr}.pdf`
@@ -733,21 +760,21 @@ async function generateSecondaryEducationAllTrimestersPDF(
         headerRow1.push({
             content: '1º Trimestre',
             colSpan: componentes1T.length,
-            styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: [30, 64, 175] }
+            styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: getMapHeaderRgb(headerConfig) }
         })
     }
     if (componentes2T.length > 0) {
         headerRow1.push({
             content: '2º Trimestre',
             colSpan: componentes2T.length,
-            styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: [30, 64, 175] }
+            styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: getMapHeaderRgb(headerConfig) }
         })
     }
     if (componentes3T.length > 0) {
         headerRow1.push({
             content: '3º Trimestre',
             colSpan: componentes3T.length,
-            styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: [30, 64, 175] }
+            styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: getMapHeaderRgb(headerConfig) }
         })
     }
 
@@ -800,7 +827,7 @@ async function generateSecondaryEducationAllTrimestersPDF(
             overflow: 'linebreak'
         },
         headStyles: {
-            fillColor: [41, 128, 185],  // Blue for Secondary Education
+            fillColor: getMapHeaderRgb(headerConfig),
             textColor: 255,
             fontStyle: 'bold',
             halign: 'center',
@@ -839,9 +866,13 @@ async function generateSecondaryEducationAllTrimestersPDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    let finalY = (doc as any).lastAutoTable.finalY + 6
-    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
-    addPDFSignatures(doc, finalY, pageWidth, pageHeight)
+    addPDFStatisticsAndSignatures(
+        doc,
+        data,
+        (doc as any).lastAutoTable.finalY + 6,
+        pageWidth,
+        pageHeight
+    )
 
     const filename = `mini-pauta_${data.turma.codigo_turma}_${data.disciplina.codigo_disciplina}_todos.pdf`
     doc.save(filename)
@@ -899,7 +930,7 @@ async function generateSecondaryEducationSingleTrimesterPDF(
             overflow: 'linebreak'
         },
         headStyles: {
-            fillColor: [41, 128, 185],  // Blue for Secondary Education
+            fillColor: getMapHeaderRgb(headerConfig),
             textColor: 255,
             fontStyle: 'bold',
             halign: 'center'
@@ -936,9 +967,13 @@ async function generateSecondaryEducationSingleTrimesterPDF(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight)
     })
 
-    let finalY = (doc as any).lastAutoTable.finalY + 6
-    finalY = addPDFStatistics(doc, data, finalY, pageWidth, pageHeight)
-    addPDFSignatures(doc, finalY, pageWidth, pageHeight)
+    addPDFStatisticsAndSignatures(
+        doc,
+        data,
+        (doc as any).lastAutoTable.finalY + 6,
+        pageWidth,
+        pageHeight
+    )
 
     const trimestreStr = `${data.trimestre}trim`
     const filename = `mini-pauta_${data.turma.codigo_turma}_${data.disciplina.codigo_disciplina}_${trimestreStr}.pdf`
@@ -1235,6 +1270,7 @@ export async function generatePautaGeralPDF(
     }
     headerRow1.push({ content: 'GÊN', rowSpan: 2, styles: { halign: 'center', valign: 'middle', cellWidth: genColWidth } })
 
+    const pautaHeaderRgb = getMapHeaderRgb(headerConfig)
     disciplinas.forEach((disciplina) => {
         headerRow1.push({
             content: abbreviateDisciplineName(disciplina.nome, 10),
@@ -1243,7 +1279,7 @@ export async function generatePautaGeralPDF(
                 halign: 'center',
                 valign: 'middle',
                 fontStyle: 'bold',
-                fillColor: [30, 64, 175],
+                fillColor: pautaHeaderRgb,
                 fontSize: 6
             }
         })
@@ -1335,7 +1371,7 @@ export async function generatePautaGeralPDF(
             lineWidth: 0.1
         },
         headStyles: {
-            fillColor: [59, 130, 246],
+            fillColor: getMapHeaderRgb(headerConfig),
             textColor: 255,
             fontStyle: 'bold',
             halign: 'center',
@@ -1463,6 +1499,15 @@ export async function generatePautaGeralPDF(
 
     const legendBody = legendRows.map((r) => [r.item, r.detalhe])
     const legendTableWidth = Math.min(pageWidth - 20, 260)
+    const legendApproxHeight = Math.max(18, 10 + legendBody.length * 5)
+    const signaturesApproxHeight = 48
+    cursorY = ensureMiniPautaSpace(
+        doc,
+        cursorY,
+        legendApproxHeight + signaturesApproxHeight,
+        pageWidth,
+        pageHeight
+    )
 
     autoTable(doc, {
         startY: cursorY,
@@ -1672,13 +1717,22 @@ export async function generateConselhoNotasPDF(
         currentY += 1
     }
 
+    const parecer = doc.splitTextToSize(data.parecer_geral?.trim() || 'Sem parecer registado.', pageWidth - 28)
+    const parecerBlock = 8 + parecer.length * 4 + 6
+    currentY = ensureMiniPautaSpace(
+        doc,
+        currentY,
+        parecerBlock + 48,
+        pageWidth,
+        pageHeight
+    )
+
     doc.setFontSize(8)
     doc.setFont('helvetica', 'bold')
     doc.text('Parecer geral:', 14, currentY)
     doc.setFont('helvetica', 'normal')
-    const parecer = doc.splitTextToSize(data.parecer_geral?.trim() || 'Sem parecer registado.', pageWidth - 28)
     doc.text(parecer, 14, currentY + 4)
-    currentY += 4 + parecer.length * 4 + 6
+    currentY += parecerBlock
 
     addConselhoNotasSignatures(doc, currentY, pageWidth, pageHeight, {
         coordenador_nome: data.coordenador_nome,
@@ -2082,21 +2136,21 @@ export async function generateTermoFrequenciaPDF(
             headerRow1.push({
                 content: '1º TRIMESTRE',
                 colSpan: componentsT1.length,
-                styles: { halign: 'center', valign: 'middle', fillColor: [59, 130, 246] }
+                styles: { halign: 'center', valign: 'middle', fillColor: getMapHeaderRgb(headerConfig) }
             })
         }
         if (componentsT2.length > 0) {
             headerRow1.push({
                 content: '2º TRIMESTRE',
                 colSpan: componentsT2.length,
-                styles: { halign: 'center', valign: 'middle', fillColor: [59, 130, 246] }
+                styles: { halign: 'center', valign: 'middle', fillColor: getMapHeaderRgb(headerConfig) }
             })
         }
         if (componentsT3.length > 0) {
             headerRow1.push({
                 content: '3º TRIMESTRE',
                 colSpan: componentsT3.length,
-                styles: { halign: 'center', valign: 'middle', fillColor: [59, 130, 246] }
+                styles: { halign: 'center', valign: 'middle', fillColor: getMapHeaderRgb(headerConfig) }
             })
         }
 
@@ -2170,7 +2224,7 @@ export async function generateTermoFrequenciaPDF(
                 overflow: 'linebreak'
             },
             headStyles: {
-                fillColor: [59, 130, 246],
+                fillColor: getMapHeaderRgb(headerConfig),
                 textColor: 255,
                 fontStyle: 'bold',
                 halign: 'center',
@@ -2240,7 +2294,7 @@ export async function generateTermoFrequenciaPDF(
                 overflow: 'linebreak'
             },
             headStyles: {
-                fillColor: [59, 130, 246],
+                fillColor: getMapHeaderRgb(headerConfig),
                 textColor: 255,
                 fontStyle: 'bold',
                 halign: 'center'
@@ -2280,10 +2334,15 @@ export async function generateTermoFrequenciaPDF(
         })
     }
 
-    // Overall Statistics - Compact version
-    const finalY = (doc as any).lastAutoTable.finalY + 8
+    // Keep statistics + signatures together (never orphan signatures alone)
+    const finalY = ensureMiniPautaSpace(
+        doc,
+        (doc as any).lastAutoTable.finalY + 8,
+        40,
+        pageWidth,
+        pageHeight
+    )
 
-    // Statistics in smaller font, inline format
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
     doc.text('ESTATÍSTICAS:', 14, finalY)
@@ -2293,44 +2352,36 @@ export async function generateTermoFrequenciaPDF(
     const statsText = `Total: ${data.estatisticas.total_disciplinas} | Aprov.: ${data.estatisticas.disciplinas_aprovadas} | Reprov.: ${data.estatisticas.disciplinas_reprovadas} | Média Geral: ${data.estatisticas.media_geral.toFixed(2)}`
     doc.text(statsText, 45, finalY)
 
-    // Final observation - positioned to the right
     doc.setFontSize(11)
     doc.setFont('helvetica', 'bold')
-
-    const obsY = finalY
     if (data.estatisticas.transita) {
-        doc.setTextColor(37, 99, 235)  // Blue
-        doc.text('OBSERVAÇÃO: TRANSITA', pageWidth - 14, obsY, { align: 'right' })
+        doc.setTextColor(37, 99, 235)
+        doc.text('OBSERVAÇÃO: TRANSITA', pageWidth - 14, finalY, { align: 'right' })
     } else {
-        doc.setTextColor(239, 68, 68)  // Red
-        doc.text('OBSERVAÇÃO: NÃO TRANSITA', pageWidth - 14, obsY, { align: 'right' })
+        doc.setTextColor(239, 68, 68)
+        doc.text('OBSERVAÇÃO: NÃO TRANSITA', pageWidth - 14, finalY, { align: 'right' })
     }
-    doc.setTextColor(0, 0, 0)  // Reset to black
+    doc.setTextColor(0, 0, 0)
 
-    // Signatures section
     const signY = finalY + 25
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
 
-    // Three signature boxes
     const signWidth = (pageWidth - 56) / 3
     const signX1 = 14
     const signX2 = 14 + signWidth + 14
     const signX3 = 14 + (signWidth + 14) * 2
 
-    // Signature lines
     doc.setDrawColor(100, 100, 100)
     doc.line(signX1, signY, signX1 + signWidth, signY)
     doc.line(signX2, signY, signX2 + signWidth, signY)
     doc.line(signX3, signY, signX3 + signWidth, signY)
 
-    // Labels
     doc.setFontSize(8)
     doc.text('O(A) Director(a) de Turma', signX1 + signWidth / 2, signY + 4, { align: 'center' })
     doc.text('O(A) Director(a) Pedagógico(a)', signX2 + signWidth / 2, signY + 4, { align: 'center' })
     doc.text('O(A) Director(a) Geral', signX3 + signWidth / 2, signY + 4, { align: 'center' })
 
-    // Save
     const filename = `termo-frequencia_${data.aluno.numero_processo}_${data.turma.ano_lectivo}.pdf`
     doc.save(filename)
 }
@@ -2406,21 +2457,21 @@ export async function generateTermoFrequenciaPDFBlob(
             headerRow1.push({
                 content: '1º TRIMESTRE',
                 colSpan: componentsT1.length,
-                styles: { halign: 'center', valign: 'middle', fillColor: [59, 130, 246] }
+                styles: { halign: 'center', valign: 'middle', fillColor: getMapHeaderRgb(headerConfig) }
             })
         }
         if (componentsT2.length > 0) {
             headerRow1.push({
                 content: '2º TRIMESTRE',
                 colSpan: componentsT2.length,
-                styles: { halign: 'center', valign: 'middle', fillColor: [59, 130, 246] }
+                styles: { halign: 'center', valign: 'middle', fillColor: getMapHeaderRgb(headerConfig) }
             })
         }
         if (componentsT3.length > 0) {
             headerRow1.push({
                 content: '3º TRIMESTRE',
                 colSpan: componentsT3.length,
-                styles: { halign: 'center', valign: 'middle', fillColor: [59, 130, 246] }
+                styles: { halign: 'center', valign: 'middle', fillColor: getMapHeaderRgb(headerConfig) }
             })
         }
 
@@ -2494,7 +2545,7 @@ export async function generateTermoFrequenciaPDFBlob(
                 overflow: 'linebreak'
             },
             headStyles: {
-                fillColor: [59, 130, 246],
+                fillColor: getMapHeaderRgb(headerConfig),
                 textColor: 255,
                 fontStyle: 'bold',
                 halign: 'center',
@@ -2564,7 +2615,7 @@ export async function generateTermoFrequenciaPDFBlob(
                 overflow: 'linebreak'
             },
             headStyles: {
-                fillColor: [59, 130, 246],
+                fillColor: getMapHeaderRgb(headerConfig),
                 textColor: 255,
                 fontStyle: 'bold',
                 halign: 'center'
@@ -2604,10 +2655,14 @@ export async function generateTermoFrequenciaPDFBlob(
         })
     }
 
-    // Overall Statistics - Compact version
-    const finalY = (doc as any).lastAutoTable.finalY + 8
+    const finalY = ensureMiniPautaSpace(
+        doc,
+        (doc as any).lastAutoTable.finalY + 8,
+        40,
+        pageWidth,
+        pageHeight
+    )
 
-    // Statistics in smaller font, inline format
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
     doc.text('ESTATÍSTICAS:', 14, finalY)
@@ -2617,44 +2672,36 @@ export async function generateTermoFrequenciaPDFBlob(
     const statsText = `Total: ${data.estatisticas.total_disciplinas} | Aprov.: ${data.estatisticas.disciplinas_aprovadas} | Reprov.: ${data.estatisticas.disciplinas_reprovadas} | Média Geral: ${data.estatisticas.media_geral.toFixed(2)}`
     doc.text(statsText, 45, finalY)
 
-    // Final observation - positioned to the right
     doc.setFontSize(11)
     doc.setFont('helvetica', 'bold')
-
-    const obsY = finalY
     if (data.estatisticas.transita) {
-        doc.setTextColor(37, 99, 235)  // Blue
-        doc.text('OBSERVAÇÃO: TRANSITA', pageWidth - 14, obsY, { align: 'right' })
+        doc.setTextColor(37, 99, 235)
+        doc.text('OBSERVAÇÃO: TRANSITA', pageWidth - 14, finalY, { align: 'right' })
     } else {
-        doc.setTextColor(239, 68, 68)  // Red
-        doc.text('OBSERVAÇÃO: NÃO TRANSITA', pageWidth - 14, obsY, { align: 'right' })
+        doc.setTextColor(239, 68, 68)
+        doc.text('OBSERVAÇÃO: NÃO TRANSITA', pageWidth - 14, finalY, { align: 'right' })
     }
-    doc.setTextColor(0, 0, 0)  // Reset to black
+    doc.setTextColor(0, 0, 0)
 
-    // Signatures section
     const signY = finalY + 25
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
 
-    // Three signature boxes
     const signWidth = (pageWidth - 56) / 3
     const signX1 = 14
     const signX2 = 14 + signWidth + 14
     const signX3 = 14 + (signWidth + 14) * 2
 
-    // Signature lines
     doc.setDrawColor(100, 100, 100)
     doc.line(signX1, signY, signX1 + signWidth, signY)
     doc.line(signX2, signY, signX2 + signWidth, signY)
     doc.line(signX3, signY, signX3 + signWidth, signY)
 
-    // Labels
     doc.setFontSize(8)
     doc.text('O(A) Director(a) de Turma', signX1 + signWidth / 2, signY + 4, { align: 'center' })
     doc.text('O(A) Director(a) Pedagógico(a)', signX2 + signWidth / 2, signY + 4, { align: 'center' })
     doc.text('O(A) Director(a) Geral', signX3 + signWidth / 2, signY + 4, { align: 'center' })
 
-    // Return as Blob instead of saving
     return doc.output('blob')
 }
 
@@ -2852,19 +2899,19 @@ export async function generateMapaAproveitamentoPDF(
         // Build header arrays for autoTable
         const head: any[][] = [
             [
-                { content: 'Disciplinas', rowSpan: 2, styles: { valign: 'middle', halign: 'left', fontStyle: 'bold', fillColor: [15, 40, 100], textColor: 255 } },
+                { content: 'Disciplinas', rowSpan: 2, styles: { valign: 'middle', halign: 'left', fontStyle: 'bold', fillColor: getMapHeaderRgb(headerConfig, DEFAULT_MAP_HEADER_COLOR_MAPA), textColor: 255 } },
                 ...colGroups.map(g => ({
                     content: g,
                     colSpan: 3,
-                    styles: { halign: 'center', fontStyle: 'bold', fillColor: [15, 40, 100], textColor: 255 }
+                    styles: { halign: 'center', fontStyle: 'bold', fillColor: getMapHeaderRgb(headerConfig, DEFAULT_MAP_HEADER_COLOR_MAPA), textColor: 255 }
                 })),
-                { content: 'Média', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', fillColor: [15, 40, 100], textColor: 255 } }
+                { content: 'Média', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', fillColor: getMapHeaderRgb(headerConfig, DEFAULT_MAP_HEADER_COLOR_MAPA), textColor: 255 } }
             ],
             [
                 ...Array(6).fill(null).flatMap(() =>
                     subHeaders.map(s => ({
                         content: s,
-                        styles: { halign: 'center', fontStyle: 'bold', fillColor: [30, 60, 140], textColor: 255 }
+                        styles: { halign: 'center', fontStyle: 'bold', fillColor: getMapHeaderRgbAlt(headerConfig, DEFAULT_MAP_HEADER_COLOR_MAPA), textColor: 255 }
                     }))
                 )
             ]
@@ -3300,7 +3347,7 @@ export async function generateBoletimNotasPDFBlob(
             halign: 'center',
         },
         headStyles: {
-            fillColor: [37, 99, 235],
+            fillColor: getMapHeaderRgb(headerConfig),
             textColor: 255,
             fontStyle: 'bold',
             halign: 'center',
@@ -3341,7 +3388,14 @@ export async function generateBoletimNotasPDFBlob(
         didDrawPage: () => addPDFFooter(doc, pageWidth, pageHeight),
     })
 
-    const finalY = (doc as any).lastAutoTable.finalY + 8
+    // Keep summary + signatures together (never orphan signatures alone on a page)
+    let finalY = ensureMiniPautaSpace(
+        doc,
+        (doc as any).lastAutoTable.finalY + 8,
+        48,
+        pageWidth,
+        pageHeight
+    )
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
     doc.text('RESUMO DO TRIMESTRE', 14, finalY)
@@ -3353,14 +3407,7 @@ export async function generateBoletimNotasPDFBlob(
     const nivelLabel = data.estatisticas.is_primary ? 'Ensino Primário' : 'Ensino Secundário'
     doc.text(`Escala de aproveitamento conforme ${nivelLabel}.`, 14, finalY + 10)
 
-    // Signatures
-    let signY = finalY + 28
-    if (signY + 20 > pageHeight - 14) {
-        doc.addPage()
-        signY = 30
-        addPDFFooter(doc, pageWidth, pageHeight)
-    }
-
+    const signY = finalY + 28
     const signWidth = (pageWidth - 56) / 3
     const signXs = [14, 14 + signWidth + 14, 14 + (signWidth + 14) * 2]
     const signLabels = [
@@ -3421,5 +3468,264 @@ export async function generateBatchBoletinsZip(
     link.download = `boletins_T${first?.trimestre ?? 1}_${first?.turma.ano_lectivo ?? ''}.zip`
     link.click()
     URL.revokeObjectURL(url)
+}
+
+/** Dados do Quadro de Honra / Prémio de Mérito para PDF */
+export interface QuadroHonraPDFEntry {
+    posicao: number
+    aluno_id?: string
+    numero_processo: string
+    nome_completo: string
+    nota: number
+    nota_arredondada: number
+    classificacao: string
+    medalha: string | null
+    foto_url?: string | null
+}
+
+export interface QuadroHonraPDFData {
+    escola: {
+        nome: string
+        provincia: string
+        municipio: string
+        codigo_escola?: string
+    }
+    turma: {
+        id: string
+        nome: string
+        codigo_turma: string
+        ano_lectivo: string | number
+        nivel_ensino: string
+        classe?: string
+    }
+    trimestre: 1 | 2 | 3 | 'anual'
+    mode: 'disciplina' | 'global'
+    disciplinas: Array<{
+        disciplina_id: string
+        disciplina_nome: string
+        disciplina_codigo?: string
+        entries: QuadroHonraPDFEntry[]
+    }>
+    globalEntries?: QuadroHonraPDFEntry[]
+}
+
+async function drawQuadroHonraCards(
+    doc: jsPDF,
+    entries: QuadroHonraPDFEntry[],
+    startY: number,
+    pageWidth: number,
+    pageHeight: number
+): Promise<number> {
+    const marginX = 12
+    const gap = 4
+    const cols = 3
+    const cardW = (pageWidth - marginX * 2 - gap * (cols - 1)) / cols
+    const cardH = 52
+    const photoW = 18
+    const photoH = 24
+    let y = startY
+    let col = 0
+
+    for (const entry of entries) {
+        if (y + cardH > pageHeight - 14) {
+            doc.addPage()
+            y = 14
+            col = 0
+        }
+
+        const x = marginX + col * (cardW + gap)
+
+        doc.setDrawColor(212, 175, 55)
+        doc.setFillColor(255, 252, 245)
+        doc.roundedRect(x, y, cardW, cardH, 2, 2, 'FD')
+
+        // Accent bar by medal
+        if (entry.medalha === 'Ouro') doc.setFillColor(245, 158, 11)
+        else if (entry.medalha === 'Prata') doc.setFillColor(148, 163, 184)
+        else if (entry.medalha === 'Bronze') doc.setFillColor(194, 105, 42)
+        else doc.setFillColor(180, 120, 20)
+        doc.rect(x, y, cardW, 2.2, 'F')
+
+        // Position badge
+        doc.setFillColor(30, 41, 59)
+        doc.circle(x + 5, y + 7, 3.2, 'F')
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(7)
+        doc.setFont('helvetica', 'bold')
+        doc.text(`${entry.posicao}º`, x + 5, y + 8.1, { align: 'center' })
+
+        // Passport photo
+        const photoX = x + 6
+        const photoY = y + 12
+        doc.setDrawColor(203, 213, 225)
+        doc.setFillColor(241, 245, 249)
+        doc.roundedRect(photoX, photoY, photoW, photoH, 1, 1, 'FD')
+
+        if (entry.foto_url) {
+            try {
+                const base64 = await imageUrlToBase64(entry.foto_url)
+                const fmt = getImageFormat(entry.foto_url)
+                doc.addImage(base64, fmt, photoX + 0.4, photoY + 0.4, photoW - 0.8, photoH - 0.8)
+            } catch (_) {
+                doc.setTextColor(100, 116, 139)
+                doc.setFontSize(6)
+                doc.setFont('helvetica', 'normal')
+                doc.text('Sem foto', photoX + photoW / 2, photoY + photoH / 2, { align: 'center' })
+            }
+        } else {
+            doc.setTextColor(100, 116, 139)
+            doc.setFontSize(6)
+            doc.setFont('helvetica', 'normal')
+            doc.text('Sem foto', photoX + photoW / 2, photoY + photoH / 2, { align: 'center' })
+        }
+
+        const textX = photoX + photoW + 3
+        const textMaxW = cardW - photoW - 12
+
+        doc.setTextColor(15, 23, 42)
+        doc.setFontSize(8)
+        doc.setFont('helvetica', 'bold')
+        const nomeLines = doc.splitTextToSize(entry.nome_completo, textMaxW)
+        doc.text(nomeLines.slice(0, 2), textX, y + 16)
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(6.5)
+        doc.setTextColor(100, 116, 139)
+        doc.text(`N.º ${entry.numero_processo}`, textX, y + 26)
+
+        doc.setTextColor(146, 64, 14)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(11)
+        doc.text(entry.nota.toFixed(1), textX, y + 34)
+
+        doc.setFontSize(6.5)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(71, 85, 105)
+        doc.text(`${entry.classificacao} · arred. ${entry.nota_arredondada}`, textX, y + 39)
+
+        if (entry.medalha) {
+            doc.setFont('helvetica', 'bold')
+            doc.setFontSize(7)
+            doc.setTextColor(120, 53, 15)
+            doc.text(entry.medalha.toUpperCase(), textX, y + 45)
+        }
+
+        col += 1
+        if (col >= cols) {
+            col = 0
+            y += cardH + gap
+        }
+    }
+
+    if (col !== 0) y += cardH + gap
+    return y
+}
+
+/**
+ * PDF do Quadro de Honra (anual) / Prémio de Mérito (trimestral) — Dec. Ext. 76/24
+ * Layout em cartões com fotografia tipo passe.
+ */
+export async function generateQuadroHonraPDF(
+    data: QuadroHonraPDFData,
+    headerConfig?: HeaderConfig | null
+): Promise<void> {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const trimLabel = data.trimestre === 'anual' ? 'Anual' : `${data.trimestre}º Trimestre`
+    const distincao = data.trimestre === 'anual' ? 'QUADRO DE HONRA' : 'PRÉMIO DE MÉRITO'
+    const escola = headerConfig?.nome_escola || data.escola.nome
+    const provincia = headerConfig?.provincia || data.escola.provincia
+    const municipio = headerConfig?.municipio || data.escola.municipio
+
+    let y = 12
+
+    if (headerConfig?.logo_url) {
+        try {
+            const base64Image = await imageUrlToBase64(headerConfig.logo_url)
+            const imageFormat = getImageFormat(headerConfig.logo_url)
+            const lw = 16, lh = 16
+            doc.addImage(base64Image, imageFormat, (pageWidth - lw) / 2, y, lw, lh)
+            y += lh + 2
+        } catch (_) { /* skip */ }
+    }
+
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(30, 41, 59)
+    if (headerConfig?.mostrar_republica && headerConfig?.texto_republica) {
+        doc.text(headerConfig.texto_republica, pageWidth / 2, y, { align: 'center' })
+        y += 4
+    }
+    if (headerConfig?.mostrar_governo_provincial) {
+        doc.text(`Governo Provincial da ${provincia}`, pageWidth / 2, y, { align: 'center' })
+        y += 4
+    }
+    if (headerConfig?.mostrar_orgao_educacao && headerConfig?.nivel_ensino) {
+        doc.text(getOrgaoEducacao(headerConfig.nivel_ensino, provincia, municipio), pageWidth / 2, y, { align: 'center' })
+        y += 4
+    }
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text(escola, pageWidth / 2, y, { align: 'center' })
+    y += 6
+
+    doc.setFontSize(14)
+    doc.setTextColor(180, 83, 9)
+    doc.text(distincao, pageWidth / 2, y, { align: 'center' })
+    y += 5
+
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(71, 85, 105)
+    doc.text(
+        `Decreto Executivo n.º 76/24 — MED  |  ${trimLabel}  |  Ano Lectivo ${data.turma.ano_lectivo}`,
+        pageWidth / 2, y, { align: 'center' }
+    )
+    y += 4
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(15, 23, 42)
+    doc.text(
+        `Turma: ${data.turma.codigo_turma} — ${data.turma.nome}${data.turma.classe ? ` · ${data.turma.classe}` : ''}`,
+        pageWidth / 2, y, { align: 'center' }
+    )
+    y += 8
+
+    if (data.mode === 'global' && data.globalEntries) {
+        y = await drawQuadroHonraCards(doc, data.globalEntries, y, pageWidth, pageHeight)
+    } else {
+        for (let i = 0; i < data.disciplinas.length; i++) {
+            const disc = data.disciplinas[i]
+            if (y > pageHeight - 70) {
+                doc.addPage()
+                y = 14
+            }
+
+            doc.setFontSize(11)
+            doc.setFont('helvetica', 'bold')
+            doc.setTextColor(15, 23, 42)
+            doc.text(
+                `${disc.disciplina_nome}${disc.disciplina_codigo ? ` (${disc.disciplina_codigo})` : ''}`,
+                12, y
+            )
+            y += 4
+
+            if (disc.entries.length === 0) {
+                doc.setFont('helvetica', 'normal')
+                doc.setFontSize(8)
+                doc.setTextColor(100, 116, 139)
+                doc.text('Nenhum aluno elegível nesta disciplina.', 12, y + 4)
+                y += 10
+            } else {
+                y = await drawQuadroHonraCards(doc, disc.entries, y, pageWidth, pageHeight)
+                y += 4
+            }
+        }
+    }
+
+    const filenamePeriodo = data.trimestre === 'anual' ? 'anual' : `T${data.trimestre}`
+    const filenameTipo = data.trimestre === 'anual' ? 'quadro_honra' : 'premio_merito'
+    doc.save(`${filenameTipo}_${data.turma.codigo_turma}_${filenamePeriodo}.pdf`)
 }
 
