@@ -96,6 +96,12 @@ export const PautaGeralPreview: React.FC<Props> = ({
     disciplinasMetricas,
 }) => {
     const [expandedStudent, setExpandedStudent] = useState<string | null>(null)
+    // UI-only observation aid in preview — never passed to PDF/Excel/CSV export.
+    const [highlightedStudent, setHighlightedStudent] = useState<string | null>(null)
+
+    const toggleStudentHighlight = (studentKey: string) => {
+        setHighlightedStudent((prev) => (prev === studentKey ? null : studentKey))
+    }
 
     if (loading) {
         return (
@@ -190,26 +196,43 @@ export const PautaGeralPreview: React.FC<Props> = ({
     const StudentCard = ({ aluno, index }: { aluno: any; index: number }) => {
         const { media: mediaGeralDinamica, observacao: observacaoDinamica } = calculateClassificationForSelectedDisciplinas(aluno)
         const isExpanded = expandedStudent === aluno.numero_processo
+        const isHighlighted = highlightedStudent === aluno.numero_processo
 
         return (
             <div
-                className={`bg-white rounded-xl border transition-all duration-200 overflow-hidden ${isExpanded ? 'shadow-lg border-blue-200' : 'shadow-sm border-slate-200 hover:shadow-md'
+                className={`rounded-xl border transition-all duration-200 overflow-hidden ${
+                    isHighlighted
+                        ? 'bg-amber-50 shadow-md border-amber-300 ring-1 ring-amber-200'
+                        : isExpanded
+                            ? 'bg-white shadow-lg border-blue-200'
+                            : 'bg-white shadow-sm border-slate-200 hover:shadow-md'
                     }`}
                 style={{ animationDelay: `${index * 50}ms` }}
             >
                 {/* Card Header - Always Visible */}
-                <button
-                    onClick={() => setExpandedStudent(isExpanded ? null : aluno.numero_processo)}
-                    className="w-full p-4 flex items-center gap-3 text-left"
-                >
+                <div className="w-full p-4 flex items-center gap-3 text-left">
                     {/* Student Number */}
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                        <span className="text-sm font-bold text-blue-700">{index + 1}</span>
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        isHighlighted ? 'bg-amber-200' : 'bg-blue-100'
+                    }`}>
+                        <span className={`text-sm font-bold ${isHighlighted ? 'text-amber-800' : 'text-blue-700'}`}>{index + 1}</span>
                     </div>
 
-                    {/* Name & Info */}
+                    {/* Name & Info — click name to highlight; rest expands details */}
                     <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-slate-800 truncate">{aluno.nome_completo}</p>
+                        <button
+                            type="button"
+                            aria-pressed={isHighlighted}
+                            title={isHighlighted ? 'Remover destaque desta linha' : 'Destacar esta linha para observação'}
+                            onClick={() => toggleStudentHighlight(aluno.numero_processo)}
+                            className={`font-semibold truncate cursor-pointer rounded px-1 -mx-1 transition-colors text-left max-w-full ${
+                                isHighlighted
+                                    ? 'text-amber-900 bg-amber-100/80'
+                                    : 'text-slate-800 hover:bg-slate-100'
+                            }`}
+                        >
+                            {aluno.nome_completo}
+                        </button>
                         <div className="flex items-center gap-2 mt-0.5">
                             {aluno.genero && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${aluno.genero === 'M' ? 'bg-blue-50 text-blue-600' : 'bg-pink-50 text-pink-600'
@@ -221,22 +244,28 @@ export const PautaGeralPreview: React.FC<Props> = ({
                         </div>
                     </div>
 
-                    {/* Average & Status */}
-                    <div className="flex-shrink-0 text-right">
-                        <div className="text-lg font-bold text-slate-900">{mediaGeralDinamica.toFixed(1)}</div>
-                        <StatusBadge observacao={observacaoDinamica} matriculaCondicional={aluno.matricula_condicional} />
-                    </div>
-
-                    {/* Expand Arrow */}
-                    <svg
-                        className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    {/* Average & Status + expand control */}
+                    <button
+                        type="button"
+                        onClick={() => setExpandedStudent(isExpanded ? null : aluno.numero_processo)}
+                        className="flex-shrink-0 flex items-center gap-2 text-right"
+                        aria-expanded={isExpanded}
+                        aria-label={isExpanded ? 'Recolher detalhes do aluno' : 'Expandir detalhes do aluno'}
                     >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
+                        <div>
+                            <div className="text-lg font-bold text-slate-900">{mediaGeralDinamica.toFixed(1)}</div>
+                            <StatusBadge observacao={observacaoDinamica} matriculaCondicional={aluno.matricula_condicional} />
+                        </div>
+                        <svg
+                            className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                </div>
 
                 {/* Expanded Content - Grades by Discipline */}
                 {isExpanded && (
@@ -404,23 +433,46 @@ export const PautaGeralPreview: React.FC<Props> = ({
                                     media: mediaGeralDinamica,
                                     observacao: observacaoDinamica
                                 } = calculateClassificationForSelectedDisciplinas(aluno)
+                                const isHighlighted = highlightedStudent === aluno.numero_processo
+                                const stickyBg = isHighlighted ? 'bg-amber-100' : 'bg-white'
+                                const rowTone = isHighlighted
+                                    ? 'bg-amber-50 hover:bg-amber-100/80'
+                                    : 'hover:bg-blue-50/50'
 
                                 return (
                                     <tr
                                         key={index}
-                                        className="hover:bg-blue-50/50 transition-colors"
+                                        className={`${rowTone} transition-colors ${isHighlighted ? 'shadow-[inset_3px_0_0_0_#f59e0b]' : ''}`}
+                                        aria-selected={isHighlighted}
                                     >
                                         {fieldSelection.showNumeroProcesso && (
-                                            <td className="border border-slate-200 px-3 py-2 whitespace-nowrap text-sm text-slate-700 font-medium bg-white sticky left-0">
+                                            <td className={`border border-slate-200 px-3 py-2 whitespace-nowrap text-sm text-slate-700 font-medium sticky left-0 ${stickyBg}`}>
                                                 {index + 1}
                                             </td>
                                         )}
                                         {fieldSelection.showNomeCompleto && (
-                                            <td className="border border-slate-200 px-4 py-2 whitespace-nowrap text-sm text-slate-900 font-medium bg-white sticky left-12">
+                                            <td
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-pressed={isHighlighted}
+                                                title={isHighlighted ? 'Remover destaque desta linha' : 'Destacar esta linha para observação'}
+                                                onClick={() => toggleStudentHighlight(aluno.numero_processo)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault()
+                                                        toggleStudentHighlight(aluno.numero_processo)
+                                                    }
+                                                }}
+                                                className={`border border-slate-200 px-4 py-2 whitespace-nowrap text-sm font-medium sticky left-12 cursor-pointer select-none ${
+                                                    isHighlighted
+                                                        ? 'bg-amber-100 text-amber-950'
+                                                        : 'bg-white text-slate-900 hover:bg-slate-50'
+                                                }`}
+                                            >
                                                 {aluno.nome_completo}
                                             </td>
                                         )}
-                                        <td className="border border-slate-200 px-2 py-2 whitespace-nowrap text-center text-sm text-slate-600 bg-white">
+                                        <td className={`border border-slate-200 px-2 py-2 whitespace-nowrap text-center text-sm text-slate-600 ${stickyBg}`}>
                                             <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium ${aluno.genero === 'M' ? 'bg-blue-100 text-blue-700' :
                                                 aluno.genero === 'F' ? 'bg-pink-100 text-pink-700' :
                                                     'bg-slate-100 text-slate-500'
@@ -443,7 +495,12 @@ export const PautaGeralPreview: React.FC<Props> = ({
                                                 return (
                                                     <td
                                                         key={componente.id}
-                                                        className={`border border-slate-200 px-2 py-2 whitespace-nowrap text-center text-sm font-semibold ${isFinal ? 'bg-amber-50/50' : ''
+                                                        className={`border border-slate-200 px-2 py-2 whitespace-nowrap text-center text-sm font-semibold ${
+                                                            isHighlighted
+                                                                ? 'bg-amber-50'
+                                                                : isFinal
+                                                                    ? 'bg-amber-50/50'
+                                                                    : ''
                                                             }`}
                                                         style={{ color }}
                                                     >
@@ -453,14 +510,21 @@ export const PautaGeralPreview: React.FC<Props> = ({
                                             })
                                         })}
                                         {fieldSelection.showMediaGeral && (
-                                            <td className="border border-slate-200 px-3 py-2 whitespace-nowrap text-center text-sm font-bold bg-amber-50 text-amber-800">
+                                            <td className={`border border-slate-200 px-3 py-2 whitespace-nowrap text-center text-sm font-bold text-amber-800 ${
+                                                isHighlighted ? 'bg-amber-100' : 'bg-amber-50'
+                                            }`}>
                                                 {mediaGeralDinamica.toFixed(2)}
                                             </td>
                                         )}
                                         {/* Frequência */}
-                                        <td className={`border border-slate-200 px-2 py-2 whitespace-nowrap text-center text-sm font-semibold ${aluno.frequencia_anual !== undefined && aluno.frequencia_anual !== null && aluno.frequencia_anual < 66.67
-                                            ? 'bg-red-50 text-red-700'
-                                            : 'bg-green-50 text-green-700'
+                                        <td className={`border border-slate-200 px-2 py-2 whitespace-nowrap text-center text-sm font-semibold ${
+                                            isHighlighted
+                                                ? (aluno.frequencia_anual !== undefined && aluno.frequencia_anual !== null && aluno.frequencia_anual < 66.67
+                                                    ? 'bg-amber-100 text-red-700'
+                                                    : 'bg-amber-100 text-green-700')
+                                                : (aluno.frequencia_anual !== undefined && aluno.frequencia_anual !== null && aluno.frequencia_anual < 66.67
+                                                    ? 'bg-red-50 text-red-700'
+                                                    : 'bg-green-50 text-green-700')
                                             }`}>
                                             {aluno.frequencia_anual !== undefined && aluno.frequencia_anual !== null
                                                 ? `${aluno.frequencia_anual.toFixed(1)}%`
@@ -468,7 +532,7 @@ export const PautaGeralPreview: React.FC<Props> = ({
                                             }
                                         </td>
                                         {fieldSelection.showObservacao && (
-                                            <td className="border border-slate-200 px-4 py-2">
+                                            <td className={`border border-slate-200 px-4 py-2 ${isHighlighted ? 'bg-amber-50' : ''}`}>
                                                 <StatusBadge observacao={observacaoDinamica} matriculaCondicional={aluno.matricula_condicional} />
                                             </td>
                                         )}

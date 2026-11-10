@@ -1310,6 +1310,8 @@ export async function generatePautaGeralPDF(
         })
     })
 
+    // Body rows are built only from academic data. Preview row highlighting
+    // (amber selection in PautaGeralPreview) is UI-only and must never tint PDF rows.
     const tableData = data.alunos.map((aluno, index) => {
         const row: any[] = []
         if (cfg.showNumeroProcesso) row.push((index + 1).toString())

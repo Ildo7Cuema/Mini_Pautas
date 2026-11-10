@@ -789,6 +789,7 @@ export const PautaGeralPage: React.FC<PautaGeralPageProps> = ({ onGoToConselho }
         }
 
         try {
+            // Export uses academic data only; preview row highlight is not part of the payload.
             await generatePautaGeralPDF(
                 bundle.data,
                 headerConfig,
