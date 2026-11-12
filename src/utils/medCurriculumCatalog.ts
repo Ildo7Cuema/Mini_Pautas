@@ -7,10 +7,15 @@
  * - Plano curricular do Iº Ciclo do Ensino Secundário Geral — 7ª–9ª
  * - Estrutura do IIº Ciclo do Ensino Secundário Geral — 10ª–13ª
  * - Avaliação: MAC / NPT / MT / MF (prática RAA usada no sistema)
+ * - Exame combinado (NEE / NEO / MEC): Decreto Executivo n.º 276/20,
+ *   Calendário Escolar MED e Decreto Executivo n.º 424/25 —
+ *   Língua Portuguesa e línguas estrangeiras no I/II Ciclo (classes de exame)
  *
  * Os templates gerados são editáveis: a escola pode adicionar, alterar ou apagar.
  */
 
+import type { EscolaNatureza } from './angolaGradeScale'
+import { isPrivateInstitution } from './angolaGradeScale'
 import {
     CLASSES_ENSINO_PRIMARIO,
     CLASSES_ENSINO_SECUNDARIO_I,
@@ -88,6 +93,112 @@ export const MED_COMPONENTES_AVALIACAO: MedComponenteDef[] = [
         trimestres: [3],
     },
 ]
+
+/**
+ * Exame combinado escrito + oral (instituições públicas / público-privadas).
+ * Decreto 276/20 art. 12.º e Calendário Escolar MED:
+ * MEC = (NEE + NEO) / 2
+ * MFD = 0,6 × MAC(A) + 0,4 × MEC
+ *
+ * Aplica-se a Língua Portuguesa e línguas estrangeiras nas classes de exame
+ * do Iº e IIº Ciclo (9ª, 12ª e 13ª).
+ */
+export const MED_COMPONENTES_EXAME_COMBINADO: MedComponenteDef[] = [
+    {
+        nome: 'Nota do Exame Escrito',
+        codigo_componente: 'NEE',
+        peso_percentual: 100,
+        ordem: 5,
+        is_calculated: false,
+        tipo_calculo: 'anual',
+        trimestres: [3],
+    },
+    {
+        nome: 'Nota do Exame Oral',
+        codigo_componente: 'NEO',
+        peso_percentual: 100,
+        ordem: 6,
+        is_calculated: false,
+        tipo_calculo: 'anual',
+        trimestres: [3],
+    },
+    {
+        nome: 'Média do Exame Combinado',
+        codigo_componente: 'MEC',
+        peso_percentual: 100,
+        ordem: 7,
+        is_calculated: true,
+        formula_expression: '(NEE + NEO) / 2',
+        depends_on_codes: ['NEE', 'NEO'],
+        tipo_calculo: 'anual',
+        trimestres: [3],
+    },
+    {
+        nome: 'Média Final da Disciplina (com exame combinado)',
+        codigo_componente: 'MFD',
+        peso_percentual: 100,
+        ordem: 8,
+        is_calculated: true,
+        // MAC(A) = média anual das avaliações contínuas trimestrais
+        formula_expression: '0.6 * ((MAC1 + MAC2 + MAC3) / 3) + 0.4 * MEC',
+        depends_on_codes: ['MAC', 'MEC'],
+        tipo_calculo: 'anual',
+        trimestres: [3],
+    },
+]
+
+/** Códigos de disciplinas de língua com exame combinado (escrito + oral). */
+export const MED_LINGUAS_EXAME_COMBINADO = new Set(['LP', 'ING', 'FRA', 'FR', 'LE'])
+
+/** Classes de exame do Iº/IIº Ciclo onde o exame combinado se enquadra. */
+export const MED_CLASSES_EXAME_COMBINADO = new Set([9, 12, 13])
+
+export function isLinguaComExameCombinado(codigoDisciplina: string): boolean {
+    return MED_LINGUAS_EXAME_COMBINADO.has(String(codigoDisciplina || '').trim().toUpperCase())
+}
+
+export function classeTemExameCombinado(classe: string): boolean {
+    const num = parseInt(String(classe).match(/(\d+)/)?.[1] || '0', 10)
+    return MED_CLASSES_EXAME_COMBINADO.has(num)
+}
+
+/**
+ * Componentes a pré-cadastrar para uma disciplina/classe.
+ * NEE/NEO/MEC/MFD só em escolas não privadas, línguas, classes 9ª/12ª/13ª.
+ */
+export function getMedComponentesForDisciplina(opts: {
+    classe: string
+    codigoDisciplina: string
+    natureza?: EscolaNatureza | null
+}): MedComponenteDef[] {
+    const base = MED_COMPONENTES_AVALIACAO.map((c) => ({
+        ...c,
+        depends_on_codes: c.depends_on_codes ? [...c.depends_on_codes] : undefined,
+        trimestres: [...c.trimestres],
+    }))
+
+    if (isPrivateInstitution(opts.natureza)) return base
+    if (!classeTemExameCombinado(opts.classe)) return base
+    if (!isLinguaComExameCombinado(opts.codigoDisciplina)) return base
+
+    return [
+        ...base,
+        ...MED_COMPONENTES_EXAME_COMBINADO.map((c) => ({
+            ...c,
+            depends_on_codes: c.depends_on_codes ? [...c.depends_on_codes] : undefined,
+            trimestres: [...c.trimestres],
+        })),
+    ]
+}
+
+/** Todos os códigos de componentes do catálogo normativo (base + exame combinado). */
+export function getAllMedComponenteDefs(): MedComponenteDef[] {
+    const byCode = new Map<string, MedComponenteDef>()
+    for (const c of [...MED_COMPONENTES_AVALIACAO, ...MED_COMPONENTES_EXAME_COMBINADO]) {
+        byCode.set(c.codigo_componente.toUpperCase(), c)
+    }
+    return [...byCode.values()]
+}
 
 /** 1ª–4ª Classe — Ensino Primário (INADE). */
 const PRIMARIO_1_4: MedDisciplinaDef[] = [

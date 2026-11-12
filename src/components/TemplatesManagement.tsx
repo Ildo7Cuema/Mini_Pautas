@@ -1063,8 +1063,9 @@ export const TemplatesManagement: React.FC<TemplatesManagementProps> = ({ onClos
             {tipoEscola !== 'desconhecido' && totalTemplatesCount === 0 && (
                 <div className="bg-sky-50 border border-sky-200 text-sky-900 px-4 py-3 rounded-xl text-sm">
                     Ainda não há templates. Clique em <strong>Carregar currículo oficial MED</strong> para
-                    pré-cadastrar as disciplinas e componentes de avaliação (MAC, NPT, MT, MF) por classe,
-                    conforme o Ministério da Educação. Depois pode editar, apagar ou adicionar.
+                    pré-cadastrar as disciplinas e componentes (MAC, NPT, MT, MF) por classe. Nas línguas
+                    das classes de exame (9ª/12ª/13ª), escolas públicas incluem também NEE, NEO e MEC.
+                    Depois pode editar, apagar ou adicionar.
                 </div>
             )}
 

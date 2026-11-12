@@ -5,7 +5,7 @@
  * Comportamento:
  * - Idempotente: não duplica (escola_id, classe, codigo_disciplina)
  * - Não altera templates nem componentes já existentes (preserva edições do utilizador)
- * - Preenche apenas o que falta
+ * - Preenche apenas o que falta (disciplinas e componentes NEE/NEO/MEC quando aplicável)
  * - Insere em lote para performance
  */
 
@@ -13,9 +13,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { EscolaNatureza } from './angolaGradeScale'
 import { isPrivateInstitution } from './angolaGradeScale'
 import {
+    getAllMedComponenteDefs,
+    getMedComponentesForDisciplina,
     getMedCurriculumForTipo,
-    MED_COMPONENTES_AVALIACAO,
     MED_CURRICULUM_SOURCE_LABEL,
+    type MedComponenteDef,
 } from './medCurriculumCatalog'
 import type { TipoEscolaCenso } from '../modules/censo_escolar/utils/escolaModalidade'
 
@@ -41,6 +43,42 @@ function scaleForClasse(
     return { escala_minima: 0, escala_maxima: 20 }
 }
 
+function buildComponenteRows(
+    disciplinaTemplateId: string,
+    componentes: MedComponenteDef[],
+    scale: { escala_minima: number; escala_maxima: number },
+    existingKeys?: Set<string>
+): Array<Record<string, unknown>> {
+    const rows: Array<Record<string, unknown>> = []
+    for (const c of componentes) {
+        for (const trimestre of c.trimestres) {
+            const key = `${String(c.codigo_componente).toUpperCase()}::${trimestre}`
+            if (existingKeys?.has(key)) continue
+            rows.push({
+                disciplina_template_id: disciplinaTemplateId,
+                nome: c.nome,
+                codigo_componente: c.codigo_componente,
+                peso_percentual: c.peso_percentual,
+                escala_minima: scale.escala_minima,
+                escala_maxima: scale.escala_maxima,
+                obrigatorio: true,
+                ordem: c.ordem,
+                trimestre,
+                is_calculated: c.is_calculated,
+                formula_expression: c.is_calculated ? c.formula_expression || null : null,
+                depends_on_components: [],
+                tipo_calculo: c.tipo_calculo,
+                descricao:
+                    c.tipo_calculo === 'anual'
+                        ? `${c.codigo_componente} · Anual · ${MED_CURRICULUM_SOURCE_LABEL}`
+                        : `${c.codigo_componente} · ${trimestre}º Trimestre · ${MED_CURRICULUM_SOURCE_LABEL}`,
+            })
+            existingKeys?.add(key)
+        }
+    }
+    return rows
+}
+
 async function ensureComponentesCatalogo(
     supabase: SupabaseClient,
     escolaId: string,
@@ -57,13 +95,20 @@ async function ensureComponentesCatalogo(
         (existing || []).map((r) => String(r.codigo_componente).toUpperCase())
     )
 
-    const defaultScale = isPrivateInstitution(natureza)
-        ? { escala_minima: 0, escala_maxima: 20 }
-        : { escala_minima: 0, escala_maxima: 20 }
+    const defaultScale = { escala_minima: 0, escala_maxima: 20 }
+    const defs = getAllMedComponenteDefs().filter((c) => {
+        if (existingCodes.has(c.codigo_componente.toUpperCase())) return false
+        // NEE/NEO/MEC/MFD de exame combinado: só escolas não privadas
+        if (
+            isPrivateInstitution(natureza) &&
+            ['NEE', 'NEO', 'MEC', 'MFD'].includes(c.codigo_componente.toUpperCase())
+        ) {
+            return false
+        }
+        return true
+    })
 
-    const toInsert = MED_COMPONENTES_AVALIACAO.filter(
-        (c) => !existingCodes.has(c.codigo_componente.toUpperCase())
-    ).map((c) => ({
+    const toInsert = defs.map((c) => ({
         escola_id: escolaId,
         codigo_componente: c.codigo_componente,
         nome: c.nome,
@@ -156,7 +201,6 @@ async function linkDependsOnForTemplates(
         }
     }
 
-    // Updates em paralelo limitado (evita demasiados round-trips sequenciais)
     const chunkSize = 20
     for (let i = 0; i < updates.length; i += chunkSize) {
         const chunk = updates.slice(i, i + chunkSize)
@@ -170,6 +214,97 @@ async function linkDependsOnForTemplates(
             })
         )
     }
+}
+
+async function insertComponenteBatches(
+    supabase: SupabaseClient,
+    rows: Array<Record<string, unknown>>
+): Promise<void> {
+    const batchSize = 80
+    for (let i = 0; i < rows.length; i += batchSize) {
+        const batch = rows.slice(i, i + batchSize)
+        const { error } = await supabase.from('componentes_template').insert(batch)
+        if (error) throw error
+    }
+}
+
+/**
+ * Completa NEE/NEO/MEC/MFD em templates de língua já existentes (classes 9ª/12ª/13ª).
+ */
+async function fillMissingExamComponents(opts: {
+    supabase: SupabaseClient
+    escolaId: string
+    natureza?: EscolaNatureza | null
+}): Promise<{ created: number; touchedIds: string[] }> {
+    const { supabase, escolaId, natureza } = opts
+    if (isPrivateInstitution(natureza)) {
+        return { created: 0, touchedIds: [] }
+    }
+
+    const { data: templates, error } = await supabase
+        .from('disciplinas_template')
+        .select('id, classe, codigo_disciplina')
+        .eq('escola_id', escolaId)
+
+    if (error) throw error
+    if (!templates?.length) return { created: 0, touchedIds: [] }
+
+    const eligible = templates.filter((t) => {
+        const comps = getMedComponentesForDisciplina({
+            classe: t.classe,
+            codigoDisciplina: t.codigo_disciplina,
+            natureza,
+        })
+        return comps.some((c) => ['NEE', 'NEO', 'MEC', 'MFD'].includes(c.codigo_componente))
+    })
+
+    if (eligible.length === 0) return { created: 0, touchedIds: [] }
+
+    const eligibleIds = eligible.map((t) => t.id as string)
+    const { data: existingComps, error: cErr } = await supabase
+        .from('componentes_template')
+        .select('disciplina_template_id, codigo_componente, trimestre')
+        .in('disciplina_template_id', eligibleIds)
+
+    if (cErr) throw cErr
+
+    const existingByDisc = new Map<string, Set<string>>()
+    for (const c of existingComps || []) {
+        const discId = c.disciplina_template_id as string
+        if (!existingByDisc.has(discId)) existingByDisc.set(discId, new Set())
+        existingByDisc
+            .get(discId)!
+            .add(`${String(c.codigo_componente).toUpperCase()}::${Number(c.trimestre) || 0}`)
+    }
+
+    const rows: Array<Record<string, unknown>> = []
+    const touchedIds: string[] = []
+
+    for (const t of eligible) {
+        const scale = scaleForClasse(t.classe, natureza)
+        const defs = getMedComponentesForDisciplina({
+            classe: t.classe,
+            codigoDisciplina: t.codigo_disciplina,
+            natureza,
+        }).filter((c) => ['NEE', 'NEO', 'MEC', 'MFD'].includes(c.codigo_componente))
+
+        const existingKeys = existingByDisc.get(t.id) || new Set<string>()
+        const before = existingKeys.size
+        const newRows = buildComponenteRows(t.id, defs, scale, existingKeys)
+        if (newRows.length > 0 || existingKeys.size !== before) {
+            if (newRows.length > 0) {
+                rows.push(...newRows)
+                touchedIds.push(t.id)
+            }
+        }
+    }
+
+    if (rows.length > 0) {
+        await insertComponenteBatches(supabase, rows)
+        await linkDependsOnForTemplates(supabase, [...new Set(touchedIds)])
+    }
+
+    return { created: rows.length, touchedIds }
 }
 
 export async function applyMedCurriculumTemplates(opts: {
@@ -247,71 +382,61 @@ export async function applyMedCurriculumTemplates(opts: {
         }
     }
 
-    if (disciplinasToInsert.length === 0) {
-        return {
-            createdDisciplinas: 0,
-            skippedDisciplinas,
-            createdComponentes: 0,
-            catalogSeeded,
-            message: 'Todas as disciplinas normativas já estavam cadastradas. Nenhuma alteração foi feita.',
+    let createdDisciplinas = 0
+    let createdComponentes = 0
+    const newTemplateIds: string[] = []
+
+    if (disciplinasToInsert.length > 0) {
+        const { data: insertedDiscs, error: discError } = await supabase
+            .from('disciplinas_template')
+            .insert(disciplinasToInsert)
+            .select('id, classe, codigo_disciplina')
+
+        if (discError) throw discError
+
+        const componenteRows: Array<Record<string, unknown>> = []
+        for (const disc of insertedDiscs || []) {
+            const scale = scaleForClasse(disc.classe, natureza)
+            const defs = getMedComponentesForDisciplina({
+                classe: disc.classe,
+                codigoDisciplina: disc.codigo_disciplina,
+                natureza,
+            })
+            componenteRows.push(...buildComponenteRows(disc.id, defs, scale))
+            newTemplateIds.push(disc.id)
         }
+
+        await insertComponenteBatches(supabase, componenteRows)
+        await linkDependsOnForTemplates(supabase, newTemplateIds)
+
+        createdDisciplinas = newTemplateIds.length
+        createdComponentes += componenteRows.length
     }
 
-    const { data: insertedDiscs, error: discError } = await supabase
-        .from('disciplinas_template')
-        .insert(disciplinasToInsert)
-        .select('id, classe, codigo_disciplina')
+    // Completar NEE/NEO/MEC/MFD em línguas já cadastradas (9ª/12ª/13ª)
+    const examFill = await fillMissingExamComponents({ supabase, escolaId, natureza })
+    createdComponentes += examFill.created
 
-    if (discError) throw discError
-
-    const createdIds = (insertedDiscs || []).map((d) => d.id as string)
-    const componenteRows: Array<Record<string, unknown>> = []
-
-    for (const disc of insertedDiscs || []) {
-        const scale = scaleForClasse(disc.classe, natureza)
-        for (const c of MED_COMPONENTES_AVALIACAO) {
-            for (const trimestre of c.trimestres) {
-                componenteRows.push({
-                    disciplina_template_id: disc.id,
-                    nome: c.nome,
-                    codigo_componente: c.codigo_componente,
-                    peso_percentual: c.peso_percentual,
-                    escala_minima: scale.escala_minima,
-                    escala_maxima: scale.escala_maxima,
-                    obrigatorio: true,
-                    ordem: c.ordem,
-                    trimestre,
-                    is_calculated: c.is_calculated,
-                    formula_expression: c.is_calculated ? c.formula_expression || null : null,
-                    depends_on_components: [],
-                    tipo_calculo: c.tipo_calculo,
-                    descricao:
-                        c.tipo_calculo === 'anual'
-                            ? `${c.codigo_componente} · Anual · ${MED_CURRICULUM_SOURCE_LABEL}`
-                            : `${c.codigo_componente} · ${trimestre}º Trimestre · ${MED_CURRICULUM_SOURCE_LABEL}`,
-                })
-            }
-        }
+    const parts: string[] = []
+    if (createdDisciplinas > 0) {
+        parts.push(`${createdDisciplinas} disciplina(s)`)
+    }
+    if (createdComponentes > 0) {
+        parts.push(`${createdComponentes} componente(s)`)
     }
 
-    // Inserir componentes em lotes (PostgREST tem limite de payload)
-    const batchSize = 80
-    for (let i = 0; i < componenteRows.length; i += batchSize) {
-        const batch = componenteRows.slice(i, i + batchSize)
-        const { error: compError } = await supabase.from('componentes_template').insert(batch)
-        if (compError) throw compError
-    }
-
-    await linkDependsOnForTemplates(supabase, createdIds)
-
-    const createdDisciplinas = createdIds.length
-    const createdComponentes = componenteRows.length
+    const message =
+        parts.length > 0
+            ? `Currículo MED aplicado: ${parts.join(' e ')} pré-cadastrados (inclui NEE/NEO/MEC nas línguas das classes de exame, quando aplicável). Pode editar, apagar ou adicionar livremente.`
+            : skippedDisciplinas > 0
+              ? 'Todas as disciplinas e componentes normativos aplicáveis já estavam cadastrados. Nenhuma alteração foi feita.'
+              : 'Nenhuma disciplina normativa aplicável para este tipo de escola.'
 
     return {
         createdDisciplinas,
         skippedDisciplinas,
         createdComponentes,
         catalogSeeded,
-        message: `Currículo MED aplicado: ${createdDisciplinas} disciplina(s) e ${createdComponentes} componente(s) pré-cadastrados. Pode editar, apagar ou adicionar livremente.`,
+        message,
     }
 }
