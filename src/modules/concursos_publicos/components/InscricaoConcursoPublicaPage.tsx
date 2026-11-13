@@ -9,6 +9,7 @@ import {
     submeterInscricaoPublica,
     uploadDocumentoInscricaoPublico,
 } from '../api/concursosApi'
+import { PublicBrandMark } from '../../../components/auth/PublicBrandMark'
 import type { ConcursoCategoria, ConcursoRequisito, PublicConcursoPayload } from '../types'
 
 function getSlugFromPath(): string | null {
@@ -164,6 +165,7 @@ export function InscricaoConcursoPublicaPage() {
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                <PublicBrandMark />
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
             </div>
         )
@@ -172,6 +174,7 @@ export function InscricaoConcursoPublicaPage() {
     if (!payload?.ok) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50 to-blue-100 flex items-center justify-center p-4">
+                <PublicBrandMark />
                 <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-8 text-center space-y-3">
                     <h1 className="text-xl font-bold text-slate-900">Inscrições indisponíveis</h1>
                     <p className="text-slate-600 text-sm">
@@ -188,6 +191,7 @@ export function InscricaoConcursoPublicaPage() {
     if (successId) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-sky-50 to-blue-100 flex items-center justify-center p-4">
+                <PublicBrandMark />
                 <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-emerald-200 p-8 text-center space-y-3">
                     <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-2xl">
                         ✓
@@ -209,6 +213,7 @@ export function InscricaoConcursoPublicaPage() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50/80 to-blue-100/90 py-8 px-4">
+            <PublicBrandMark />
             <div className="max-w-2xl mx-auto">
                 <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 overflow-hidden">
                     <div className="bg-gradient-to-br from-slate-800 to-slate-950 text-white p-6 md:p-8">

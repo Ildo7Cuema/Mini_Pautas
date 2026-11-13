@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { Button } from './ui/Button'
 import { Card, CardBody } from './ui/Card'
+import { PublicBrandMark } from './auth/PublicBrandMark'
 import type { Tutorial, CategoriaTutorial } from '../types'
 
 interface TutoriaisPublicosPageProps {
@@ -256,6 +257,7 @@ export const TutoriaisPublicosPage: React.FC<TutoriaisPublicosPageProps> = ({ on
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100">
+            <PublicBrandMark />
             {/* Animated Background */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="blob blob-1 w-[500px] h-[500px] -top-32 -right-32" />
@@ -264,7 +266,7 @@ export const TutoriaisPublicosPage: React.FC<TutoriaisPublicosPageProps> = ({ on
 
             <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center justify-between mb-8 pr-14 sm:pr-20">
                     <div className="flex items-center gap-4">
                         {onBack && (
                             <button

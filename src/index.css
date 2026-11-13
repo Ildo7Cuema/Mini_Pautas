@@ -1021,6 +1021,28 @@
   isolation: isolate;
 }
 
+/* Marca "A" (Angola) — topo direito nas páginas públicas */
+.public-brand-mark {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.65rem);
+  right: calc(env(safe-area-inset-right, 0px) + 0.65rem);
+  z-index: 40;
+  width: clamp(2.75rem, 11vw, 4.5rem);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 6px 14px rgba(15, 23, 42, 0.18));
+}
+
+@media (max-width: 639px) {
+  .public-brand-mark {
+    top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+    right: calc(env(safe-area-inset-right, 0px) + 0.5rem);
+    width: clamp(2.5rem, 14vw, 3.25rem);
+  }
+}
+
 /* ---------- Globo (canto superior esquerdo) ---------- */
 /* Globo fixo ao viewport: à esquerda, centrado na vertical, não acompanha o scroll */
 .angola-globe {

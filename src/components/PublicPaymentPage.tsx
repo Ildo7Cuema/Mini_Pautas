@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { PublicBrandMark } from './auth/PublicBrandMark'
 import type { PrecoLicenca, PlanoLicenca } from '../types'
 
 interface SchoolInfo {
@@ -189,9 +190,10 @@ export const PublicPaymentPage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+            <PublicBrandMark />
             {/* Header */}
             <header className="bg-white/5 backdrop-blur-sm border-b border-white/10">
-                <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+                <div className="max-w-4xl mx-auto px-4 py-4 pr-16 sm:pr-20 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center">
                             <span className="text-white font-bold text-lg">E</span>

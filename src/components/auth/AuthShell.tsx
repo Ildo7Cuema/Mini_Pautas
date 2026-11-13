@@ -9,6 +9,7 @@ import { ReactNode, createContext, useContext } from 'react'
 import { AngolaGlobe } from './AngolaGlobe'
 import { AuthCarousel } from './AuthCarousel'
 import { AuthLegalBasis } from './AuthLegalBasis'
+import { PublicBrandMark } from './PublicBrandMark'
 
 type AuthWidth = 'sm' | 'md' | 'lg'
 
@@ -66,6 +67,7 @@ export function AuthBackdrop({ children, className = '' }: AuthBackdropProps) {
                 style={{ minHeight: '100dvh' }}
             >
                 <BackdropLayers />
+                <PublicBrandMark />
                 <div className={`w-full ${AUTH_CARD_WIDTH} relative z-10 py-2 sm:py-3`}>
                     {children}
                     <AuthLegalBasis />
