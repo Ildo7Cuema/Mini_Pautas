@@ -32,6 +32,7 @@ export const STAFF_AREA_MODULES: Record<StaffLoginCargo, string[]> = {
         'Dashboard',
         'Turmas',
         'Relatórios',
+        'Avaliação de Desempenho',
         'Matrículas',
         'Configurações',
     ],
@@ -40,6 +41,7 @@ export const STAFF_AREA_MODULES: Record<StaffLoginCargo, string[]> = {
         'Professores',
         'Pagamentos',
         'Turmas',
+        'Avaliação de Desempenho',
         'Matrículas',
         'Configurações',
     ],
@@ -122,10 +124,29 @@ export function staffAllowedPages(cargo?: string | null): string[] {
     const base = ['dashboard', 'settings']
 
     if (c === 'DIRECTOR_PEDAGOGICO') {
-        return [...base, 'classes', 'class-details', 'reports', 'matriculas', 'grades']
+        return [
+            ...base,
+            'classes',
+            'class-details',
+            'reports',
+            'matriculas',
+            'grades',
+            'avaliacao-desempenho',
+            'avaliacao-desempenho-mapa',
+        ]
     }
     if (c === 'DIRECTOR_ADMINISTRATIVO') {
-        return [...base, 'teachers', 'propinas', 'tuition', 'classes', 'class-details', 'matriculas']
+        return [
+            ...base,
+            'teachers',
+            'propinas',
+            'tuition',
+            'classes',
+            'class-details',
+            'matriculas',
+            'avaliacao-desempenho',
+            'avaliacao-desempenho-mapa',
+        ]
     }
     // Técnico de Secretaria
     return [...base, 'propinas', 'tuition']

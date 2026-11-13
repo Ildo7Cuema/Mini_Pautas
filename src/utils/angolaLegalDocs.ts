@@ -46,6 +46,15 @@ export const ANGOLA_LEGAL_DOCS: AngolaLegalDoc[] = [
         published: 'Lei n.º 32/20, de 12 de Agosto de 2020',
         url: 'https://lex.ao/docs/assembleia-nacional/2020/lei-n-o-32-20-de-12-de-agosto/',
     },
+    {
+        id: 'avaliacao-desempenho-agentes',
+        tag: 'Avaliação de Desempenho',
+        title: 'Decreto Presidencial n.º 28/22 — Regime Jurídico da Avaliação de Desempenho dos Agentes de Educação',
+        description:
+            'Regras, procedimentos e critérios de avaliação de Educadores, Professores, Técnicos Pedagógicos e Especialistas de Administração da Educação. Instrumentos Anexos II–VIII; classificação Art. 20.º; mapa geral Art. 32.º. Revoga o Decreto n.º 7/08.',
+        published: 'Diário da República Iª Série n.º 18 de 27 de Janeiro de 2022',
+        url: 'https://lex.ao/docs/presidente-da-republica/2022/decreto-presidencial-n-o-28-22-de-27-de-janeiro/',
+    },
 ]
 
 export const MED_NORMATIVOS_URL = 'https://xilonga.med.gov.ao/normativos'

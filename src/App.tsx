@@ -78,6 +78,9 @@ const TemplatesManagement = lazy(() => import('./components/TemplatesManagement'
 const ConcursosProvinciaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosProvinciaisPage').then(m => ({ default: m.ConcursosProvinciaisPage })))
 const ConcursosMunicipaisPage = lazy(() => import('./modules/concursos_publicos/components/ConcursosMunicipaisPage').then(m => ({ default: m.ConcursosMunicipaisPage })))
 const InscricaoConcursoPublicaPage = lazy(() => import('./modules/concursos_publicos/components/InscricaoConcursoPublicaPage').then(m => ({ default: m.InscricaoConcursoPublicaPage })))
+const AvaliacaoDesempenhoPage = lazy(() => import('./modules/avaliacao_desempenho').then(m => ({ default: m.AvaliacaoDesempenhoPage })))
+const MapaGeralAvaliacaoPage = lazy(() => import('./modules/avaliacao_desempenho').then(m => ({ default: m.MapaGeralAvaliacaoPage })))
+const MinhasAvaliacoesPage = lazy(() => import('./modules/avaliacao_desempenho').then(m => ({ default: m.MinhasAvaliacoesPage })))
 const ConselhoConvitePage = lazy(() => import('./components/ConselhoConvitePage').then(m => ({ default: m.ConselhoConvitePage })))
 
 function App() {
@@ -524,6 +527,21 @@ function App() {
                         )
                     }
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                case 'avaliacao-desempenho':
+                    if (isDirPed || isDirAdm) {
+                        return (
+                            <AvaliacaoDesempenhoPage
+                                onNavigate={handleNavigate}
+                                searchQuery={searchQuery}
+                            />
+                        )
+                    }
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
+                case 'avaliacao-desempenho-mapa':
+                    if (isDirPed || isDirAdm) {
+                        return <MapaGeralAvaliacaoPage onNavigate={handleNavigate} />
+                    }
+                    return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
                 default:
                     return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
             }
@@ -535,6 +553,8 @@ function App() {
                 return isProfessor ? <ProfessorDashboard /> : <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
             case 'solicitacoes':
                 return <ProfessorDocumentRequestsPage />
+            case 'minhas-avaliacoes':
+                return <MinhasAvaliacoesPage />
             case 'classes':
                 return <ClassesPage onNavigate={handleNavigate} searchQuery={searchQuery} />
             case 'class-details':
@@ -574,6 +594,15 @@ function App() {
                 return <CensoEscolarPage />
             case 'templates':
                 return <TemplatesManagement onClose={() => handleNavigate('settings')} />
+            case 'avaliacao-desempenho':
+                return (
+                    <AvaliacaoDesempenhoPage
+                        onNavigate={handleNavigate}
+                        searchQuery={searchQuery}
+                    />
+                )
+            case 'avaliacao-desempenho-mapa':
+                return <MapaGeralAvaliacaoPage onNavigate={handleNavigate} />
             default:
                 return <Dashboard onNavigate={handleNavigate} searchQuery={searchQuery} />
         }

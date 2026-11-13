@@ -219,6 +219,34 @@ export const ProfessorDashboard: React.FC = () => {
                 </div>
             )}
 
+            {/* Atalho avaliação de desempenho (Art. 25.º) */}
+            <button
+                type="button"
+                onClick={() =>
+                    window.dispatchEvent(
+                        new CustomEvent('navigate', { detail: { page: 'minhas-avaliacoes' } }),
+                    )
+                }
+                className="w-full text-left rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm hover:border-slate-300 hover:shadow transition-shadow"
+            >
+                <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-900">Minha avaliação de desempenho</p>
+                        <p className="text-sm text-slate-600 mt-0.5">
+                            Ver fichas divulgadas pela escola e registar Concorda / Não concorda
+                        </p>
+                    </div>
+                    <span className="text-slate-400 shrink-0" aria-hidden>
+                        →
+                    </span>
+                </div>
+            </button>
+
             {/* Statistics Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                 {/* Total Turmas */}

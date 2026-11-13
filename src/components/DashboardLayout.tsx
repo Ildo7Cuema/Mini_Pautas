@@ -424,6 +424,16 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             showInMobile: true,
         },
         {
+            name: 'Minha avaliação',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+            ),
+            path: 'minhas-avaliacoes',
+            showInMobile: true,
+        },
+        {
             name: 'Relatórios',
             icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -432,6 +442,16 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             ),
             path: 'reports',
             showInMobile: false,
+        },
+        {
+            name: 'Avaliação RH',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+            ),
+            path: 'avaliacao-desempenho',
+            showInMobile: true,
         },
         {
             name: 'Matrículas',
@@ -482,6 +502,8 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
         if (item.path === 'matriculas') return isEscola // Only show matriculas menu for School Admins
         if (item.path === 'censo-escolar') return isEscola // Censo Escolar — escola only (MVP)
         if (item.path === 'templates') return isEscola // Only show templates menu for School Admins
+        if (item.path === 'avaliacao-desempenho') return isEscola // DP 28/22 — gestão (escola)
+        if (item.path === 'minhas-avaliacoes') return isProfessor // Art. 25.º — concordância do avaliado
         if (item.path === 'solicitacoes') return isProfessor // Only show solicitacoes for Professors
         return true
     })
@@ -547,6 +569,11 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
         )
+        const iconAvaliacaoRh = (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+        )
 
         const items: NavItem[] = [
             { name: 'Dashboard', icon: iconDashboard, path: 'dashboard', showInMobile: true },
@@ -556,6 +583,7 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
             items.push(
                 { name: 'Turmas', icon: iconClasses, path: 'classes', showInMobile: true },
                 { name: 'Relatórios', icon: iconReports, path: 'reports', showInMobile: true },
+                { name: 'Avaliação RH', icon: iconAvaliacaoRh, path: 'avaliacao-desempenho', showInMobile: true },
                 { name: 'Matrículas', icon: iconMatriculas, path: 'matriculas', showInMobile: false },
             )
         } else if (cargo === 'DIRECTOR_ADMINISTRATIVO') {
@@ -568,6 +596,7 @@ export const DashboardLayout: React.FC<SidebarProps> = ({ children, currentPage,
                 { name: 'Professores', icon: iconTeachers, path: 'teachers', showInMobile: true },
                 { name: 'Pagamentos', icon: iconPayments, path: 'propinas', showInMobile: true },
                 { name: 'Turmas', icon: iconClasses, path: 'classes', showInMobile: false },
+                { name: 'Avaliação RH', icon: iconAvaliacaoRh, path: 'avaliacao-desempenho', showInMobile: true },
                 { name: 'Matrículas', icon: iconMatriculas, path: 'matriculas', showInMobile: false },
             )
         } else {

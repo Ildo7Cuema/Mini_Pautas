@@ -94,17 +94,27 @@ export async function loadHeaderConfig(escolaId: string): Promise<HeaderConfig |
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) throw new Error('User not authenticated')
 
-        // maybeSingle: 0 rows → null without HTTP 406 (unlike .single())
-        const { data, error } = await supabase
+        // 1) Preferência: configuração do próprio utilizador (admin que editou em Configurações)
+        const { data: own, error: ownErr } = await supabase
             .from('configuracao_cabecalho')
             .select('*')
             .eq('user_id', user.id)
             .eq('escola_id', escolaId)
             .maybeSingle()
 
-        if (error) throw error
+        if (ownErr) throw ownErr
+        if (own) return own
 
-        return data
+        // 2) Fallback: cabeçalho da escola (partilhado com professores/staff para exportações)
+        const { data: schoolRows, error: schoolErr } = await supabase
+            .from('configuracao_cabecalho')
+            .select('*')
+            .eq('escola_id', escolaId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+        if (schoolErr) throw schoolErr
+        return (schoolRows && schoolRows[0]) || null
     } catch (err) {
         console.error('Error loading header config:', err)
         return null
