@@ -5,26 +5,10 @@ component-meta:
   responsive: true
 */
 
-import { ReactNode, createContext, useContext, useEffect, useState } from 'react'
+import { ReactNode, createContext, useContext } from 'react'
 import { AngolaGlobe } from './AngolaGlobe'
 import { AuthCarousel } from './AuthCarousel'
-import { AuthShowcase } from './AuthShowcase'
 import { AuthLegalBasis } from './AuthLegalBasis'
-
-/** Telemóvel (< 640px): globo e fotos passam a faixa visível no topo, em vez de fundo discreto. */
-const PHONE_QUERY = '(max-width: 639px)'
-
-function useIsPhone() {
-    const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches)
-    useEffect(() => {
-        const mq = window.matchMedia(PHONE_QUERY)
-        const onChange = (e: MediaQueryListEvent) => setIsPhone(e.matches)
-        setIsPhone(mq.matches)
-        mq.addEventListener('change', onChange)
-        return () => mq.removeEventListener('change', onChange)
-    }, [])
-    return isPhone
-}
 
 type AuthWidth = 'sm' | 'md' | 'lg'
 
@@ -39,7 +23,7 @@ interface AuthShellProps {
 /** Largura única para todos os cartões de autenticação (login, registos, reset). */
 export const AUTH_CARD_WIDTH = 'max-w-[28rem]'
 
-function BackdropLayers({ phone }: { phone: boolean }) {
+function BackdropLayers() {
     return (
         <div className="auth-map-layer pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
             <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-sky-50/70 to-blue-100/80" />
@@ -54,11 +38,9 @@ function BackdropLayers({ phone }: { phone: boolean }) {
             <div className="blob blob-1 w-[420px] h-[420px] -top-28 -right-28 opacity-15" />
             <div className="blob blob-2 w-[360px] h-[360px] -bottom-24 -left-20 opacity-10" />
 
-            {/* Telemóvel: globo e fotos vão para a faixa visível (AuthShowcase) */}
-            {!phone && <AngolaGlobe />}
-
-            {/* Carrossel: à direita no desktop (≥ 1280px); fundo discreto em tablet */}
-            {!phone && <AuthCarousel />}
+            {/* Globo + carrossel sempre em background (também em telemóvel) */}
+            <AngolaGlobe />
+            <AuthCarousel />
         </div>
     )
 }
@@ -76,7 +58,6 @@ interface AuthBackdropProps {
  * mudança de página fica suave (sem "piscar" do fundo).
  */
 export function AuthBackdrop({ children, className = '' }: AuthBackdropProps) {
-    const phone = useIsPhone()
     return (
         <BackdropContext.Provider value={true}>
             <div
@@ -84,9 +65,8 @@ export function AuthBackdrop({ children, className = '' }: AuthBackdropProps) {
                 // dvh: altura real em browsers móveis (barra de endereço dinâmica); ignorado onde não suportado
                 style={{ minHeight: '100dvh' }}
             >
-                <BackdropLayers phone={phone} />
+                <BackdropLayers />
                 <div className={`w-full ${AUTH_CARD_WIDTH} relative z-10 py-2 sm:py-3`}>
-                    {phone && <AuthShowcase />}
                     {children}
                     <AuthLegalBasis />
                 </div>

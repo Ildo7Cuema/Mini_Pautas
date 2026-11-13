@@ -997,6 +997,15 @@
     box-shadow 0.35s ease;
 }
 
+/* Telemóvel: cartão um pouco mais translúcido para o fundo se misturar */
+@media (max-width: 639px) {
+  .auth-card {
+    background: rgba(255, 255, 255, 0.84);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+}
+
 .auth-card:hover {
   box-shadow:
     0 2px 4px rgba(15, 23, 42, 0.05),
@@ -1033,6 +1042,14 @@
     left: 50%;
     margin-left: calc(var(--globe-size) / -2);
     opacity: 0.38;
+  }
+}
+
+/* Telemóvel: globo maior, mais presente, ainda em background atrás do cartão */
+@media (max-width: 639px) {
+  .angola-globe {
+    --globe-size: clamp(420px, 155vw, 760px);
+    opacity: 0.48;
   }
 }
 
@@ -1357,6 +1374,59 @@
     content: '';
     position: absolute;
     inset: -10px -4px;
+  }
+}
+
+/* Telemóvel: fotos maiores, quase misturadas com o fundo e o cartão */
+@media (max-width: 639px) {
+  .auth-carousel {
+    /* cobre o viewport e sangra um pouco para sentir escala */
+    inset: -8% -12%;
+    width: auto;
+  }
+
+  .auth-carousel__frame {
+    opacity: 0.46;
+    -webkit-mask-image:
+      radial-gradient(ellipse 95% 80% at 50% 42%, #000 18%, rgba(0, 0, 0, 0.55) 52%, transparent 78%),
+      linear-gradient(to bottom, transparent 0%, #000 18%, #000 82%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      radial-gradient(ellipse 95% 80% at 50% 42%, #000 18%, rgba(0, 0, 0, 0.55) 52%, transparent 78%),
+      linear-gradient(to bottom, transparent 0%, #000 18%, #000 82%, transparent 100%);
+    mask-composite: intersect;
+  }
+
+  .auth-carousel__img {
+    object-fit: cover;
+    object-position: 55% 28%;
+    transform: scale(1.08);
+  }
+
+  .auth-carousel__slide.is-active .auth-carousel__img {
+    animation: authCarouselZoomMobile 14s ease-out both;
+  }
+
+  .auth-carousel__dots {
+    /* pontos discretos: fundo misturado, sem competir com o cartão */
+    opacity: 0.85;
+    background: rgba(255, 255, 255, 0.55);
+  }
+}
+
+@keyframes authCarouselZoomMobile {
+  from {
+    transform: scale(1.08);
+  }
+
+  to {
+    transform: scale(1.16);
+  }
+}
+
+@media (max-width: 639px) and (prefers-reduced-motion: reduce) {
+  .auth-carousel__slide.is-active .auth-carousel__img {
+    animation: none !important;
   }
 }
 
