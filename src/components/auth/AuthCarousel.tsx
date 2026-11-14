@@ -46,25 +46,26 @@ export const SLIDES: Slide[] = [
     },
 ]
 
-export const INTERVAL_MS = 5000
-const INTERVAL_REDUCED_MS = 8000
+/** Intervalo do autoplay (os pontos só saltam manualmente; a troca continua sozinha). */
+export const INTERVAL_MS = 4000
+const INTERVAL_REDUCED_MS = 7000
+
+function isDesktopCarousel() {
+    return window.matchMedia('(min-width: 1280px)').matches
+}
 
 function canHoverPause() {
-    // Só no layout desktop do carrossel. Em DevTools "mobile" o rato continua
-    // (hover: hover)+(pointer: fine) e, se ficar sobre os pontos, o autoplay parava.
     return (
-        window.matchMedia('(min-width: 1280px)').matches &&
+        isDesktopCarousel() &&
         window.matchMedia('(hover: hover) and (pointer: fine)').matches
     )
 }
 
-/** Estado partilhado do carrossel: índice, rotação automática, pausa e imagens já carregadas. */
+/** Estado partilhado do carrossel: índice, rotação automática e imagens já carregadas. */
 export function useCarouselState() {
     const [index, setIndexState] = useState(0)
     const [reduceMotion, setReduceMotion] = useState(false)
-    // Carrega só a imagem activa e a seguinte (poupa dados em telemóvel)
-    const [seen, setSeen] = useState<number[]>([0, 1])
-    /** Incrementar reinicia o temporizador do autoplay (após navegação manual). */
+    const [seen, setSeen] = useState<number[]>(() => SLIDES.map((_, i) => i))
     const [timerEpoch, setTimerEpoch] = useState(0)
 
     const hoverPausedRef = useRef(false)
@@ -91,6 +92,7 @@ export function useCarouselState() {
 
     const bumpTimer = useCallback(() => setTimerEpoch((n) => n + 1), [])
 
+    /** Navegação manual (pontos / swipe) — não desliga o autoplay, só reinicia o contador. */
     const setIndex = useCallback(
         (next: number | ((i: number) => number)) => {
             setIndexState(next)
@@ -103,39 +105,34 @@ export function useCarouselState() {
         (value: boolean) => {
             if (value && !canHoverPause()) return
             hoverPausedRef.current = value
-            // Ao sair do hover, reinicia a contagem para a próxima foto
             if (!value) bumpTimer()
         },
         [bumpTimer],
     )
 
-    // Autoplay: um setTimeout em cadeia; reinicia em cada epoch (slide / interação)
+    // Autoplay contínuo: não depende de toques nos pontos
     useEffect(() => {
         let timeoutId = 0
         let cancelled = false
 
-        const delay = () => (reduceMotionRef.current ? INTERVAL_REDUCED_MS : INTERVAL_MS)
+        const delayMs = () => (reduceMotionRef.current ? INTERVAL_REDUCED_MS : INTERVAL_MS)
 
-        const schedule = () => {
+        const tick = () => {
             timeoutId = window.setTimeout(() => {
                 if (cancelled) return
                 if (!document.hidden && !hoverPausedRef.current) {
                     setIndexState((i) => (i + 1) % SLIDES.length)
                 }
-                if (!cancelled) schedule()
-            }, delay())
+                if (!cancelled) tick()
+            }, delayMs())
         }
 
         const onVisibility = () => {
-            if (document.hidden) {
-                window.clearTimeout(timeoutId)
-            } else if (!cancelled) {
-                window.clearTimeout(timeoutId)
-                schedule()
-            }
+            window.clearTimeout(timeoutId)
+            if (!document.hidden && !cancelled) tick()
         }
 
-        schedule()
+        tick()
         document.addEventListener('visibilitychange', onVisibility)
         return () => {
             cancelled = true
@@ -155,6 +152,7 @@ export function AuthCarousel() {
             className="auth-carousel"
             aria-roledescription="carousel"
             aria-label="Quem usa o EduGest Angola"
+            // Pausa por hover só no desktop; em mobile o autoplay nunca para por interacção
             onPointerEnter={(e) => e.pointerType === 'mouse' && setPaused(true)}
             onPointerLeave={(e) => e.pointerType === 'mouse' && setPaused(false)}
         >

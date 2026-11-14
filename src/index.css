@@ -1444,8 +1444,8 @@
   }
 
   .auth-carousel__frame {
-    /* um pouco mais presente para a troca de slides ser perceptível */
-    opacity: 0.58;
+    /* mais presente no telemóvel para a troca automática ser óbvia */
+    opacity: 0.68;
     -webkit-mask-image:
       radial-gradient(ellipse 95% 80% at 50% 42%, #000 18%, rgba(0, 0, 0, 0.55) 52%, transparent 78%),
       linear-gradient(to bottom, transparent 0%, #000 18%, #000 82%, transparent 100%);
