@@ -1204,7 +1204,12 @@
   inset: 0;
   margin: 0;
   opacity: 0;
-  transition: opacity 1.2s ease;
+  transition: opacity 1.05s ease;
+  /* Compositor estável em mobile (máscaras + opacity às vezes “congelavam” o crossfade) */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: opacity;
+  backface-visibility: hidden;
 }
 
 .auth-carousel__slide.is-active {
@@ -1218,6 +1223,7 @@
   object-fit: cover;
   object-position: 62% 30%;
   user-select: none;
+  -webkit-user-drag: none;
   transform: scale(1);
 }
 
@@ -1305,6 +1311,8 @@
 }
 
 .auth-carousel__dot {
+  position: relative;
+  overflow: hidden;
   width: 7px;
   height: 7px;
   padding: 0;
@@ -1321,12 +1329,35 @@
 
 .auth-carousel__dot.is-active {
   width: 22px;
+  background: rgba(37, 99, 235, 0.35);
+}
+
+.auth-carousel__dot-progress {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+  border-radius: inherit;
   background: #2563eb;
+  animation-name: authCarouselDotProgress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  pointer-events: none;
 }
 
 .auth-carousel__dot:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
+}
+
+@keyframes authCarouselDotProgress {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
 }
 
 @keyframes authCarouselZoom {
@@ -1353,8 +1384,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .auth-carousel__slide.is-active .auth-carousel__img,
-  .auth-carousel__caption > * {
+  .auth-carousel__caption > *,
+  .auth-carousel__dot-progress {
     animation: none !important;
+  }
+
+  .auth-carousel__dot.is-active {
+    background: #2563eb;
   }
 }
 
@@ -1408,7 +1444,8 @@
   }
 
   .auth-carousel__frame {
-    opacity: 0.46;
+    /* um pouco mais presente para a troca de slides ser perceptível */
+    opacity: 0.58;
     -webkit-mask-image:
       radial-gradient(ellipse 95% 80% at 50% 42%, #000 18%, rgba(0, 0, 0, 0.55) 52%, transparent 78%),
       linear-gradient(to bottom, transparent 0%, #000 18%, #000 82%, transparent 100%);
@@ -1429,10 +1466,15 @@
     animation: authCarouselZoomMobile 14s ease-out both;
   }
 
+  .auth-carousel__slide {
+    transition: opacity 0.85s ease;
+  }
+
   .auth-carousel__dots {
     /* pontos discretos: fundo misturado, sem competir com o cartão */
-    opacity: 0.85;
-    background: rgba(255, 255, 255, 0.55);
+    opacity: 0.95;
+    background: rgba(255, 255, 255, 0.72);
+    z-index: 5;
   }
 }
 

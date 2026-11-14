@@ -7,10 +7,10 @@ component-meta:
 
 import { useState } from 'react'
 import { AngolaGlobe } from './AngolaGlobe'
-import { SLIDES, useCarouselState } from './AuthCarousel'
+import { INTERVAL_MS, SLIDES, useCarouselState } from './AuthCarousel'
 
 export function AuthShowcase() {
-    const { index, setIndex, setPaused, seen } = useCarouselState()
+    const { index, setIndex, setPaused, seen, reduceMotion } = useCarouselState()
     const slide = SLIDES[index]
     const [touchX, setTouchX] = useState<number | null>(null)
 
@@ -31,8 +31,8 @@ export function AuthShowcase() {
                 className="auth-showcase__carousel"
                 aria-roledescription="carousel"
                 aria-label="Quem usa o EduGest Angola"
-                onFocus={() => setPaused(true)}
-                onBlur={() => setPaused(false)}
+                onPointerEnter={(e) => e.pointerType === 'mouse' && setPaused(true)}
+                onPointerLeave={(e) => e.pointerType === 'mouse' && setPaused(false)}
                 onTouchStart={(e) => setTouchX(e.touches[0].clientX)}
                 onTouchEnd={(e) => onTouchEnd(e.changedTouches[0].clientX)}
             >
@@ -45,7 +45,14 @@ export function AuthShowcase() {
                         aria-label={`${i + 1} de ${SLIDES.length}`}
                     >
                         {seen.includes(i) && (
-                            <img src={s.src} alt={s.alt} className="auth-showcase__img" decoding="async" draggable={false} />
+                            <img
+                                key={i === index ? `active-${index}` : s.src}
+                                src={s.src}
+                                alt={s.alt}
+                                className="auth-showcase__img"
+                                decoding="async"
+                                draggable={false}
+                            />
                         )}
                     </figure>
                 ))}
@@ -67,7 +74,15 @@ export function AuthShowcase() {
                             aria-label={`Mostrar: ${s.role}`}
                             className={`auth-carousel__dot ${i === index ? 'is-active' : ''}`}
                             onClick={() => setIndex(i)}
-                        />
+                        >
+                            {i === index && !reduceMotion && (
+                                <span
+                                    key={`progress-${index}`}
+                                    className="auth-carousel__dot-progress"
+                                    style={{ animationDuration: `${INTERVAL_MS}ms` }}
+                                />
+                            )}
+                        </button>
                     ))}
                 </div>
             </div>
