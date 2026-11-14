@@ -31,6 +31,7 @@ const PAGES_BY_DEPARTAMENTO: Record<DepartamentoProvincial, string[]> = {
         'provincial-escolas',
         'provincial-circulares',
         'provincial-relatorios',
+        'avaliacao-desempenho-provincial',
     ],
     PLANEAMENTO_RH: [
         'dashboard',
@@ -38,6 +39,7 @@ const PAGES_BY_DEPARTAMENTO: Record<DepartamentoProvincial, string[]> = {
         'provincial-relatorios',
         'provincial-concursos',
         'provincial-pessoal',
+        'avaliacao-desempenho-provincial',
         'provincial-planeamento',
         'provincial-estatisticas',
         'provincial-contratacao-empresas',
@@ -47,6 +49,7 @@ const PAGES_BY_DEPARTAMENTO: Record<DepartamentoProvincial, string[]> = {
         'provincial-escolas',
         'provincial-supervisao',
         'provincial-relatorios',
+        'avaliacao-desempenho-provincial',
     ],
     CIENCIA_TECNOLOGIA: [
         'dashboard',
@@ -66,6 +69,7 @@ export const ADMIN_PROVINCIAL_PAGES = [
     'provincial-concursos',
     'provincial-relatorios',
     'provincial-pessoal',
+    'avaliacao-desempenho-provincial',
     'provincial-planeamento',
     'provincial-estatisticas',
     'provincial-contratacao-empresas',

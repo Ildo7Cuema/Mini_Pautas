@@ -81,6 +81,9 @@ const InscricaoConcursoPublicaPage = lazy(() => import('./modules/concursos_publ
 const AvaliacaoDesempenhoPage = lazy(() => import('./modules/avaliacao_desempenho').then(m => ({ default: m.AvaliacaoDesempenhoPage })))
 const MapaGeralAvaliacaoPage = lazy(() => import('./modules/avaliacao_desempenho').then(m => ({ default: m.MapaGeralAvaliacaoPage })))
 const MinhasAvaliacoesPage = lazy(() => import('./modules/avaliacao_desempenho').then(m => ({ default: m.MinhasAvaliacoesPage })))
+const ConsolidadoAvaliacaoTutelaPage = lazy(() =>
+    import('./modules/avaliacao_desempenho').then(m => ({ default: m.ConsolidadoAvaliacaoTutelaPage })),
+)
 const ConselhoConvitePage = lazy(() => import('./components/ConselhoConvitePage').then(m => ({ default: m.ConselhoConvitePage })))
 
 function App() {
@@ -386,6 +389,8 @@ function App() {
                     return <ConcursosMunicipaisPage />
                 case 'municipal-pessoal':
                     return <PessoalMunicipalPage />
+                case 'avaliacao-desempenho-municipal':
+                    return <ConsolidadoAvaliacaoTutelaPage variant="municipal" />
                 case 'config-documentos':
                     return <ConfiguracaoDocumentos />
                 case 'reports':
@@ -432,6 +437,8 @@ function App() {
                     return <RelatoriosProvinciaisPage />
                 case 'provincial-pessoal':
                     return <PessoalProvincialPage />
+                case 'avaliacao-desempenho-provincial':
+                    return <ConsolidadoAvaliacaoTutelaPage variant="provincial" />
                 case 'provincial-planeamento':
                     return <PlaneamentoProvinciaisPage />
                 case 'provincial-estatisticas':

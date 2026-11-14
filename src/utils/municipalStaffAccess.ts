@@ -34,6 +34,7 @@ const PAGES_BY_DEPARTAMENTO: Record<DepartamentoMunicipal, string[]> = {
         'circulares',
         'solicitacoes',
         'relatorios-municipais',
+        'avaliacao-desempenho-municipal',
     ],
     PLANEAMENTO_RH: [
         'dashboard',
@@ -42,12 +43,14 @@ const PAGES_BY_DEPARTAMENTO: Record<DepartamentoMunicipal, string[]> = {
         'concursos-publicos',
         'relatorios-municipais',
         'municipal-pessoal',
+        'avaliacao-desempenho-municipal',
     ],
     INSPECCAO_SUPERVISAO: [
         'dashboard',
         'escolas',
         'supervisao-pedagogica',
         'relatorios-municipais',
+        'avaliacao-desempenho-municipal',
     ],
     CIENCIA_TECNOLOGIA: [
         'dashboard',
@@ -67,6 +70,7 @@ export const ADMIN_MUNICIPAL_PAGES = [
     'concursos-publicos',
     'relatorios-municipais',
     'municipal-pessoal',
+    'avaliacao-desempenho-municipal',
     'config-documentos',
     'reports',
     'settings',

@@ -1,5 +1,6 @@
 /**
- * Avaliação de Desempenho dos Agentes de Educação — DP 28/22 (Fase 1 Escola)
+ * Avaliação de Desempenho dos Agentes de Educação — DP 28/22
+ * Fase 1: Escola · Fase 2: consolidado tutela (DME / Provincial)
  */
 
 export type TipoPeriodoCiclo = 'ANO_LECTIVO' | 'ANO_CIVIL'
@@ -119,4 +120,48 @@ export interface SaveAvaliacaoInput {
     observacoes?: string | null
     estado?: EstadoAvaliacao
     scores: Array<{ indicador_id: string; graduacao: GraduacaoIndicador }>
+}
+
+/** Resumo por escola para DME / DP (consolidado automático). */
+export interface EscolaAvaliacaoResumo {
+    escola_id: string
+    escola_nome: string
+    municipio: string
+    provincia: string
+    ano_referencia: string | null
+    ciclo_id: string | null
+    ciclo_estado: EstadoCiclo | null
+    total_fichas: number
+    concluidas: number
+    pendentes: number
+    pct_conclusao: number
+    media_classificacao: number | null
+    mencoes: Record<MencaoClassificacao, number>
+}
+
+export interface MunicipioAvaliacaoResumo {
+    municipio: string
+    total_escolas: number
+    escolas_com_ciclo: number
+    total_fichas: number
+    concluidas: number
+    pct_conclusao: number
+    media_classificacao: number | null
+}
+
+export interface ConsolidadoAvaliacaoTutela {
+    ambito: 'municipio' | 'provincia'
+    territorio: string
+    ano_referencia: string | null
+    anos_disponiveis: string[]
+    total_escolas: number
+    escolas_com_ciclo: number
+    total_fichas: number
+    concluidas: number
+    pendentes: number
+    pct_conclusao: number
+    media_classificacao: number | null
+    mencoes: Record<MencaoClassificacao, number>
+    por_escola: EscolaAvaliacaoResumo[]
+    por_municipio?: MunicipioAvaliacaoResumo[]
 }

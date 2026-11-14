@@ -3,6 +3,7 @@ export {
     MapaGeralAvaliacaoPage,
     AvaliacaoFichaModal,
     MinhasAvaliacoesPage,
+    ConsolidadoAvaliacaoTutelaPage,
 } from './components'
 export * from './types'
 export {
@@ -16,3 +17,12 @@ export {
     resolveAnexoOficial,
 } from './utils/exportFichaPdf'
 export { exportMapaGeralPdf, exportMapaGeralExcel } from './utils/exportMapa'
+export {
+    exportConsolidadoAvaliacaoExcel,
+    exportConsolidadoAvaliacaoPdf,
+} from './utils/exportConsolidado'
+export {
+    fetchConsolidadoAvaliacaoTutela,
+    fetchMapaGeralTutela,
+    listAnosReferenciaTutela,
+} from './api/consolidadoTutela'
