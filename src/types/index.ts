@@ -69,6 +69,8 @@ export interface Professor {
     banco?: string;
     numero_seguranca_social?: string;
     data_inicio_funcoes?: string;
+    /** Filhos a que a mãe deu à luz (DP 299/20 Art. 4.º n.º 2 — redução da idade de reforma). */
+    numero_filhos?: number | null;
     categoria_laboral?: 'Quadro Definitivo' | 'Contratado' | 'Colaborador';
 
     grau_academico?: string;
@@ -170,6 +172,8 @@ export interface FuncionarioEscola {
     ativo: boolean;
     genero?: 'M' | 'F';
     data_nascimento?: string;
+    /** Filhos a que a mãe deu à luz (DP 299/20 Art. 4.º n.º 2 — redução da idade de reforma). */
+    numero_filhos?: number | null;
     nif?: string;
     created_at: string;
     updated_at: string;
@@ -599,6 +603,11 @@ export interface PessoalDirecaoProvincial {
     departamento: DepartamentoProvincial | string;
     cargo?: string | null;
     ativo: boolean;
+    data_nascimento?: string | null;
+    data_admissao?: string | null;
+    genero?: 'M' | 'F' | null;
+    /** Filhos a que a mãe deu à luz (DP 299/20 Art. 4.º n.º 2). */
+    numero_filhos?: number | null;
     created_at: string;
     updated_at: string;
 }
@@ -625,6 +634,11 @@ export interface PessoalDirecaoMunicipal {
     departamento: DepartamentoMunicipal | string;
     cargo?: string | null;
     ativo: boolean;
+    data_nascimento?: string | null;
+    data_admissao?: string | null;
+    genero?: 'M' | 'F' | null;
+    /** Filhos a que a mãe deu à luz (DP 299/20 Art. 4.º n.º 2). */
+    numero_filhos?: number | null;
     created_at: string;
     updated_at: string;
 }

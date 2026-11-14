@@ -17,6 +17,7 @@ import { ConfirmModal } from './ui/ConfirmModal'
 import { FormModal } from './ui/FormModal'
 import { useAuth } from '../contexts/AuthContext'
 import { FuncionarioEscola } from '../types'
+import { TempoServicoReformaInfo } from './TempoServicoReformaInfo'
 import {
     buildStaffInviteLink,
     formatStaffAccessSummary,
@@ -56,6 +57,7 @@ interface UnifiedStaffItem {
     data_nascimento?: string
     nif?: string
     data_admissao?: string
+    numero_filhos?: number | null
     ativo: boolean
     user_id?: string | null
     perfilLabel: string
@@ -230,7 +232,11 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
         cargo: '',
         departamento: '',
         data_admissao: '',
+        numero_filhos: '',
     })
+
+    const parseNumeroFilhos = (value: string) =>
+        value === '' ? 0 : Math.max(0, Math.min(20, parseInt(value, 10) || 0))
 
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
@@ -293,6 +299,7 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                     data_nascimento: func.data_nascimento || '',
                     nif: func.nif || '',
                     data_admissao: func.data_admissao || '',
+                    numero_filhos: func.numero_filhos ?? 0,
                     ativo: linkedSec?.ativo ?? func.ativo,
                     user_id: linkedSec?.user_id ?? func.user_id,
                     perfilLabel: perfilFromSubcategoria(subcategoria, linkedSec ? 'secretario' : 'funcionario'),
@@ -499,6 +506,7 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                     data_nascimento: formData.data_nascimento || null,
                     nif: formData.nif || null,
                     data_admissao: formData.data_admissao || null,
+                    numero_filhos: parseNumeroFilhos(formData.numero_filhos),
                 }
 
                 const upsertSecretario = async (secId: string | null) => {
@@ -587,6 +595,7 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                     cargo: formData.cargo || null,
                     departamento: formData.departamento || null,
                     data_admissao: formData.data_admissao || null,
+                    numero_filhos: parseNumeroFilhos(formData.numero_filhos),
                 }
 
                 if (editMode && selectedItem) {
@@ -641,6 +650,7 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
             cargo: 'Técnico de Secretaria',
             departamento: 'Secretaria',
             data_admissao: '',
+            numero_filhos: '',
         })
     }
 
@@ -698,6 +708,7 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
             cargo: item.cargo || '',
             departamento: item.departamento || '',
             data_admissao: item.data_admissao || '',
+            numero_filhos: item.numero_filhos != null ? String(item.numero_filhos) : '',
         })
         setShowModal(true)
     }
@@ -985,6 +996,13 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                                                 <span className="text-sm text-slate-700">Nº {item.numero_funcionario}</span>
                                             </div>
                                         )}
+                                        <TempoServicoReformaInfo
+                                            dataNascimento={item.data_nascimento}
+                                            dataInicioServico={item.data_admissao}
+                                            genero={item.genero}
+                                            numeroFilhos={item.numero_filhos}
+                                            variant="compact"
+                                        />
                                     </div>
 
                                     <div className="flex gap-2 pt-3 border-t border-slate-100">
@@ -1155,6 +1173,26 @@ export const StaffPage: React.FC<StaffPageProps> = ({ onNavigate: _onNavigate, s
                                             value={formData.nif}
                                             onChange={(e) => setFormData({ ...formData, nif: e.target.value })}
                                             placeholder="Nº Identificação Fiscal"
+                                        />
+
+                                        {formData.genero === 'F' && (
+                                            <Input
+                                                label="N.º de filhos (redução idade reforma — DP 299/20)"
+                                                type="number"
+                                                min={0}
+                                                max={20}
+                                                value={formData.numero_filhos}
+                                                onChange={(e) => setFormData({ ...formData, numero_filhos: e.target.value })}
+                                                placeholder="0"
+                                            />
+                                        )}
+
+                                        <TempoServicoReformaInfo
+                                            dataNascimento={formData.data_nascimento}
+                                            dataInicioServico={formData.data_admissao}
+                                            genero={formData.genero}
+                                            numeroFilhos={parseNumeroFilhos(formData.numero_filhos)}
+                                            variant="detail"
                                         />
                                     </div>
                                 )}

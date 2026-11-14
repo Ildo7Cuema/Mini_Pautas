@@ -87,7 +87,11 @@ export async function fetchFuncionariosMunicipio(
                 especialidade: prof.especialidade,
                 grau_academico: prof.grau_academico,
                 area_formacao: prof.area_formacao,
-                categoria_docente: prof.categoria_docente
+                categoria_docente: prof.categoria_docente,
+                genero: prof.genero || null,
+                data_nascimento: prof.data_nascimento || null,
+                data_inicio_servico: prof.data_inicio_funcoes || null,
+                numero_filhos: prof.numero_filhos ?? 0,
             });
         }
     }
@@ -171,7 +175,11 @@ export async function fetchFuncionariosMunicipio(
                 created_at: func.created_at,
                 numero_funcionario: func.numero_funcionario,
                 categoria: func.categoria,
-                subcategoria: func.subcategoria
+                subcategoria: func.subcategoria,
+                genero: func.genero || null,
+                data_nascimento: func.data_nascimento || null,
+                data_inicio_servico: func.data_admissao || null,
+                numero_filhos: func.numero_filhos ?? 0,
             });
         }
     }

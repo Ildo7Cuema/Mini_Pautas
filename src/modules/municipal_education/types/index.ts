@@ -367,6 +367,11 @@ export interface FuncionarioMunicipio {
     numero_funcionario?: string;
     categoria?: Exclude<CategoriaFuncionario, 'TODOS' | 'DOCENTE'>;
     subcategoria?: string;
+    // Tempo de serviço / reforma (DP 299/20)
+    genero?: 'M' | 'F' | null;
+    data_nascimento?: string | null;
+    data_inicio_servico?: string | null;
+    numero_filhos?: number | null;
     // Coordination roles
     cargos_coordenacao?: CargosCoordenacao[];
 }

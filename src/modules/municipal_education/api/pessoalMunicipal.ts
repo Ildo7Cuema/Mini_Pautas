@@ -28,6 +28,10 @@ export async function createPessoalMunicipal(
             departamento: payload.departamento,
             cargo: payload.cargo || null,
             ativo: payload.ativo ?? true,
+            data_nascimento: payload.data_nascimento || null,
+            data_admissao: payload.data_admissao || null,
+            genero: payload.genero || null,
+            numero_filhos: payload.numero_filhos ?? 0,
         })
         .select('*')
         .single()
@@ -41,7 +45,17 @@ export async function updatePessoalMunicipal(
     patch: Partial<
         Pick<
             PessoalDirecaoMunicipal,
-            'nome' | 'email' | 'telefone' | 'numero_funcionario' | 'departamento' | 'cargo' | 'ativo'
+            | 'nome'
+            | 'email'
+            | 'telefone'
+            | 'numero_funcionario'
+            | 'departamento'
+            | 'cargo'
+            | 'ativo'
+            | 'data_nascimento'
+            | 'data_admissao'
+            | 'genero'
+            | 'numero_filhos'
         >
     >,
 ): Promise<void> {

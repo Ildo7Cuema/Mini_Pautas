@@ -17,6 +17,7 @@ import { ConfirmModal } from './ui/ConfirmModal'
 import { FormModal } from './ui/FormModal'
 import { useAuth } from '../contexts/AuthContext'
 import { Professor } from '../types'
+import { TempoServicoReformaInfo } from './TempoServicoReformaInfo'
 
 
 interface TeachersPageProps {
@@ -49,6 +50,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
         nome_mae: '',
         nacionalidade: 'Angolana',
         naturalidade: '',
+        numero_filhos: '',
 
         // Profissional
         email: '',
@@ -152,6 +154,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                 nome_mae: optionalTextOrNull(formData.nome_mae),
                 nacionalidade: optionalTextOrNull(formData.nacionalidade),
                 naturalidade: optionalTextOrNull(formData.naturalidade),
+                numero_filhos: formData.numero_filhos === ''
+                    ? 0
+                    : Math.max(0, Math.min(20, parseInt(formData.numero_filhos, 10) || 0)),
 
                 // Profissional
                 email: formData.email.trim(),
@@ -241,6 +246,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
             nome_mae: '',
             nacionalidade: 'Angolana',
             naturalidade: '',
+            numero_filhos: '',
             email: '',
             telefone: '',
             numero_agente: '',
@@ -278,6 +284,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
             nome_mae: professor.nome_mae || '',
             nacionalidade: professor.nacionalidade || 'Angolana',
             naturalidade: professor.naturalidade || '',
+            numero_filhos: professor.numero_filhos != null ? String(professor.numero_filhos) : '',
             email: professor.email,
             telefone: professor.telefone || '',
             numero_agente: professor.numero_agente || '',
@@ -507,6 +514,13 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                                             <span className="text-sm text-slate-700">Nº {prof.numero_agente}</span>
                                         </div>
                                     )}
+                                    <TempoServicoReformaInfo
+                                        dataNascimento={prof.data_nascimento}
+                                        dataInicioServico={prof.data_inicio_funcoes}
+                                        genero={prof.genero}
+                                        numeroFilhos={prof.numero_filhos}
+                                        variant="compact"
+                                    />
                                 </div>
 
                                 {/* Actions */}
@@ -668,6 +682,26 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onNavigate: _onNavig
                                                 placeholder="Província de nascimento"
                                             />
                                         </div>
+
+                                        {formData.genero === 'F' && (
+                                            <Input
+                                                label="N.º de filhos (redução idade reforma — DP 299/20)"
+                                                type="number"
+                                                min={0}
+                                                max={20}
+                                                value={formData.numero_filhos}
+                                                onChange={(e) => setFormData({ ...formData, numero_filhos: e.target.value })}
+                                                placeholder="0"
+                                            />
+                                        )}
+
+                                        <TempoServicoReformaInfo
+                                            dataNascimento={formData.data_nascimento}
+                                            dataInicioServico={formData.data_inicio_funcoes}
+                                            genero={formData.genero}
+                                            numeroFilhos={formData.numero_filhos === '' ? 0 : parseInt(formData.numero_filhos, 10) || 0}
+                                            variant="detail"
+                                        />
                                     </div>
                                 )}
 

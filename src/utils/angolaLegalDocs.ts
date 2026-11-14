@@ -55,6 +55,24 @@ export const ANGOLA_LEGAL_DOCS: AngolaLegalDoc[] = [
         published: 'Diário da República Iª Série n.º 18 de 27 de Janeiro de 2022',
         url: 'https://lex.ao/docs/presidente-da-republica/2022/decreto-presidencial-n-o-28-22-de-27-de-janeiro/',
     },
+    {
+        id: 'proteccao-velhice',
+        tag: 'Reforma / Tempo de Serviço',
+        title: 'Decreto Presidencial n.º 299/20 — Regime Jurídico sobre a Protecção Social na Velhice',
+        description:
+            'Reforma por velhice aos 60 anos ou 420 meses de contribuições; prazo de garantia de 180 meses; redução de idade para mães trabalhadoras (1 ano por filho, máx. 5); contagem do tempo de serviço (Arts. 4.º, 7.º e 9.º). Aplicável aos agentes da educação no âmbito da Protecção Social Obrigatória.',
+        published: 'Diário da República Iª Série n.º 186 de 23 de Novembro de 2020',
+        url: 'https://lex.ao/docs/presidente-da-republica/2020/decreto-presidencial-n-o-299-20-de-23-de-novembro/',
+    },
+    {
+        id: 'lei-bases-funcao-publica',
+        tag: 'Função Pública',
+        title: 'Lei n.º 26/22 — Lei de Bases da Função Pública',
+        description:
+            'Regime geral dos funcionários públicos, incluindo contagem de tempo de serviço em cargos de direcção e chefia para efeitos de carreira (Art. 54.º).',
+        published: '22 de Agosto de 2022',
+        url: 'https://inacom.gov.ao/wp-content/uploads/2025/08/Lei-de-Bases-da-Funcao-Publica.pdf',
+    },
 ]
 
 export const MED_NORMATIVOS_URL = 'https://xilonga.med.gov.ao/normativos'

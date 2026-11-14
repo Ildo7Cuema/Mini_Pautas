@@ -14,6 +14,7 @@ import {
     fetchPessoalProvincial,
     updatePessoalProvincial,
 } from '../api/pessoalProvincial'
+import { TempoServicoReformaInfo } from '../../../components/TempoServicoReformaInfo'
 import {
     DpAlert,
     DpBadge,
@@ -41,6 +42,10 @@ const emptyForm = {
     numero_funcionario: '',
     departamento: 'EDUCACAO_ENSINO' as DepartamentoProvincial,
     cargo: '',
+    data_nascimento: '',
+    data_admissao: '',
+    genero: '' as '' | 'M' | 'F',
+    numero_filhos: '',
 }
 
 export const PessoalProvincialPage: React.FC = () => {
@@ -107,9 +112,16 @@ export const PessoalProvincialPage: React.FC = () => {
             numero_funcionario: item.numero_funcionario || '',
             departamento: item.departamento as DepartamentoProvincial,
             cargo: item.cargo || '',
+            data_nascimento: item.data_nascimento || '',
+            data_admissao: item.data_admissao || '',
+            genero: (item.genero as '' | 'M' | 'F') || '',
+            numero_filhos: item.numero_filhos != null ? String(item.numero_filhos) : '',
         })
         setShowModal(true)
     }
+
+    const parseNumeroFilhos = (value: string) =>
+        value === '' ? 0 : Math.max(0, Math.min(20, parseInt(value, 10) || 0))
 
     const handleCopyInvite = (item: PessoalDirecaoProvincial) => {
         const link = buildFuncionarioProvincialInviteLink(
@@ -143,6 +155,10 @@ export const PessoalProvincialPage: React.FC = () => {
                     numero_funcionario: form.numero_funcionario.trim() || null,
                     departamento: form.departamento,
                     cargo: form.cargo.trim() || null,
+                    data_nascimento: form.data_nascimento || null,
+                    data_admissao: form.data_admissao || null,
+                    genero: form.genero || null,
+                    numero_filhos: parseNumeroFilhos(form.numero_filhos),
                 })
                 setSuccess('Funcionário actualizado.')
             } else {
@@ -155,6 +171,10 @@ export const PessoalProvincialPage: React.FC = () => {
                     departamento: form.departamento,
                     cargo: form.cargo.trim() || null,
                     ativo: true,
+                    data_nascimento: form.data_nascimento || null,
+                    data_admissao: form.data_admissao || null,
+                    genero: form.genero || null,
+                    numero_filhos: parseNumeroFilhos(form.numero_filhos),
                 })
                 setSuccess('Funcionário criado. Copie o link de convite para activar a conta.')
             }
@@ -265,6 +285,15 @@ export const PessoalProvincialPage: React.FC = () => {
                                         {getDepartamentoProvincialLabel(item.departamento)}
                                         {item.cargo ? ` · ${item.cargo}` : ''}
                                     </p>
+                                    <div className="mt-2 max-w-md">
+                                        <TempoServicoReformaInfo
+                                            dataNascimento={item.data_nascimento}
+                                            dataInicioServico={item.data_admissao}
+                                            genero={item.genero}
+                                            numeroFilhos={item.numero_filhos}
+                                            variant="compact"
+                                        />
+                                    </div>
                                 </div>
                                 {canManage && (
                                     <div className="flex items-center gap-1 shrink-0">
@@ -423,6 +452,58 @@ export const PessoalProvincialPage: React.FC = () => {
                                 }
                             />
                         </div>
+                    </DpFormSection>
+                    <DpFormSection
+                        title="Tempo de serviço e reforma"
+                        description="Base legal: Decreto Presidencial n.º 299/20 (Arts. 4.º, 7.º e 9.º)"
+                    >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <DpInput
+                                label="Data de nascimento"
+                                type="date"
+                                icon={<Icons.Calendar />}
+                                value={form.data_nascimento}
+                                onChange={(e) => setForm((f) => ({ ...f, data_nascimento: e.target.value }))}
+                            />
+                            <DpInput
+                                label="Data de admissão"
+                                type="date"
+                                icon={<Icons.Clock />}
+                                value={form.data_admissao}
+                                onChange={(e) => setForm((f) => ({ ...f, data_admissao: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <DpSelect
+                                label="Género"
+                                value={form.genero}
+                                onChange={(e) =>
+                                    setForm((f) => ({ ...f, genero: e.target.value as '' | 'M' | 'F' }))
+                                }
+                            >
+                                <option value="">Selecione</option>
+                                <option value="M">Masculino</option>
+                                <option value="F">Feminino</option>
+                            </DpSelect>
+                            {form.genero === 'F' && (
+                                <DpInput
+                                    label="N.º de filhos (redução idade reforma)"
+                                    type="number"
+                                    min={0}
+                                    max={20}
+                                    value={form.numero_filhos}
+                                    onChange={(e) => setForm((f) => ({ ...f, numero_filhos: e.target.value }))}
+                                    placeholder="0"
+                                />
+                            )}
+                        </div>
+                        <TempoServicoReformaInfo
+                            dataNascimento={form.data_nascimento}
+                            dataInicioServico={form.data_admissao}
+                            genero={form.genero}
+                            numeroFilhos={parseNumeroFilhos(form.numero_filhos)}
+                            variant="detail"
+                        />
                     </DpFormSection>
                 </form>
             </DpModal>

@@ -4,7 +4,7 @@
  * Supports all staff categories with detailed filtering
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useFuncionarios } from '../hooks/useFuncionarios';
 import type {
     CategoriaFuncionario,
@@ -15,11 +15,16 @@ import type {
     LABELS_CATEGORIA_DOCENTE
 } from '../types';
 import { Icons } from '../../../components/ui/Icons';
+import { TempoServicoReformaInfo } from '../../../components/TempoServicoReformaInfo';
 import {
     DmPage,
     DmHeader,
     DmContent,
     DmButton,
+    DmModal,
+    DmModalFooter,
+    DmBadge,
+    DmFormSection,
 } from './MunicipalChrome';
 
 interface FuncionariosConsultaProps {
@@ -27,13 +32,50 @@ interface FuncionariosConsultaProps {
 }
 
 // Category styling
-const categoriaStyles: Record<string, { bg: string; text: string; icon: string }> = {
-    'DOCENTE': { bg: 'bg-blue-100', text: 'text-blue-800', icon: '👨‍🏫' },
-    'DIRECAO': { bg: 'bg-purple-100', text: 'text-purple-800', icon: '👔' },
-    'COORDENACAO': { bg: 'bg-indigo-100', text: 'text-indigo-800', icon: '📋' },
-    'ADMINISTRATIVO': { bg: 'bg-green-100', text: 'text-green-800', icon: '📝' },
-    'APOIO': { bg: 'bg-gray-100', text: 'text-gray-800', icon: '🔧' }
+const categoriaStyles: Record<string, { bg: string; text: string; icon: string; accent: 'blue' | 'violet' | 'indigo' | 'emerald' | 'slate'; label: string }> = {
+    'DOCENTE': { bg: 'bg-blue-100', text: 'text-blue-800', icon: '👨‍🏫', accent: 'blue', label: 'Docente' },
+    'DIRECAO': { bg: 'bg-purple-100', text: 'text-purple-800', icon: '👔', accent: 'violet', label: 'Direcção' },
+    'COORDENACAO': { bg: 'bg-indigo-100', text: 'text-indigo-800', icon: '📋', accent: 'indigo', label: 'Coordenação' },
+    'ADMINISTRATIVO': { bg: 'bg-green-100', text: 'text-green-800', icon: '📝', accent: 'emerald', label: 'Administrativo' },
+    'APOIO': { bg: 'bg-gray-100', text: 'text-gray-800', icon: '🔧', accent: 'slate', label: 'Apoio' }
 };
+
+const avatarAccent: Record<string, string> = {
+    DOCENTE: 'from-blue-500 to-sky-600 shadow-blue-500/30',
+    DIRECAO: 'from-violet-500 to-purple-700 shadow-violet-500/30',
+    COORDENACAO: 'from-indigo-500 to-indigo-700 shadow-indigo-500/30',
+    ADMINISTRATIVO: 'from-emerald-500 to-teal-600 shadow-emerald-500/30',
+    APOIO: 'from-slate-500 to-slate-700 shadow-slate-500/30',
+};
+
+function getInitials(nome: string): string {
+    const parts = nome.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function DetailRow({
+    icon,
+    label,
+    value,
+}: {
+    icon: ReactNode;
+    label: string;
+    value: ReactNode;
+}) {
+    return (
+        <div className="flex items-start gap-3 py-2.5 border-b border-slate-100 last:border-0 last:pb-0 first:pt-0">
+            <span className="mt-0.5 w-8 h-8 flex-shrink-0 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center [&_svg]:w-4 [&_svg]:h-4">
+                {icon}
+            </span>
+            <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+                <div className="mt-0.5 text-sm font-medium text-slate-800 break-words">{value || '—'}</div>
+            </div>
+        </div>
+    );
+}
 
 // Academic degree labels
 const grauLabels: Record<GrauAcademico, string> = {
@@ -45,6 +87,173 @@ const grauLabels: Record<GrauAcademico, string> = {
     TECNICO_BASICO: 'Téc. Básico',
     SEM_FORMACAO: 'S/ Formação'
 };
+
+function FuncionarioDetalhesModal({
+    funcionario,
+    onClose,
+}: {
+    funcionario: FuncionarioMunicipio | null;
+    onClose: () => void;
+}) {
+    if (!funcionario) return null;
+
+    const style = categoriaStyles[funcionario.tipo] || categoriaStyles.DOCENTE;
+    const cargoLabel = funcionario.cargo || funcionario.subtipo || style.label;
+
+    return (
+        <DmModal
+            isOpen={!!funcionario}
+            onClose={onClose}
+            title="Detalhes do Funcionário"
+            subtitle={funcionario.escola_nome}
+            icon={<Icons.User />}
+            accent={style.accent}
+            size="lg"
+            badge={
+                <DmBadge tone={funcionario.ativo ? 'success' : 'neutral'}>
+                    {funcionario.ativo ? 'Activo' : 'Inactivo'}
+                </DmBadge>
+            }
+            footer={
+                <DmModalFooter>
+                    <DmButton variant="secondary" onClick={onClose} fullWidth icon={<Icons.X />}>
+                        Fechar
+                    </DmButton>
+                </DmModalFooter>
+            }
+        >
+            <div className="space-y-4">
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 via-white to-slate-100/80 p-4 sm:p-5">
+                    <div
+                        className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-slate-200/40 blur-2xl"
+                        aria-hidden
+                    />
+                    <div className="relative flex items-start gap-3.5 sm:gap-4">
+                        <div
+                            className={`
+                                w-14 h-14 sm:w-16 sm:h-16 flex-shrink-0 rounded-2xl
+                                bg-gradient-to-br ${avatarAccent[funcionario.tipo] || avatarAccent.DOCENTE}
+                                flex items-center justify-center
+                                text-white text-lg sm:text-xl font-semibold tracking-tight
+                                shadow-lg ring-2 ring-white/50
+                            `}
+                            aria-hidden
+                        >
+                            {getInitials(funcionario.nome_completo)}
+                        </div>
+                        <div className="min-w-0 flex-1 pt-0.5">
+                            <h3 className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight leading-snug">
+                                {funcionario.nome_completo}
+                            </h3>
+                            <p className="mt-0.5 text-sm text-slate-500">{cargoLabel}</p>
+                            <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${style.bg} ${style.text}`}>
+                                    <span aria-hidden>{style.icon}</span>
+                                    {style.label}
+                                </span>
+                                {funcionario.tipo === 'DOCENTE' && funcionario.grau_academico && (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                                        {grauLabels[funcionario.grau_academico]}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <DmFormSection title="Contacto e escola" description="Dados de contacto e vínculo escolar">
+                    <DetailRow icon={<Icons.School />} label="Escola" value={funcionario.escola_nome} />
+                    <DetailRow icon={<Icons.Email />} label="Email" value={funcionario.email || '—'} />
+                    <DetailRow icon={<Icons.Phone />} label="Telefone" value={funcionario.telefone || '—'} />
+                    <DetailRow icon={<Icons.Briefcase />} label="Categoria" value={style.label} />
+                </DmFormSection>
+
+                {(funcionario.tipo === 'DOCENTE' || funcionario.numero_funcionario) && (
+                    <DmFormSection
+                        title={funcionario.tipo === 'DOCENTE' ? 'Qualificação e identificação' : 'Identificação'}
+                        description={
+                            funcionario.tipo === 'DOCENTE'
+                                ? 'Formação académica e número de agente'
+                                : 'Número de funcionário'
+                        }
+                    >
+                        {funcionario.tipo === 'DOCENTE' && (
+                            <>
+                                {funcionario.numero_agente && (
+                                    <DetailRow icon={<Icons.Hash />} label="Nº Agente" value={funcionario.numero_agente} />
+                                )}
+                                {funcionario.grau_academico && (
+                                    <DetailRow
+                                        icon={<Icons.AcademicCap />}
+                                        label="Grau académico"
+                                        value={grauLabels[funcionario.grau_academico]}
+                                    />
+                                )}
+                                {funcionario.area_formacao && (
+                                    <DetailRow
+                                        icon={<Icons.BookOpen />}
+                                        label="Área de formação"
+                                        value={funcionario.area_formacao}
+                                    />
+                                )}
+                                {funcionario.especialidade && (
+                                    <DetailRow
+                                        icon={<Icons.Award />}
+                                        label="Especialidade"
+                                        value={funcionario.especialidade}
+                                    />
+                                )}
+                            </>
+                        )}
+                        {funcionario.numero_funcionario && (
+                            <DetailRow
+                                icon={<Icons.Hash />}
+                                label="Nº Funcionário"
+                                value={funcionario.numero_funcionario}
+                            />
+                        )}
+                    </DmFormSection>
+                )}
+
+                <TempoServicoReformaInfo
+                    dataNascimento={funcionario.data_nascimento}
+                    dataInicioServico={funcionario.data_inicio_servico}
+                    genero={funcionario.genero}
+                    numeroFilhos={funcionario.numero_filhos}
+                    variant="detail"
+                />
+
+                {funcionario.cargos_coordenacao && funcionario.cargos_coordenacao.length > 0 && (
+                    <DmFormSection
+                        title="Cargos de coordenação"
+                        description="Funções de coordenação activas ou históricas"
+                    >
+                        <div className="space-y-2">
+                            {funcionario.cargos_coordenacao.map(cargo => (
+                                <div
+                                    key={cargo.id}
+                                    className="flex items-start gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3.5 py-3"
+                                >
+                                    <span className="mt-0.5 w-8 h-8 flex-shrink-0 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                                        <Icons.ClipboardList className="w-4 h-4" />
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-indigo-900">{cargo.tipo_cargo}</p>
+                                        {cargo.ano_lectivo && (
+                                            <p className="text-xs text-indigo-600 mt-0.5">
+                                                Ano lectivo {cargo.ano_lectivo}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </DmFormSection>
+                )}
+            </div>
+        </DmModal>
+    );
+}
 
 export function FuncionariosConsulta({ onNavigate }: FuncionariosConsultaProps) {
     const {
@@ -418,117 +627,10 @@ export function FuncionariosConsulta({ onNavigate }: FuncionariosConsultaProps) 
                 Mostrando {funcionarios.length} funcionário(s)
             </div>
 
-            {/* Details Modal */}
-            {selectedFuncionario && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-semibold">Detalhes do Funcionário</h3>
-                            <button onClick={() => setSelectedFuncionario(null)} className="text-gray-500 hover:text-gray-700">
-                                ✕
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl">
-                                    {categoriaStyles[selectedFuncionario.tipo]?.icon || '👤'}
-                                </div>
-                                <div>
-                                    <div className="font-bold text-lg text-gray-900">{selectedFuncionario.nome_completo}</div>
-                                    <div className="text-gray-500">{selectedFuncionario.cargo || selectedFuncionario.subtipo}</div>
-                                </div>
-                            </div>
-
-                            <div className="border-t border-gray-100 pt-4 space-y-3">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">Categoria</span>
-                                    <span className="font-medium">{selectedFuncionario.tipo}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">Escola</span>
-                                    <span className="font-medium">{selectedFuncionario.escola_nome}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">Email</span>
-                                    <span className="font-medium">{selectedFuncionario.email || '-'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">Telefone</span>
-                                    <span className="font-medium">{selectedFuncionario.telefone || '-'}</span>
-                                </div>
-
-                                {/* Teacher-specific fields */}
-                                {selectedFuncionario.tipo === 'DOCENTE' && (
-                                    <>
-                                        {selectedFuncionario.numero_agente && (
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-500">Nº Agente</span>
-                                                <span className="font-medium">{selectedFuncionario.numero_agente}</span>
-                                            </div>
-                                        )}
-                                        {selectedFuncionario.grau_academico && (
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-500">Grau Académico</span>
-                                                <span className="font-medium">{grauLabels[selectedFuncionario.grau_academico]}</span>
-                                            </div>
-                                        )}
-                                        {selectedFuncionario.area_formacao && (
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-500">Área de Formação</span>
-                                                <span className="font-medium">{selectedFuncionario.area_formacao}</span>
-                                            </div>
-                                        )}
-                                        {selectedFuncionario.especialidade && (
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-500">Especialidade</span>
-                                                <span className="font-medium">{selectedFuncionario.especialidade}</span>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* Non-teacher fields */}
-                                {selectedFuncionario.numero_funcionario && (
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Nº Funcionário</span>
-                                        <span className="font-medium">{selectedFuncionario.numero_funcionario}</span>
-                                    </div>
-                                )}
-
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">Estado</span>
-                                    <span className={`font-medium ${selectedFuncionario.ativo ? 'text-green-600' : 'text-gray-600'}`}>
-                                        {selectedFuncionario.ativo ? '✓ Activo' : 'Inactivo'}
-                                    </span>
-                                </div>
-
-                                {/* Coordination roles */}
-                                {selectedFuncionario.cargos_coordenacao && selectedFuncionario.cargos_coordenacao.length > 0 && (
-                                    <div className="pt-3 border-t border-gray-100">
-                                        <div className="font-medium text-gray-700 mb-2">Cargos de Coordenação</div>
-                                        {selectedFuncionario.cargos_coordenacao.map(cargo => (
-                                            <div key={cargo.id} className="bg-indigo-50 px-3 py-2 rounded mb-1">
-                                                <div className="font-medium text-indigo-800">{cargo.tipo_cargo}</div>
-                                                {cargo.ano_lectivo && (
-                                                    <div className="text-xs text-indigo-600">{cargo.ano_lectivo}</div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={() => setSelectedFuncionario(null)}
-                            className="w-full mt-6 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                        >
-                            Fechar
-                        </button>
-                    </div>
-                </div>
-            )}
+            <FuncionarioDetalhesModal
+                funcionario={selectedFuncionario}
+                onClose={() => setSelectedFuncionario(null)}
+            />
             </DmContent>
         </DmPage>
     );
